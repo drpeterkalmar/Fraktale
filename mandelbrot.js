@@ -303,14 +303,17 @@ function render() {
             state.refOrbitDirty = false;
         }
 
-        // Only start a new CPU render if camera has actually moved
-        const renderKey = `${state.cx.toString()}|${state.cy.toString()}|${state.zoom}|${state.maxIter}`;
-        if (state.lastRenderKey !== renderKey) {
+        // Only start a new CPU render if camera has slowed down enough
+        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.01 ||
+                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.01;
+        
+        const renderKey = `${state.cx.toFixed(10)}|${state.cy.toFixed(10)}|${state.zoom.toExponential(2)}`;
+        if (!isMoving && state.lastRenderKey !== renderKey) {
             state.lastRenderKey = renderKey;
             clearTimeout(cpuDebounceTimer);
             cpuDebounceTimer = setTimeout(() => {
                 startCpuRender();
-            }, 100);
+            }, 50);
         }
 
         // GPU still renders particles/effects as background
