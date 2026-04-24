@@ -438,7 +438,7 @@ function renderMinimapBase() {
         for (let x = 0; x < w; x++) {
             let zx = 0, zy = 0;
             let cx = (x / w - 0.5) * 3.0 - 0.5;
-            let cy = (y / h - 0.5) * 3.0;
+            let cy = (0.5 - y / h) * 3.0; // Inverted Y
             let iter = 0;
             for (let i = 0; i < 64; i++) {
                 let nzx = zx*zx - zy*zy + cx;
@@ -462,7 +462,7 @@ function updateMinimap() {
     const viewWidth = 3.0 / state.zoom;
     const viewHeight = (viewWidth * canvas.height) / canvas.width;
     const mx = ((state.cx.toNumber() + 0.5) / 3.0 + 0.5) * w;
-    const my = (state.cy.toNumber() / 3.0 + 0.5) * h;
+    const my = (0.5 - state.cy.toNumber() / 3.0) * h; // Inverted Y
     const mw = (viewWidth / 3.0) * w;
     const mh = (viewHeight / 3.0) * h;
     ctxMinimap.strokeStyle = '#a78bfa';
