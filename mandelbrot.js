@@ -187,6 +187,7 @@ function hexToRgb(hex) {
 function fract(x) { return x - Math.floor(x); }
 
 function startCpuRender() {
+    console.log("Starting CPU High-Precision Render (Perturbation)...");
     state.cpuRenderVersion++;
     cpuOverlay.width = canvas.width;
     cpuOverlay.height = canvas.height;
@@ -197,7 +198,11 @@ function startCpuRender() {
     pendingTiles = [];
     for (let y = 0; y < cpuOverlay.height; y += tileSize) {
         for (let x = 0; x < cpuOverlay.width; x += tileSize) {
-            pendingTiles.push({ x, y, w: Math.min(tileSize, cpuOverlay.width - x), h: Math.min(tileSize, cpuOverlay.height - y) });
+            pendingTiles.push({ 
+                x, y, 
+                w: Math.min(tileSize, cpuOverlay.width - x), 
+                h: Math.min(tileSize, cpuOverlay.height - y) 
+            });
         }
     }
     
@@ -205,6 +210,11 @@ function startCpuRender() {
     state.cpuTilesDone = 0;
     updateProgress();
     
+    if (workers.length === 0) {
+        console.error("No workers initialized!");
+        return;
+    }
+
     workers.forEach(w => {
         if (pendingTiles.length > 0) {
             const next = pendingTiles.pop();
