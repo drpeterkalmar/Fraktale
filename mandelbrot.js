@@ -721,7 +721,7 @@ function toggleFullscreen() {
 
 // === UI Visibility ===
 function toggleUIVisibility() {
-    ['info-panel','palette-picker','bookmarks','minimap','formula-bar','help-toast'].forEach(id => {
+    ['info-panel','palette-picker','bookmarks','minimap','formula-bar','help-toast','controls'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('hidden', !state.showUI);
     });

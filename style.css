@@ -217,6 +217,26 @@ body {
     z-index: 10;
 }
 
+#controls.hidden .ctrl-btn:not(#btn-info-toggle) {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+}
+
+#controls.hidden:hover .ctrl-btn {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+#controls.hidden #btn-info-toggle {
+    opacity: 0.3;
+}
+
+#controls.hidden:hover #btn-info-toggle {
+    opacity: 1;
+}
+
 .ctrl-btn {
     width: 48px;
     height: 48px;
