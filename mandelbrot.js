@@ -298,7 +298,10 @@ function render() {
         const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
                          state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
-        const renderKey = `${state.cx.toFixed(10)}|${state.cy.toFixed(10)}|${state.zoom.toExponential(2)}`;
+        // Make renderKey less sensitive to avoid jitter-induced restarts
+        const prec = Math.max(2, Math.floor(Math.log10(state.zoom)) + 2);
+        const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}`;
+        
         if (!isMoving && state.lastRenderKey !== renderKey) {
             state.lastRenderKey = renderKey;
             console.log("[CPU Mode] View stable, scheduling render...");
