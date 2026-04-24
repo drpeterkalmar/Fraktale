@@ -291,10 +291,13 @@ function computeReferenceOrbit() {
 
 function markOrbitDirty() { state.refOrbitDirty = true; }
 
+const ZOOM_THRESHOLD = 1e10;
+
 // === Render Loop ===
 let cpuDebounceTimer = null;
 function render() {
     const useCPU = state.zoom > ZOOM_THRESHOLD;
+    clearTimeout(cpuDebounceTimer);
 
     if (useCPU) {
         // Compute reference orbit if missing or dirty
@@ -304,19 +307,24 @@ function render() {
         }
 
         // Only start a new CPU render if camera has slowed down enough
-        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.01 ||
-                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.01;
+        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
+                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
         const renderKey = `${state.cx.toFixed(10)}|${state.cy.toFixed(10)}|${state.zoom.toExponential(2)}`;
-        if (!isMoving && state.lastRenderKey !== renderKey) {
-            state.lastRenderKey = renderKey;
-            clearTimeout(cpuDebounceTimer);
-            cpuDebounceTimer = setTimeout(() => {
-                startCpuRender();
-            }, 50);
+        
+        if (!isMoving) {
+            if (state.lastRenderKey !== renderKey) {
+                console.log("[CPU Mode] View stable, scheduling render...");
+                cpuDebounceTimer = setTimeout(() => {
+                    startCpuRender();
+                }, 50);
+            }
+        } else {
+            // While moving, keep the GPU view
+            if (state.cpuTilesDone === 0) cpuOverlay.style.display = 'none';
         }
 
-        // GPU still renders particles/effects as background
+        // GPU still renders background (at its max precision)
         gl.useProgram(program);
         gl.uniform2f(uLocs.u_resolution, canvas.width, canvas.height);
         gl.uniform1i(uLocs.u_maxIter, state.maxIter);
@@ -328,7 +336,6 @@ function render() {
         
         const jcx = state.juliaC.x.toNumber(), jcy = state.juliaC.y.toNumber();
         gl.uniform4f(uLocs.u_juliaC, Math.fround(jcx), jcx - Math.fround(jcx), Math.fround(jcy), jcy - Math.fround(jcy));
-        // Set center/scale but it will show low-detail or inside-set effects
         const cxf = state.cx.toNumber(), cyf = state.cy.toNumber();
         const scale = 3.0 / (state.zoom * canvas.height);
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
