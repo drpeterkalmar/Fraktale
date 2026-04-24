@@ -256,10 +256,12 @@ float mandelbrot_perturbation(vec2 pixel) {
         float Zy_lo = ref.w;
 
         // Perturbation formula: dz_{n+1} = 2*Z_n*dz_n + dz_n^2 + dc
-        // Expanded to preserve precision: 2*(Z_hi + Z_lo)*dz + dz^2 + dc
-        float zx_full = Zx_hi + Zx_lo + dzx;
-        float zy_full = Zy_hi + Zy_lo + dzy;
-        float mag2 = zx_full * zx_full + zy_full * zy_full;
+        // Bailout check: |Z + dz|^2 > 256
+        // Expanded to avoid precision loss: |Z|^2 + 2*Re(Z*dz) + |dz|^2 > 256
+        float Zmag2 = Zx_hi * Zx_hi + Zy_hi * Zy_hi;
+        float dz_dot_Z = Zx_hi * dzx + Zy_hi * dzy;
+        float dzmag2 = dzx * dzx + dzy * dzy;
+        float mag2 = Zmag2 + 2.0 * (dz_dot_Z + (Zx_lo * dzx + Zy_lo * dzy)) + dzmag2;
 
         if (mag2 > 256.0) {
             float log_zn = log(mag2) * 0.5;
