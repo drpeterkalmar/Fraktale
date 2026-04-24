@@ -706,11 +706,32 @@ function updateFPS() {
 
 // === Screenshot ===
 function screenshot() {
-    render(); // ensure fresh frame
+    const originalWidth = canvas.width;
+    const originalHeight = canvas.height;
+    const originalZoom = state.zoom;
+
+    // Temporary high-res switch (2x resolution)
+    canvas.width = originalWidth * 2;
+    canvas.height = originalHeight * 2;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    
+    // To keep the same framing at double the pixel density, 
+    // we must also double the zoom factor.
+    state.zoom = originalZoom * 2;
+
+    render(); // Draw the high-res frame
+
     const link = document.createElement('a');
-    link.download = `mandelbrot_${Date.now()}.png`;
+    link.download = `mandelbrot_highres_${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
+
+    // Restore original state
+    canvas.width = originalWidth;
+    canvas.height = originalHeight;
+    state.zoom = originalZoom;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    render();
 }
 
 // === Fullscreen ===
