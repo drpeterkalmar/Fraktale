@@ -260,6 +260,18 @@ body {
     height: 22px;
 }
 
+/* ===== SELECTION BOX ===== */
+#selection-box {
+    position: fixed;
+    border: 2px solid var(--accent);
+    background: rgba(167, 139, 250, 0.2);
+    box-shadow: 0 0 15px var(--accent-glow);
+    pointer-events: none;
+    display: none;
+    z-index: 1000;
+    border-radius: 4px;
+}
+
 /* ===== MINIMAP ===== */
 #minimap {
     position: fixed;

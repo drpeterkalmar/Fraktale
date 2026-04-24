@@ -358,16 +358,35 @@ function detectInsideSet() {
     const isDeep = state.zoom > 1000;
 }
 
+function formatZoom(z) {
+    if (z < 1000) return Math.round(z).toLocaleString() + 'x';
+    if (z < 1000000) return (z / 1000).toFixed(1) + ' Tausend';
+    
+    const units = [
+        { val: 1e6, name: 'Millionen' },
+        { val: 1e9, name: 'Milliarden' },
+        { val: 1e12, name: 'Billionen' },
+        { val: 1e15, name: 'Billiarden' },
+        { val: 1e18, name: 'Trillionen' },
+        { val: 1e21, name: 'Trilliarden' },
+        { val: 1e24, name: 'Quadrillionen' },
+        { val: 1e27, name: 'Quadrilliarden' },
+        { val: 1e30, name: 'Quintillionen' }
+    ];
+    
+    for (let i = units.length - 1; i >= 0; i--) {
+        if (z >= units[i].val) {
+            const num = (z / units[i].val).toFixed(2).replace('.', ',');
+            return num + ' ' + units[i].name;
+        }
+    }
+    return z.toExponential(2) + 'x';
+}
+
 function updateUI() {
     document.getElementById('info-re').textContent = state.cx.toFixed(10);
     document.getElementById('info-im').textContent = state.cy.toFixed(10);
-    let zoomStr;
-    if (state.zoom < 1000000) {
-        zoomStr = (state.zoom < 10 ? state.zoom.toFixed(1) : Math.round(state.zoom).toLocaleString()) + 'x';
-    } else {
-        zoomStr = state.zoom.toExponential(2) + 'x';
-    }
-    document.getElementById('info-zoom').textContent = zoomStr;
+    document.getElementById('info-zoom').textContent = formatZoom(state.zoom);
     document.getElementById('info-iter').textContent = state.maxIter;
     document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
     
@@ -622,17 +641,40 @@ function toggleFractalMode() {
 
 // === Interaction ===
 let isDragging = false;
+let isSelecting = false;
+let selectStartX, selectStartY;
+const selectionBox = document.getElementById('selection-box');
 let dragStartX, dragStartY, dragCx, dragCy;
 let lastTouchDist = 0;
 
 canvas.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    dragStartX = e.clientX; dragStartY = e.clientY;
-    dragCx = state.targetCx; dragCy = state.targetCy;
+    if (e.shiftKey) {
+        isSelecting = true;
+        selectStartX = e.clientX;
+        selectStartY = e.clientY;
+        selectionBox.style.display = 'block';
+        selectionBox.style.left = e.clientX + 'px';
+        selectionBox.style.top = e.clientY + 'px';
+        selectionBox.style.width = '0px';
+        selectionBox.style.height = '0px';
+    } else {
+        isDragging = true;
+        dragStartX = e.clientX; dragStartY = e.clientY;
+        dragCx = state.targetCx; dragCy = state.targetCy;
+    }
 });
 
 window.addEventListener('mousemove', (e) => {
-    if (isDragging) {
+    if (isSelecting) {
+        const x = Math.min(e.clientX, selectStartX);
+        const y = Math.min(e.clientY, selectStartY);
+        const w = Math.abs(e.clientX - selectStartX);
+        const h = Math.abs(e.clientY - selectStartY);
+        selectionBox.style.left = x + 'px';
+        selectionBox.style.top = y + 'px';
+        selectionBox.style.width = w + 'px';
+        selectionBox.style.height = h + 'px';
+    } else if (isDragging) {
         const viewWidth = 3.0 / state.zoom;
         const viewHeight = (viewWidth * canvas.height) / canvas.width;
         const dx = (e.clientX - dragStartX) / window.innerWidth * viewWidth;
@@ -643,18 +685,44 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', (e) => {
-    if (isDragging) {
-        const dist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
-        if (dist < 8) {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+    if (isSelecting) {
+        isSelecting = false;
+        selectionBox.style.display = 'none';
+        
+        const rect = canvas.getBoundingClientRect();
+        const x1 = selectStartX - rect.left;
+        const y1 = selectStartY - rect.top;
+        const x2 = e.clientX - rect.left;
+        const y2 = e.clientY - rect.top;
+        
+        const boxW = Math.abs(x2 - x1);
+        const boxH = Math.abs(y2 - y1);
+        
+        if (boxW > 5 && boxH > 5) {
+            const centerX = (x1 + x2) / 2;
+            const centerY = (y1 + y2) / 2;
+            
             const viewWidth = 3.0 / state.zoom;
             const viewHeight = (viewWidth * canvas.height) / canvas.width;
-            const dx = (x / rect.width - 0.5) * viewWidth;
-            const dy = (y / rect.height - 0.5) * viewHeight;
+            
+            const dx = (centerX / rect.width - 0.5) * viewWidth;
+            const dy = (centerY / rect.height - 0.5) * viewHeight;
+            
             state.targetCx = state.cx.plus(new Decimal(dx));
             state.targetCy = state.cy.minus(new Decimal(dy));
+            
+            const zoomFactor = Math.min(rect.width / boxW, rect.height / boxH);
+            state.targetZoom *= zoomFactor;
+            markOrbitDirty();
+        }
+    } else if (isDragging) {
+        if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) < 8) {
+            const rect = canvas.getBoundingClientRect();
+            const dx = (e.clientX - rect.left) / rect.width - 0.5;
+            const dy = (e.clientY - rect.top) / rect.height - 0.5;
+            const viewWidth = 3.0 / state.zoom;
+            state.targetCx = state.cx.plus(new Decimal(dx * viewWidth));
+            state.targetCy = state.cy.minus(new Decimal(dy * viewWidth * canvas.height / canvas.width));
             markOrbitDirty();
         }
         isDragging = false;
