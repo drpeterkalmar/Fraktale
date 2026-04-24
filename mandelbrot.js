@@ -839,7 +839,9 @@ function wireButtons() {
         'btn-fullscreen': () => toggleFullscreen(),
         'btn-julia-toggle': () => toggleFractalMode(),
         'btn-help-toggle': () => toggleInfoBox(),
-        'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); }
+        'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); },
+        'info-box-close': () => toggleInfoBox(),
+        'info-box-backdrop': () => toggleInfoBox()
     };
     for (const [id, fn] of Object.entries(actions)) {
         const btn = document.getElementById(id);
