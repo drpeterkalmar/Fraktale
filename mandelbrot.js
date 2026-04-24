@@ -702,8 +702,8 @@ window.addEventListener('mouseup', (e) => {
             const centerX = (x1 + x2) / 2;
             const centerY = (y1 + y2) / 2;
             
-            const viewWidth = 3.0 / state.zoom;
-            const viewHeight = (viewWidth * canvas.height) / canvas.width;
+            const viewHeight = 3.0 / state.zoom;
+            const viewWidth = viewHeight * (canvas.width / canvas.height);
             
             const dx = (centerX / rect.width - 0.5) * viewWidth;
             const dy = (centerY / rect.height - 0.5) * viewHeight;
