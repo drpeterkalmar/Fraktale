@@ -708,11 +708,14 @@ window.addEventListener('mouseup', (e) => {
             const dx = (centerX / rect.width - 0.5) * viewWidth;
             const dy = (centerY / rect.height - 0.5) * viewHeight;
             
-            state.targetCx = state.cx.plus(new Decimal(dx));
-            state.targetCy = state.cy.minus(new Decimal(dy));
+            state.cx = state.cx.plus(new Decimal(dx));
+            state.cy = state.cy.minus(new Decimal(dy));
+            state.targetCx = state.cx;
+            state.targetCy = state.cy;
             
             const zoomFactor = Math.min(rect.width / boxW, rect.height / boxH);
-            state.targetZoom *= zoomFactor;
+            state.zoom *= zoomFactor;
+            state.targetZoom = state.zoom;
             markOrbitDirty();
         }
     } else if (isDragging) {
