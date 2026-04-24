@@ -195,6 +195,8 @@ function updateProgress() {
         bar.style.width = p + '%';
         label.textContent = `Rendering… ${Math.round(p)}%`;
         container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
     }
 }
 
@@ -792,6 +794,7 @@ window.addEventListener('resize', () => { resize(); });
 // === Init ===
 function init() {
     Decimal.set({ precision: 40 });
+    document.getElementById('progress-container').classList.add('hidden');
     resize();
     initProgram();
     initPalettePicker();
