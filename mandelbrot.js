@@ -301,6 +301,7 @@ function render() {
         
         const renderKey = `${state.cx.toFixed(10)}|${state.cy.toFixed(10)}|${state.zoom.toExponential(2)}`;
         if (!isMoving && state.lastRenderKey !== renderKey) {
+            state.lastRenderKey = renderKey; // Store key to prevent infinite restarts
             cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
         } else if (isMoving && state.cpuTilesDone === 0) {
             cpuOverlay.style.display = 'none';
