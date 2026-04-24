@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Mandelbrot Explorer – Infinite Zoom</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GPU-accelerated Mandelbrot set explorer with infinite zoom depth, smooth coloring, and cinematic design">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="fractal-canvas"></canvas>
+    <canvas id="cpu-overlay"></canvas>
+
+    <!-- Progress Bar for CPU rendering -->
+    <div id="progress-container" class="glass-panel hidden">
+        <span id="progress-label">Rendering… 0%</span>
+        <div id="progress-track">
+            <div id="progress-bar"></div>
+        </div>
+    </div>
+
+
+
+    <!-- Info Panel (top-left) -->
+    <div id="info-panel" class="glass-panel">
+        <div class="panel-header">
+            <span class="panel-icon">◈</span>
+            <span class="panel-title">MANDELBROT</span>
+        </div>
+        <div class="info-grid">
+            <div class="info-row">
+                <span class="label">Re</span>
+                <span id="info-re" class="value mono">−0.500000</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Im</span>
+                <span id="info-im" class="value mono">0.000000</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Zoom</span>
+                <span id="info-zoom" class="value mono">1.0×</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Iterations</span>
+                <span id="info-iter" class="value mono">500</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Mode</span>
+                <span id="info-mode" class="value">GPU f64</span>
+            </div>
+            <div class="info-row">
+                <span class="label">FPS</span>
+                <span id="info-fps" class="value mono">--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Palette Picker (top-right) -->
+    <div id="palette-picker" class="glass-panel">
+        <div class="panel-header">
+            <span class="panel-title">PALETTE</span>
+            <span class="hotkey">P</span>
+        </div>
+        <div id="palette-options"></div>
+    </div>
+
+    <!-- Bookmarks (bottom-center) -->
+    <div id="bookmarks" class="glass-panel">
+        <div id="bookmark-list"></div>
+    </div>
+
+    <!-- Controls (bottom-right) -->
+    <div id="controls">
+        <button id="btn-reset" class="ctrl-btn glass-panel" title="Reset View (R)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 1 3 7"/><polyline points="3 22 3 16 9 16"/></svg>
+        </button>
+        <button id="btn-screenshot" class="ctrl-btn glass-panel" title="Screenshot (S)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M8.5 3v2M15.5 3v2"/></svg>
+        </button>
+        <button id="btn-fullscreen" class="ctrl-btn glass-panel" title="Fullscreen (F)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        </button>
+        <button id="btn-julia-toggle" class="ctrl-btn glass-panel" title="Toggle Mandelbrot/Julia (J)">
+            <span style="font-weight:700;font-size:1.1rem;font-family:'JetBrains Mono'">J</span>
+        </button>
+        <button id="btn-help-toggle" class="ctrl-btn glass-panel" title="Was ist ein Fraktal? (?)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </button>
+        <button id="btn-info-toggle" class="ctrl-btn glass-panel" title="Toggle Info (I)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+        </button>
+    </div>
+
+    <!-- Formula Bar (bottom-center) -->
+    <div id="formula-bar" class="glass-panel">
+        <div class="formula-container">
+            <span class="formula-label">Formel</span>
+            <span class="formula-text mono">z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + </span>
+            
+            <div id="mandel-c-text" class="formula-text mono">c</div>
+            
+            <div id="julia-c-inputs" class="hidden">
+                <span class="formula-bracket">(</span>
+                <div id="stepper-cx" class="stepper-group"></div>
+                <span class="formula-plus"> + i &times; </span>
+                <div id="stepper-cy" class="stepper-group"></div>
+                <span class="formula-bracket">)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Educational Info Box -->
+    <div id="info-box-backdrop"></div>
+    <div id="info-box" class="glass-panel">
+        <button id="info-box-close" title="Schließen">&times;</button>
+        <h2>Was ist ein Fraktal? 🌀</h2>
+        <p>Ein Fraktal ist ein mathematisches Wunderwerk. Stell dir ein Bild vor, in das du immer weiter hineinzoomen kannst, und es tauchen immer wieder neue, wunderschöne Muster auf, die dem Ganzen ähneln.</p>
+        
+        <div class="info-section">
+            <h3>Die Zauberformel: z = z² + c ✨</h3>
+            <p>Du nimmst eine Zahl (z), nimmst sie mit sich selbst mal (z²) und zählst eine feste Zahl (c) dazu. Das Ergebnis nimmst du dann als neues (z) und machst das immer wieder.</p>
+        </div>
+
+        <div class="info-section">
+            <h3>Warum ist das "Männchen" schwarz? 🌑</h3>
+            <p>Das ist eine tolle Frage! Wenn du die Zauberformel immer wieder anwendest, gibt es zwei Möglichkeiten:</p>
+            <ul>
+                <li><strong>Gefangen:</strong> Die Zahl bleibt klein und "kreist" immer weiter herum. Diese Punkte gehören zum Fraktal und wir malen sie <strong>schwarz</strong> an.</li>
+                <li><strong>Flucht:</strong> Die Zahl wird riesig und schießt wie eine Rakete ins Unendliche ab!</li>
+            </ul>
+        </div>
+
+        <div class="info-section">
+            <h3>Woher kommen die bunten Farben? 🌈</h3>
+            <p>Die Farben zeigen uns, wie schnell eine Zahl "geflüchtet" ist. Eine Zahl, die schon nach 3 Schritten riesig wird, bekommt eine andere Farbe als eine, die 100 Schritte gebraucht hat. So entstehen diese wunderschönen, leuchtenden Ränder!</p>
+        </div>
+
+        <div class="info-section">
+            <h3>Die Julia-Menge 🎨</h3>
+            <p>Hier ist die Zahl <strong>c</strong> für das ganze Bild fest eingestellt. Du kannst sie mit den <strong>+</strong> und <strong>−</strong> Buttons in der Formel-Leiste verändern oder mit <strong>Shift+Klick</strong> direkt im Bild setzen. Jedes <strong>c</strong> erschafft eine völlig neue Welt!</p>
+        </div>
+
+        <div class="info-footer">
+            <strong>Dein Auftrag:</strong> Halte <strong>Shift</strong> gedrückt und klicke irgendwo hin, um deine eigene Julia-Welt zu erschaffen!
+        </div>
+    </div>
+
+    <!-- Minimap -->
+    <div id="minimap" class="glass-panel">
+        <canvas id="minimap-canvas" width="160" height="120"></canvas>
+        <div id="minimap-rect"></div>
+    </div>
+
+    <!-- Help Toast -->
+    <div id="help-toast" class="glass-panel">
+        Scroll to zoom · Drag to pan · Double-click to center · Press <kbd>H</kbd> for help
+    </div>
+
+    <!-- Inside-Set Toast -->
+    <div id="inside-toast" class="glass-panel hidden">
+        ⚠ Du bist im Inneren der Menge — hier ist alles schwarz.<br>
+        Zoome heraus oder navigiere zum farbigen Rand für Detail.
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js"></script>
+    <script src="shaders.js"></script>
+    <script src="mandelbrot.js"></script>
+</body>
+</html>
