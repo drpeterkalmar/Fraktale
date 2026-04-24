@@ -416,7 +416,13 @@ function detectInsideSet() {
 function updateUI() {
     document.getElementById('info-re').textContent = state.cx.toFixed(10);
     document.getElementById('info-im').textContent = state.cy.toFixed(10);
-    document.getElementById('info-zoom').textContent = state.zoom.toExponential(2) + 'x';
+    let zoomStr;
+    if (state.zoom < 1000000) {
+        zoomStr = (state.zoom < 10 ? state.zoom.toFixed(1) : Math.round(state.zoom).toLocaleString()) + 'x';
+    } else {
+        zoomStr = state.zoom.toExponential(2) + 'x';
+    }
+    document.getElementById('info-zoom').textContent = zoomStr;
     document.getElementById('info-iter').textContent = state.maxIter;
     document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
     
