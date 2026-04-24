@@ -691,13 +691,17 @@ function animationLoop(now) {
     if (dt > 0.2) return;
     state.animTime += dt;
     state.colorCycle += dt * 0.08; 
+    // Separate lerp for position (faster) and zoom (smooth)
     const zoomLerp = 1 - Math.pow(0.4, dt); 
+    const panLerp = 1 - Math.pow(0.1, dt); // Much faster pan
+    
     state.zoom = Math.exp(Math.log(state.zoom) + (Math.log(state.targetZoom) - Math.log(state.zoom)) * zoomLerp);
+    
     const cxDiff = state.targetCx.minus(state.cx).toNumber();
     const cyDiff = state.targetCy.minus(state.cy).toNumber();
     if (Math.abs(cxDiff) > 1e-30 || Math.abs(cyDiff) > 1e-30) {
-        state.cx = state.cx.plus(new Decimal(cxDiff * zoomLerp));
-        state.cy = state.cy.plus(new Decimal(cyDiff * zoomLerp));
+        state.cx = state.cx.plus(new Decimal(cxDiff * panLerp));
+        state.cy = state.cy.plus(new Decimal(cyDiff * panLerp));
     }
     render();
     updateFPS();
