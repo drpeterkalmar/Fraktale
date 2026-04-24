@@ -8,7 +8,7 @@ importScripts('https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js');
 //  Palette functions
 // ============================================================
 function pal(t, a, b, c, d) {
-    const TAU = 6.28318;
+    const TAU = 6.28318530718;
     return [
         a[0] + b[0] * Math.cos(TAU * (c[0] * t + d[0])),
         a[1] + b[1] * Math.cos(TAU * (c[1] * t + d[1])),
@@ -30,14 +30,11 @@ function getColor(smoothIter, maxIter, palette, colorCycle) {
     t = ((t + colorCycle) % 1.0 + 1.0) % 1.0;
     const fn = PALETTE_FNS[palette] || PALETTE_FNS[0];
     const col = fn(t);
-    const lum = col[0] * 0.299 + col[1] * 0.587 + col[2] * 0.114;
-    col[0] = lum + (col[0] - lum) * 1.2;
-    col[1] = lum + (col[1] - lum) * 1.2;
-    col[2] = lum + (col[2] - lum) * 1.2;
-    col[0] = Math.pow(Math.max(0, col[0]), 0.92);
-    col[1] = Math.pow(Math.max(0, col[1]), 0.92);
-    col[2] = Math.pow(Math.max(0, col[2]), 0.92);
-    return col;
+    return [
+        Math.min(255, Math.max(0, Math.round(col[0] * 255))),
+        Math.min(255, Math.max(0, Math.round(col[1] * 255))),
+        Math.min(255, Math.max(0, Math.round(col[2] * 255)))
+    ];
 }
 
 // ============================================================
@@ -45,19 +42,18 @@ function getColor(smoothIter, maxIter, palette, colorCycle) {
 // ============================================================
 self.onmessage = function(e) {
     const {
-        canvasW, canvasH, cx, cy, refCx, refCy,
+        tile, canvasW, canvasH, cx, cy, refCx, refCy,
         refOrbit, refLen, zoom, maxIter,
-        palette, colorCycle, blockSize,
-        fractalMode, juliaC
+        palette, colorCycle, fractalMode, juliaC
     } = e.data;
+
+    const { x: tileX, y: tileY, w: tileW, h: tileH } = tile;
+    const pixels = new Uint8ClampedArray(tileW * tileH * 4);
 
     // View dimensions
     const viewH = 3.0 / zoom;
     const viewW = viewH * (canvasW / canvasH);
 
-    // To compute dc (delta c), we need the exact difference between the pixel's C and the reference C.
-    // For extreme zooms, this difference must be computed with Decimal.js ONCE per tile, 
-    // or just computed precisely relative to the center of the screen.
     Decimal.set({ precision: 50 });
     const screenCx = new Decimal(cx);
     const screenCy = new Decimal(cy);
@@ -68,21 +64,15 @@ self.onmessage = function(e) {
     const baseDcx = screenCx.minus(rCx).toNumber();
     const baseDcy = screenCy.minus(rCy).toNumber();
 
-    const pixels = new Uint8ClampedArray(tileW * tileH * 4);
-    const bs = blockSize || 1;
-
-    for (let py = 0; py < tileH; py += bs) {
-        for (let px = 0; px < tileW; px += bs) {
+    for (let py = 0; py < tileH; py++) {
+        for (let px = 0; px < tileW; px++) {
             // Screen coordinates -0.5 to 0.5
             const mx = ((tileX + px) / canvasW - 0.5);
-            const my = -((tileY + py) / canvasH - 0.5);
-
-            const rx = mx;
-            const ry = my;
+            const my = ((tileY + py) / canvasH - 0.5); // Canvas Y increases downwards
 
             // dc is the precise distance from the reference orbit's starting C
-            let dcx = baseDcx + (rx * viewW);
-            let dcy = baseDcy + (ry * viewH);
+            let dcx = baseDcx + (mx * viewW);
+            let dcy = baseDcy - (my * viewH); // Inverted for Y-up math
 
             let dzx, dzy;
             let final_dcx, final_dcy;
@@ -107,8 +97,6 @@ self.onmessage = function(e) {
 
             // Perturbation iteration loop
             while (iter < maxIter) {
-                // If we've exhausted the reference orbit, we must fall back to standard iteration 
-                // but since the reference orbit usually escapes or hits maxIter, we're safe to just use 0.
                 let zx_ref = 0;
                 let zy_ref = 0;
                 if (iter < refLen) {
@@ -120,51 +108,43 @@ self.onmessage = function(e) {
                 zy_full = zy_ref + dzy;
 
                 // Check bailout on the combined Z
-                if (zx_full * zx_full + zy_full * zy_full > 256.0) {
+                const mag2 = zx_full * zx_full + zy_full * zy_full;
+                if (mag2 > 256.0) {
+                    // Smooth coloring math
+                    const log_zn = Math.log(mag2) * 0.5;
+                    const nu = Math.log(log_zn / Math.log(2)) / Math.log(2);
+                    const smoothIter = iter + 1.0 - nu;
+                    
+                    const col = getColor(smoothIter, maxIter, palette, colorCycle);
+                    const idx = (py * tileW + px) * 4;
+                    pixels[idx] = col[0];
+                    pixels[idx + 1] = col[1];
+                    pixels[idx + 2] = col[2];
+                    pixels[idx + 3] = 255;
                     break;
                 }
 
                 // Perturbation formula: dz_{n+1} = 2 * Z_n * dz_n + dz_n^2 + dc
-                const dzx_sq = dzx * dzx - dzy * dzy;
-                const dzy_sq = 2.0 * dzx * dzy;
-
-                const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + dzx_sq + final_dcx;
-                const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + dzy_sq + final_dcy;
+                const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
+                const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
 
                 dzx = next_dzx;
                 dzy = next_dzy;
                 iter++;
             }
 
-            let r, g, b;
-            if (iter >= maxIter || iter >= refLen && refLen >= maxIter) {
-                r = 0; g = 0; b = 4;
-            } else {
-                const mag2 = zx_full * zx_full + zy_full * zy_full;
-                const log_zn = Math.log(mag2) * 0.5;
-                const nu = Math.log(log_zn / Math.LN2) / Math.LN2;
-                const smoothIter = iter + 1.0 - nu;
-
-                const col = getColor(smoothIter, maxIter, palette, colorCycle);
-                r = Math.min(255, Math.max(0, Math.round(col[0] * 255)));
-                g = Math.min(255, Math.max(0, Math.round(col[1] * 255)));
-                b = Math.min(255, Math.max(0, Math.round(col[2] * 255)));
-            }
-
-            for (let by = 0; by < bs && py + by < tileH; by++) {
-                for (let bx = 0; bx < bs && px + bx < tileW; bx++) {
-                    const idx = ((py + by) * tileW + (px + bx)) * 4;
-                    pixels[idx] = r;
-                    pixels[idx + 1] = g;
-                    pixels[idx + 2] = b;
-                    pixels[idx + 3] = 255;
-                }
+            if (iter === maxIter) {
+                const idx = (py * tileW + px) * 4;
+                pixels[idx] = 0;
+                pixels[idx + 1] = 0;
+                pixels[idx + 2] = 0;
+                pixels[idx + 3] = 255;
             }
         }
     }
 
     self.postMessage({
-        taskId, tileX, tileY, tileW, tileH,
-        pixels: pixels.buffer, blockSize: bs
+        tile,
+        pixels: pixels.buffer
     }, [pixels.buffer]);
 };

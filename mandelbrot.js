@@ -94,68 +94,9 @@ const workers = [];
 let pendingTiles = [];
 
 function initWorkers() {
-    const workerScript = `
-        self.importScripts('https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js');
-        
-        self.onmessage = function(e) {
-            const { tile, cx, cy, zoom, maxIter, width, height, fractalMode, juliaC } = e.data;
-            const { x, y, w, h } = tile;
-            
-            Decimal.set({ precision: 40 });
-            const DCX = new Decimal(cx);
-            const DCY = new Decimal(cy);
-            const DJCX = new Decimal(juliaC.x);
-            const DJCY = new Decimal(juliaC.y);
-            
-            const pixels = new Float32Array(w * h);
-            const scale = new Decimal(3.0).div(new Decimal(zoom).mul(height));
-            
-            for (let py = 0; py < h; py++) {
-                for (let px = 0; px < w; px++) {
-                    const screenX = x + px;
-                    const screenY = y + py;
-                    
-                    let dx = new Decimal(screenX - width/2).mul(scale);
-                    let dy = new Decimal(screenY - height/2).mul(scale);
-                    
-                    let zx, zy, cx_val, cy_val;
-                    if (fractalMode === 1) {
-                        zx = DCX.plus(dx);
-                        zy = DCY.plus(dy);
-                        cx_val = DJCX;
-                        cy_val = DJCY;
-                    } else {
-                        zx = new Decimal(0);
-                        zy = new Decimal(0);
-                        cx_val = DCX.plus(dx);
-                        cy_val = DCY.plus(dy);
-                    }
-                    
-                    let iter = -1;
-                    for (let i = 0; i < maxIter; i++) {
-                        const zx2 = zx.mul(zx);
-                        const zy2 = zy.mul(zy);
-                        if (zx2.plus(zy2).gt(256)) {
-                            const mag2 = zx2.plus(zy2).toNumber();
-                            const log_zn = Math.log(mag2) * 0.5;
-                            const nu = Math.log(log_zn / Math.log(2.0)) / Math.log(2.0);
-                            iter = i + 1 - nu;
-                            break;
-                        }
-                        const next_zy = zx.mul(zy).mul(2).plus(cy_val);
-                        zx = zx2.minus(zy2).plus(cx_val);
-                        zy = next_zy;
-                    }
-                    pixels[py * w + px] = iter;
-                }
-            }
-            self.postMessage({ tile, pixels }, [pixels.buffer]);
-        };
-    `;
-    const blob = new Blob([workerScript], { type: 'application/javascript' });
-    const url = URL.createObjectURL(blob);
+    const numWorkers = navigator.hardwareConcurrency || 4;
     for (let i = 0; i < numWorkers; i++) {
-        const w = new Worker(url);
+        const w = new Worker('fractal-worker.js');
         w.onmessage = onWorkerMessage;
         workers.push(w);
     }
@@ -166,19 +107,34 @@ function onWorkerMessage(e) {
     drawTile(tile, pixels);
     state.cpuTilesDone++;
     updateProgress();
+    
     if (pendingTiles.length > 0) {
         const next = pendingTiles.pop();
+        
+        // Prepare refOrbit as a simple Float32Array for the worker
+        const workerRefOrbit = new Float32Array(state.refOrbitLen * 2);
+        for (let i = 0; i < state.refOrbitLen; i++) {
+            workerRefOrbit[i*2] = state.refOrbitData[i*4];
+            workerRefOrbit[i*2+1] = state.refOrbitData[i*4+2];
+        }
+
         e.target.postMessage({
             tile: next,
+            canvasW: canvas.width,
+            canvasH: canvas.height,
             cx: state.cx.toString(),
             cy: state.cy.toString(),
+            refCx: state.refCx.toString(),
+            refCy: state.refCy.toString(),
+            refOrbit: workerRefOrbit,
+            refLen: state.refOrbitLen,
             zoom: state.zoom,
             maxIter: state.maxIter,
-            width: canvas.width,
-            height: canvas.height,
+            palette: state.palette,
+            colorCycle: state.colorCycle,
             fractalMode: state.fractalMode,
             juliaC: { x: state.juliaC.x.toString(), y: state.juliaC.y.toString() }
-        });
+        }, [workerRefOrbit.buffer]);
     } else {
         if (state.cpuTilesDone === state.cpuTilesTotal) {
             document.getElementById('progress-container').classList.add('hidden');
@@ -202,16 +158,7 @@ function updateProgress() {
 
 function drawTile(tile, pixels) {
     const { x, y, w, h } = tile;
-    const imgData = ctxCpu.createImageData(w, h);
-    for (let i = 0; i < pixels.length; i++) {
-        const iter = pixels[i];
-        if (iter < 0) {
-            imgData.data[i*4+0] = 0; imgData.data[i*4+1] = 0; imgData.data[i*4+2] = 0; imgData.data[i*4+3] = 255;
-        } else {
-            const col = getPaletteColor(iter);
-            imgData.data[i*4+0] = col[0]; imgData.data[i*4+1] = col[1]; imgData.data[i*4+2] = col[2]; imgData.data[i*4+3] = 255;
-        }
-    }
+    const imgData = new ImageData(new Uint8ClampedArray(pixels), w, h);
     ctxCpu.putImageData(imgData, x, y);
 }
 
@@ -261,17 +208,30 @@ function startCpuRender() {
     workers.forEach(w => {
         if (pendingTiles.length > 0) {
             const next = pendingTiles.pop();
+            
+            const workerRefOrbit = new Float32Array(state.refOrbitLen * 2);
+            for (let i = 0; i < state.refOrbitLen; i++) {
+                workerRefOrbit[i*2] = state.refOrbitData[i*4];
+                workerRefOrbit[i*2+1] = state.refOrbitData[i*4+2];
+            }
+
             w.postMessage({
                 tile: next,
+                canvasW: canvas.width,
+                canvasH: canvas.height,
                 cx: state.cx.toString(),
                 cy: state.cy.toString(),
+                refCx: state.refCx.toString(),
+                refCy: state.refCy.toString(),
+                refOrbit: workerRefOrbit,
+                refLen: state.refOrbitLen,
                 zoom: state.zoom,
                 maxIter: state.maxIter,
-                width: canvas.width,
-                height: canvas.height,
+                palette: state.palette,
+                colorCycle: state.colorCycle,
                 fractalMode: state.fractalMode,
                 juliaC: { x: state.juliaC.x.toString(), y: state.juliaC.y.toString() }
-            });
+            }, [workerRefOrbit.buffer]);
         }
     });
 }
