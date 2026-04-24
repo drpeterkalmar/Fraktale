@@ -287,27 +287,25 @@ function render() {
     const juliaCx = state.juliaC.x.toNumber(), juliaCy = state.juliaC.y.toNumber();
     gl.uniform4f(uLocs.u_juliaC, Math.fround(juliaCx), juliaCx - Math.fround(juliaCx), Math.fround(juliaCy), juliaCy - Math.fround(juliaCy));
 
-    const usePerturbation = state.zoom > 1000000.0 && !useCPU;
+    const usePerturbation = state.zoom >= 100000.0 && !useCPU;
 
     if (useCPU) {
-        // CPU High-Precision Mode (Perturbation on Workers)
+        // CPU High-Precision Mode
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
             state.refOrbitDirty = false;
         }
-
         const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
                          state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
         const renderKey = `${state.cx.toFixed(10)}|${state.cy.toFixed(10)}|${state.zoom.toExponential(2)}`;
         if (!isMoving && state.lastRenderKey !== renderKey) {
-            state.lastRenderKey = renderKey; // Store key to prevent infinite restarts
+            state.lastRenderKey = renderKey;
             cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
         } else if (isMoving && state.cpuTilesDone === 0) {
             cpuOverlay.style.display = 'none';
         }
 
-        // Show low-detail GPU background while CPU works (standard DF64 mode)
         gl.uniform1i(uLocs.u_mode, 0); 
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
         const cy_hi = Math.fround(cyf), cy_lo = cyf - cy_hi;
@@ -315,30 +313,25 @@ function render() {
         gl.uniform1f(uLocs.u_scale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else if (usePerturbation) {
-        // GPU Perturbation Mode (Razor Sharp!)
+        // GPU Perturbation (Speed of GPU + Precision of CPU)
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
             state.refOrbitDirty = false;
         }
-
         if (cpuOverlay) cpuOverlay.style.display = 'none';
-        state.cpuTilesTotal = 0;
-        state.cpuTilesDone = 0;
-        updateProgress();
-
-        gl.uniform1i(uLocs.u_mode, 1); // 1 = Perturbation
+        
+        gl.uniform1i(uLocs.u_mode, 1);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, refOrbitTex);
         gl.uniform1i(uLocs.u_refOrbit, 0);
         gl.uniform1i(uLocs.u_refLen, state.refOrbitLen);
         
-        const dx = state.cx.minus(state.refCx).toNumber();
-        const dy = state.cy.minus(state.refCy).toNumber();
-        gl.uniform2f(uLocs.u_refOffset, dx, dy);
+        // Since we compute ref orbit for the current center, offset is 0
+        gl.uniform2f(uLocs.u_refOffset, 0, 0);
         gl.uniform1f(uLocs.u_pixelScale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else {
-        // Standard GPU mode
+        // GPU Standard
         if (cpuOverlay) cpuOverlay.style.display = 'none';
         gl.uniform1i(uLocs.u_mode, 0);
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
