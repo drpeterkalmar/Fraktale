@@ -378,6 +378,7 @@ function updateUI() {
         mandelText.classList.toggle('hidden', isJulia);
         if (isJulia) updateSteppers();
     }
+    updateMinimap();
 }
 
 // === Palette Picker ===
