@@ -372,7 +372,12 @@ function updateUI() {
         mandelText.classList.toggle('hidden', isJulia);
         if (isJulia) updateSteppers();
     }
-    updateMinimap();
+    
+    // Hide minimap in Julia mode
+    const minimap = document.getElementById('minimap');
+    if (minimap) minimap.classList.toggle('hidden', isJulia || !state.showUI);
+    
+    if (!isJulia) updateMinimap();
 }
 
 // === Palette Picker ===
