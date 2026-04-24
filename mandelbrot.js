@@ -66,6 +66,7 @@ function resize() {
 const state = {
     cx: new Decimal('-0.5'), cy: new Decimal('0.0'),
     zoom: 1.0, maxIter: 500, palette: 0, colorCycle: 0,
+    zoomFormat: 'words',
     showUI: true, mode: 0, // 0=GPU, 1=CPU workers
     fractalMode: 0, // 0=Mandelbrot, 1=Julia
     juliaC: { x: new Decimal('-0.8'), y: new Decimal('0.156') },
@@ -365,31 +366,52 @@ function detectInsideSet() {
 }
 
 function formatZoom(z) {
-    if (z < 1000) return Math.round(z).toLocaleString() + 'x';
-    if (z < 1000000) return (z / 1000).toFixed(1) + ' Tausend';
+    const zoomVal = new Decimal(z);
     
-    const units = [
-        { val: 1e6, name: 'Millionen' },
-        { val: 1e9, name: 'Milliarden' },
-        { val: 1e12, name: 'Billionen' },
-        { val: 1e15, name: 'Billiarden' },
-        { val: 1e18, name: 'Trillionen' },
-        { val: 1e21, name: 'Trilliarden' },
-        { val: 1e24, name: 'Quadrillionen' },
-        { val: 1e27, name: 'Quadrilliarden' },
-        { val: 1e30, name: 'Quintillionen' }
-    ];
-    
-    for (let i = units.length - 1; i >= 0; i--) {
-        if (z >= units[i].val) {
-            const num = (z / units[i].val).toFixed(2).replace('.', ',');
-            return num + ' ' + units[i].name;
-        }
+    if (state.zoomFormat === 'scientific') {
+        if (zoomVal.lt(1000)) return Math.round(zoomVal.toNumber()).toLocaleString() + 'x';
+        return zoomVal.toExponential(2) + 'x';
     }
-    return z.toExponential(2) + 'x';
+    
+    if (zoomVal.lt(1000)) return Math.round(zoomVal.toNumber()).toLocaleString() + 'x';
+    if (zoomVal.lt(1000000)) return zoomVal.dividedBy(1000).toFixed(1).replace('.', ',') + ' Tausend';
+
+    const exp = zoomVal.e;
+    const n = Math.floor(exp / 6);
+    const isIliarde = exp % 6 >= 3;
+    
+    const ones = ["", "Un", "Duo", "Tre", "Quattuor", "Quinqua", "Sex", "Septen", "Okto", "Novem"];
+    const tens = ["", "dezi", "viginti", "triginta", "quadraginta", "quinquaginta", "sexaginta", "septuaginta", "oktoginta", "nonaginta"];
+    const hundreds = ["", "zenti"]; 
+    
+    let prefix = "";
+    if (n < 10) {
+        const simple = ["", "Mi", "Bi", "Tri", "Quadri", "Quinti", "Sexti", "Septi", "Okti", "Noni"];
+        prefix = simple[n];
+    } else if (n === 100) {
+        prefix = "Zenti";
+    } else {
+        const u = n % 10;
+        const t = Math.floor(n / 10) % 10;
+        const h = Math.floor(n / 100) % 10;
+        prefix = ones[u] + tens[t] + (hundreds[h] || "");
+    }
+    
+    prefix = prefix.charAt(0).toUpperCase() + prefix.slice(1).toLowerCase();
+    const name = prefix + (isIliarde ? "lliarden" : "llionen");
+    
+    const divisor = new Decimal(10).pow(isIliarde ? n * 6 + 3 : n * 6);
+    const val = zoomVal.dividedBy(divisor);
+    
+    return val.toFixed(2).replace('.', ',') + ' ' + name;
 }
 
+
 function updateUI() {
+    const isJulia = state.fractalMode === 1;
+    const titleEl = document.getElementById('info-title');
+    if (titleEl) titleEl.textContent = isJulia ? 'JULIA-MENGE' : 'MANDELBROT';
+
     document.getElementById('info-re').textContent = state.cx.toFixed(10);
     document.getElementById('info-im').textContent = state.cy.toFixed(10);
     document.getElementById('info-zoom').textContent = formatZoom(state.zoom);
@@ -399,7 +421,6 @@ function updateUI() {
     // Formula Bar
     const juliaInputs = document.getElementById('julia-c-inputs');
     const mandelText = document.getElementById('mandel-c-text');
-    const isJulia = state.fractalMode === 1;
 
     if (juliaInputs && mandelText) {
         juliaInputs.classList.toggle('hidden', !isJulia);
@@ -841,6 +862,16 @@ function wireButtons() {
     for (const [id, fn] of Object.entries(actions)) {
         const btn = document.getElementById(id);
         if (btn) btn.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    }
+
+    const zoomInfo = document.getElementById('info-zoom');
+    if (zoomInfo) {
+        zoomInfo.parentElement.style.cursor = 'pointer';
+        zoomInfo.parentElement.title = 'Klicken, um Format zu wechseln';
+        zoomInfo.parentElement.addEventListener('click', () => {
+            state.zoomFormat = state.zoomFormat === 'words' ? 'scientific' : 'words';
+            updateUI();
+        });
     }
 }
 
