@@ -475,17 +475,23 @@ window.addEventListener('mousemove', (e) => {
 window.addEventListener('mouseup', (e) => {
     if (isDragging) {
         const dist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
-        if (dist < 5) {
+        if (dist < 8) {
             // Click to center
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
             const viewWidth = 3.0 / state.zoom;
             const viewHeight = (viewWidth * canvas.height) / canvas.width;
-            const dx = (e.clientX / window.innerWidth - 0.5) * viewWidth;
-            const dy = (e.clientY / window.innerHeight - 0.5) * viewHeight;
+            
+            const dx = (x / rect.width - 0.5) * viewWidth;
+            const dy = (y / rect.height - 0.5) * viewHeight;
+            
             state.targetCx = state.cx.plus(new Decimal(dx));
             state.targetCy = state.cy.plus(new Decimal(dy));
+            markOrbitDirty();
         }
         isDragging = false;
-        markOrbitDirty();
     }
 });
 
@@ -537,14 +543,21 @@ canvas.addEventListener('touchmove', (e) => {
 canvas.addEventListener('touchend', (e) => {
     if (isDragging && e.changedTouches.length === 1) {
         const dist = Math.hypot(e.changedTouches[0].clientX - dragStartX, e.changedTouches[0].clientY - dragStartY);
-        if (dist < 10) {
+        if (dist < 15) {
             // Tap to center
+            const rect = canvas.getBoundingClientRect();
+            const x = e.changedTouches[0].clientX - rect.left;
+            const y = e.changedTouches[0].clientY - rect.top;
+            
             const viewWidth = 3.0 / state.zoom;
             const viewHeight = (viewWidth * canvas.height) / canvas.width;
-            const dx = (e.changedTouches[0].clientX / window.innerWidth - 0.5) * viewWidth;
-            const dy = (e.changedTouches[0].clientY / window.innerHeight - 0.5) * viewHeight;
+            
+            const dx = (x / rect.width - 0.5) * viewWidth;
+            const dy = (y / rect.height - 0.5) * viewHeight;
+            
             state.targetCx = state.cx.plus(new Decimal(dx));
             state.targetCy = state.cy.plus(new Decimal(dy));
+            markOrbitDirty();
         }
     }
     isDragging = false;
