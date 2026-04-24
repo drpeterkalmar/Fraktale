@@ -103,7 +103,9 @@ function initWorkers() {
 }
 
 function onWorkerMessage(e) {
-    const { tile, pixels } = e.data;
+    const { tile, pixels, version } = e.data;
+    if (version !== state.cpuRenderVersion) return;
+
     drawTile(tile, pixels);
     state.cpuTilesDone++;
     updateProgress();
@@ -115,11 +117,7 @@ function onWorkerMessage(e) {
         const baseDcx = state.cx.minus(state.refCx).toNumber();
         const baseDcy = state.cy.minus(state.refCy).toNumber();
 
-        const workerRefOrbit = new Float32Array(state.refOrbitLen * 2);
-        for (let i = 0; i < state.refOrbitLen; i++) {
-            workerRefOrbit[i*2] = state.refOrbitData[i*4];
-            workerRefOrbit[i*2+1] = state.refOrbitData[i*4+2];
-        }
+        const workerRefOrbit = state.workerRefOrbit;
 
         e.target.postMessage({
             tile: next,
@@ -132,11 +130,14 @@ function onWorkerMessage(e) {
             maxIter: state.maxIter,
             palette: state.palette,
             colorCycle: state.colorCycle,
-            fractalMode: state.fractalMode
-        }, [workerRefOrbit.buffer]);
+            fractalMode: state.fractalMode,
+            version: state.cpuRenderVersion
+        }); // Removed transfer of buffer because it's shared across workers now
     } else {
-        if (state.cpuTilesDone === state.cpuTilesTotal) {
+        if (state.cpuTilesDone >= state.cpuTilesTotal) {
             document.getElementById('progress-container').classList.add('hidden');
+            state.cpuTilesTotal = 0;
+            state.cpuTilesDone = 0;
         }
     }
 }
@@ -146,7 +147,7 @@ function updateProgress() {
     const bar = document.getElementById('progress-bar');
     const label = document.getElementById('progress-label');
     if (state.cpuTilesTotal > 0) {
-        const p = (state.cpuTilesDone / state.cpuTilesTotal) * 100;
+        const p = Math.min(100, (state.cpuTilesDone / state.cpuTilesTotal) * 100);
         bar.style.width = p + '%';
         label.textContent = `Rendering… ${Math.round(p)}%`;
         container.classList.remove('hidden');
@@ -190,18 +191,14 @@ function startCpuRender() {
         return;
     }
 
+    const workerRefOrbit = state.workerRefOrbit;
+
     workers.forEach(w => {
         if (pendingTiles.length > 0) {
             const next = pendingTiles.pop();
             
             const baseDcx = state.cx.minus(state.refCx).toNumber();
             const baseDcy = state.cy.minus(state.refCy).toNumber();
-
-            const workerRefOrbit = new Float32Array(state.refOrbitLen * 2);
-            for (let i = 0; i < state.refOrbitLen; i++) {
-                workerRefOrbit[i*2] = state.refOrbitData[i*4];
-                workerRefOrbit[i*2+1] = state.refOrbitData[i*4+2];
-            }
 
             w.postMessage({
                 tile: next,
@@ -214,8 +211,9 @@ function startCpuRender() {
                 maxIter: state.maxIter,
                 palette: state.palette,
                 colorCycle: state.colorCycle,
-                fractalMode: state.fractalMode
-            }, [workerRefOrbit.buffer]);
+                fractalMode: state.fractalMode,
+                version: state.cpuRenderVersion
+            });
         }
     });
 }
@@ -252,6 +250,14 @@ function computeReferenceOrbit() {
     }
     state.refOrbitLen = i;
     state.refOrbitData = data;
+
+    // Prepare full-precision orbit for workers
+    const workerData = new Float64Array(i * 2);
+    for (let j = 0; j < i; j++) {
+        workerData[j*2] = data[j*4] + data[j*4+1];
+        workerData[j*2+1] = data[j*4+2] + data[j*4+3];
+    }
+    state.workerRefOrbit = workerData;
 
     if (!refOrbitTex) {
         refOrbitTex = gl.createTexture();
@@ -301,7 +307,7 @@ function render() {
         
         // Make renderKey less sensitive to avoid jitter-induced restarts
         const prec = Math.max(2, Math.floor(Math.log10(state.zoom)) + 2);
-        const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}`;
+        const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
         
         if (!isMoving) {
             if (state.lastRenderKey !== renderKey) {
@@ -401,9 +407,12 @@ function updateUI() {
         if (isJulia) updateSteppers();
     }
     
-    // Hide minimap in Julia mode
+    // Hide minimap and bookmarks in Julia mode
     const minimap = document.getElementById('minimap');
+    const bookmarks = document.getElementById('bookmarks');
+    
     if (minimap) minimap.classList.toggle('hidden', isJulia || !state.showUI);
+    if (bookmarks) bookmarks.classList.toggle('hidden', isJulia || !state.showUI);
     
     if (!isJulia) updateMinimap();
 }
@@ -514,16 +523,36 @@ function updateFPS() {
 
 // === Screenshot ===
 function screenshot() {
+    const useCPU = state.zoom > ZOOM_THRESHOLD;
+    
+    if (useCPU) {
+        // In CPU mode, we capture the current state to avoid re-rendering (which takes time)
+        // and precision artifacts from the high-res trick.
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        tempCtx.drawImage(canvas, 0, 0);
+        if (cpuOverlay.style.display !== 'none') {
+            tempCtx.drawImage(cpuOverlay, 0, 0);
+        }
+
+        const link = document.createElement('a');
+        link.download = `fractal_deep_${Date.now()}.png`;
+        link.href = tempCanvas.toDataURL('image/png');
+        link.click();
+        return;
+    }
+
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
-    const originalZoom = state.zoom;
     const highResW = originalWidth * 2;
     const highResH = originalHeight * 2;
 
     canvas.width = highResW;
     canvas.height = highResH;
     gl.viewport(0, 0, highResW, highResH);
-    state.zoom = originalZoom * 2;
     render(); 
 
     const tempCanvas = document.createElement('canvas');
@@ -531,22 +560,15 @@ function screenshot() {
     tempCanvas.height = highResH;
     const tempCtx = tempCanvas.getContext('2d');
     
-    // Composite GPU
     tempCtx.drawImage(canvas, 0, 0);
     
-    // Composite CPU if active
-    if (cpuOverlay.style.display !== 'none' && state.cpuTilesDone > 0) {
-        tempCtx.drawImage(cpuCanvas, 0, 0, highResW, highResH);
-    }
-
     const link = document.createElement('a');
-    link.download = `fractal_highres_${Date.now()}.png`;
+    link.download = `fractal_hi_res_${Date.now()}.png`;
     link.href = tempCanvas.toDataURL('image/png');
     link.click();
 
     canvas.width = originalWidth;
     canvas.height = originalHeight;
-    state.zoom = originalZoom;
     gl.viewport(0, 0, canvas.width, canvas.height);
     render();
 }

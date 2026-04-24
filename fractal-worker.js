@@ -125,5 +125,5 @@ self.onmessage = function(e) {
         }
     }
 
-    self.postMessage({ tile, pixels: pixels.buffer }, [pixels.buffer]);
+    self.postMessage({ tile, pixels: pixels.buffer, version: e.data.version }, [pixels.buffer]);
 };
