@@ -222,45 +222,47 @@ function startCpuRender() {
 
 // === Reference Orbit Calculation (for Perturbation) ===
 function computeReferenceOrbit() {
-    const prec = Math.max(40, Math.ceil(Math.log10(state.zoom + 1) * 2) + 30);
+    // Dynamically increase maxIter at deep zooms
+    const zoomLog = Math.log10(state.zoom + 1);
+    const targetIter = Math.floor(500 + zoomLog * 150);
+    state.maxIter = Math.min(10000, targetIter);
+
+    const prec = Math.max(40, Math.ceil(zoomLog * 2) + 40);
     Decimal.set({ precision: prec });
     
     const data = new Float32Array(state.maxIter * 4);
     let zx = new Decimal(0), zy = new Decimal(0);
     let cx = state.cx, cy = state.cy;
     
-    if (state.fractalMode === 1) {
-        zx = state.cx; zy = state.cy;
-        cx = state.juliaC.x; cy = state.juliaC.y;
-    }
-
-    state.refCx = state.cx; state.refCy = state.cy;
-
-    for (let i = 0; i < state.maxIter; i++) {
+    state.refCx = cx;
+    state.refCy = cy;
+    
+    let i = 0;
+    for (i = 0; i < state.maxIter; i++) {
         const fx = zx.toNumber(), fy = zy.toNumber();
         data[i*4+0] = Math.fround(fx); data[i*4+1] = fx - data[i*4+0];
         data[i*4+2] = Math.fround(fy); data[i*4+3] = fy - data[i*4+2];
         
         const zx2 = zx.mul(zx), zy2 = zy.mul(zy);
-        if (zx2.plus(zy2).gt(1000000)) { 
-            state.refOrbitLen = i + 1;
-            break;
-        }
+        if (zx2.plus(zy2).gt(1000000)) break; 
+        
         const nzy = zx.mul(zy).mul(2).plus(cy);
         zx = zx2.minus(zy2).plus(cx);
         zy = nzy;
-        state.refOrbitLen = i + 1;
     }
+    state.refOrbitLen = i;
+    state.refOrbitData = data;
 
-    if (refOrbitTex) gl.deleteTexture(refOrbitTex);
-    refOrbitTex = gl.createTexture();
+    if (!refOrbitTex) {
+        refOrbitTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, refOrbitTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
     gl.bindTexture(gl.TEXTURE_2D, refOrbitTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, state.maxIter, 1, 0, gl.RGBA, gl.FLOAT, data);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    state.refOrbitData = data;
 }
 
 function markOrbitDirty() { state.refOrbitDirty = true; }
