@@ -1,8 +1,5 @@
 // fractal-worker.js — CPU Mandelbrot renderer with Float64 Perturbation Theory
 // Computes pixel deltas relative to a high-precision reference orbit.
-// This is ~10,000x faster than arbitrary precision math for every pixel.
-
-importScripts('https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js');
 
 // ============================================================
 //  Palette functions
@@ -42,9 +39,10 @@ function getColor(smoothIter, maxIter, palette, colorCycle) {
 // ============================================================
 self.onmessage = function(e) {
     const {
-        tile, canvasW, canvasH, cx, cy, refCx, refCy,
+        tile, canvasW, canvasH, 
+        baseDcx, baseDcy,
         refOrbit, refLen, zoom, maxIter,
-        palette, colorCycle, fractalMode, juliaC
+        palette, colorCycle, fractalMode
     } = e.data;
 
     const { x: tileX, y: tileY, w: tileW, h: tileH } = tile;
@@ -54,51 +52,33 @@ self.onmessage = function(e) {
     const viewH = 3.0 / zoom;
     const viewW = viewH * (canvasW / canvasH);
 
-    Decimal.set({ precision: 50 });
-    const screenCx = new Decimal(cx);
-    const screenCy = new Decimal(cy);
-    const rCx = new Decimal(refCx);
-    const rCy = new Decimal(refCy);
-    
-    // Base delta from reference center to screen center
-    const baseDcx = screenCx.minus(rCx).toNumber();
-    const baseDcy = screenCy.minus(rCy).toNumber();
-
     for (let py = 0; py < tileH; py++) {
         for (let px = 0; px < tileW; px++) {
             // Screen coordinates -0.5 to 0.5
             const mx = ((tileX + px) / canvasW - 0.5);
-            const my = ((tileY + py) / canvasH - 0.5); // Canvas Y increases downwards
+            const my = ((tileY + py) / canvasH - 0.5);
 
             // dc is the precise distance from the reference orbit's starting C
             let dcx = baseDcx + (mx * viewW);
-            let dcy = baseDcy - (my * viewH); // Inverted for Y-up math
+            let dcy = baseDcy - (my * viewH);
 
             let dzx, dzy;
             let final_dcx, final_dcy;
 
             if (fractalMode === 1) {
-                // Julia: dz0 = pixel offset, dc = 0
-                dzx = dcx;
-                dzy = dcy;
-                final_dcx = 0;
-                final_dcy = 0;
+                dzx = dcx; dzy = dcy;
+                final_dcx = 0; final_dcy = 0;
             } else {
-                // Mandelbrot: dz0 = 0, dc = pixel offset
-                dzx = 0;
-                dzy = 0;
-                final_dcx = dcx;
-                final_dcy = dcy;
+                dzx = 0; dzy = 0;
+                final_dcx = dcx; final_dcy = dcy;
             }
 
             let iter = 0;
             let zx_full = 0;
             let zy_full = 0;
 
-            // Perturbation iteration loop
             while (iter < maxIter) {
-                let zx_ref = 0;
-                let zy_ref = 0;
+                let zx_ref = 0, zy_ref = 0;
                 if (iter < refLen) {
                     zx_ref = refOrbit[iter * 2];
                     zy_ref = refOrbit[iter * 2 + 1];
@@ -107,44 +87,29 @@ self.onmessage = function(e) {
                 zx_full = zx_ref + dzx;
                 zy_full = zy_ref + dzy;
 
-                // Check bailout on the combined Z
                 const mag2 = zx_full * zx_full + zy_full * zy_full;
                 if (mag2 > 256.0) {
-                    // Smooth coloring math
                     const log_zn = Math.log(mag2) * 0.5;
                     const nu = Math.log(log_zn / Math.log(2)) / Math.log(2);
                     const smoothIter = iter + 1.0 - nu;
-                    
                     const col = getColor(smoothIter, maxIter, palette, colorCycle);
                     const idx = (py * tileW + px) * 4;
-                    pixels[idx] = col[0];
-                    pixels[idx + 1] = col[1];
-                    pixels[idx + 2] = col[2];
-                    pixels[idx + 3] = 255;
+                    pixels[idx] = col[0]; pixels[idx+1] = col[1]; pixels[idx+2] = col[2]; pixels[idx+3] = 255;
                     break;
                 }
 
-                // Perturbation formula: dz_{n+1} = 2 * Z_n * dz_n + dz_n^2 + dc
                 const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
                 const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
-
-                dzx = next_dzx;
-                dzy = next_dzy;
+                dzx = next_dzx; dzy = next_dzy;
                 iter++;
             }
 
             if (iter === maxIter) {
                 const idx = (py * tileW + px) * 4;
-                pixels[idx] = 0;
-                pixels[idx + 1] = 0;
-                pixels[idx + 2] = 0;
-                pixels[idx + 3] = 255;
+                pixels[idx] = 0; pixels[idx+1] = 0; pixels[idx+2] = 0; pixels[idx+3] = 255;
             }
         }
     }
 
-    self.postMessage({
-        tile,
-        pixels: pixels.buffer
-    }, [pixels.buffer]);
+    self.postMessage({ tile, pixels: pixels.buffer }, [pixels.buffer]);
 };

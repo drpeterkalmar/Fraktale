@@ -111,7 +111,10 @@ function onWorkerMessage(e) {
     if (pendingTiles.length > 0) {
         const next = pendingTiles.pop();
         
-        // Prepare refOrbit as a simple Float32Array for the worker
+        // High-precision delta calculation in main thread
+        const baseDcx = state.cx.minus(state.refCx).toNumber();
+        const baseDcy = state.cy.minus(state.refCy).toNumber();
+
         const workerRefOrbit = new Float32Array(state.refOrbitLen * 2);
         for (let i = 0; i < state.refOrbitLen; i++) {
             workerRefOrbit[i*2] = state.refOrbitData[i*4];
@@ -122,18 +125,14 @@ function onWorkerMessage(e) {
             tile: next,
             canvasW: canvas.width,
             canvasH: canvas.height,
-            cx: state.cx.toString(),
-            cy: state.cy.toString(),
-            refCx: state.refCx.toString(),
-            refCy: state.refCy.toString(),
+            baseDcx, baseDcy,
             refOrbit: workerRefOrbit,
             refLen: state.refOrbitLen,
             zoom: state.zoom,
             maxIter: state.maxIter,
             palette: state.palette,
             colorCycle: state.colorCycle,
-            fractalMode: state.fractalMode,
-            juliaC: { x: state.juliaC.x.toString(), y: state.juliaC.y.toString() }
+            fractalMode: state.fractalMode
         }, [workerRefOrbit.buffer]);
     } else {
         if (state.cpuTilesDone === state.cpuTilesTotal) {
@@ -219,6 +218,9 @@ function startCpuRender() {
         if (pendingTiles.length > 0) {
             const next = pendingTiles.pop();
             
+            const baseDcx = state.cx.minus(state.refCx).toNumber();
+            const baseDcy = state.cy.minus(state.refCy).toNumber();
+
             const workerRefOrbit = new Float32Array(state.refOrbitLen * 2);
             for (let i = 0; i < state.refOrbitLen; i++) {
                 workerRefOrbit[i*2] = state.refOrbitData[i*4];
@@ -229,18 +231,14 @@ function startCpuRender() {
                 tile: next,
                 canvasW: canvas.width,
                 canvasH: canvas.height,
-                cx: state.cx.toString(),
-                cy: state.cy.toString(),
-                refCx: state.refCx.toString(),
-                refCy: state.refCy.toString(),
+                baseDcx, baseDcy,
                 refOrbit: workerRefOrbit,
                 refLen: state.refOrbitLen,
                 zoom: state.zoom,
                 maxIter: state.maxIter,
                 palette: state.palette,
                 colorCycle: state.colorCycle,
-                fractalMode: state.fractalMode,
-                juliaC: { x: state.juliaC.x.toString(), y: state.juliaC.y.toString() }
+                fractalMode: state.fractalMode
             }, [workerRefOrbit.buffer]);
         }
     });
