@@ -468,7 +468,7 @@ window.addEventListener('mousemove', (e) => {
         const dx = (e.clientX - dragStartX) / window.innerWidth * viewWidth;
         const dy = (e.clientY - dragStartY) / window.innerHeight * viewHeight;
         state.targetCx = dragCx.minus(new Decimal(dx));
-        state.targetCy = dragCy.minus(new Decimal(dy));
+        state.targetCy = dragCy.plus(new Decimal(dy)); // Inverted for Y-up
     }
 });
 
@@ -488,7 +488,7 @@ window.addEventListener('mouseup', (e) => {
             const dy = (y / rect.height - 0.5) * viewHeight;
             
             state.targetCx = state.cx.plus(new Decimal(dx));
-            state.targetCy = state.cy.plus(new Decimal(dy));
+            state.targetCy = state.cy.minus(new Decimal(dy)); // Inverted for Y-up
             markOrbitDirty();
         }
         isDragging = false;
@@ -530,7 +530,7 @@ canvas.addEventListener('touchmove', (e) => {
         const dx = (e.touches[0].clientX - dragStartX) / window.innerWidth * viewWidth;
         const dy = (e.touches[0].clientY - dragStartY) / window.innerHeight * viewHeight;
         state.targetCx = dragCx.minus(new Decimal(dx));
-        state.targetCy = dragCy.minus(new Decimal(dy));
+        state.targetCy = dragCy.plus(new Decimal(dy)); // Inverted for Y-up
     } else if (e.touches.length === 2) {
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         const factor = dist / lastTouchDist;
@@ -556,7 +556,7 @@ canvas.addEventListener('touchend', (e) => {
             const dy = (y / rect.height - 0.5) * viewHeight;
             
             state.targetCx = state.cx.plus(new Decimal(dx));
-            state.targetCy = state.cy.plus(new Decimal(dy));
+            state.targetCy = state.cy.minus(new Decimal(dy)); // Inverted for Y-up
             markOrbitDirty();
         }
     }
@@ -831,6 +831,22 @@ function animationLoop(now) {
 // === Window Resize ===
 window.addEventListener('resize', () => { resize(); });
 
+// === Button Wiring ===
+function wireButtons() {
+    const actions = {
+        'btn-reset': () => goToBookmark(BOOKMARKS[0]),
+        'btn-screenshot': () => screenshot(),
+        'btn-fullscreen': () => toggleFullscreen(),
+        'btn-julia-toggle': () => toggleFractalMode(),
+        'btn-help-toggle': () => toggleInfoBox(),
+        'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); }
+    };
+    for (const [id, fn] of Object.entries(actions)) {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+    }
+}
+
 // === Init ===
 function init() {
     Decimal.set({ precision: 40 });
@@ -840,6 +856,7 @@ function init() {
     initPalettePicker();
     initBookmarks();
     initSteppers();
+    wireButtons();
     renderMinimapBase();
     render();
 
