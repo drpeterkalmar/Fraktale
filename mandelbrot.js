@@ -161,30 +161,6 @@ function drawTile(tile, pixels) {
     ctxCpu.putImageData(imgData, x, y);
 }
 
-function getPaletteColor(iter) {
-    const p = PALETTES[state.palette];
-    const t = fract(Math.sqrt(iter / state.maxIter) * 8.0 + state.colorCycle);
-    const idx = t * (p.colors.length - 1);
-    const i = Math.floor(idx);
-    const f = idx - i;
-    const c1 = hexToRgb(p.colors[i]);
-    const c2 = hexToRgb(p.colors[i+1] || p.colors[0]);
-    return [
-        Math.round(c1.r + (c2.r - c1.r) * f),
-        Math.round(c1.g + (c2.g - c1.g) * f),
-        Math.round(c1.b + (c2.b - c1.b) * f)
-    ];
-}
-
-function hexToRgb(hex) {
-    const r = parseInt(hex.slice(1,3), 16);
-    const g = parseInt(hex.slice(3,5), 16);
-    const b = parseInt(hex.slice(5,7), 16);
-    return { r, g, b };
-}
-
-function fract(x) { return x - Math.floor(x); }
-
 function startCpuRender() {
     console.log("Starting CPU High-Precision Render (Perturbation)...");
     state.cpuRenderVersion++;
@@ -253,8 +229,6 @@ function computeReferenceOrbit() {
     let zx = new Decimal(0), zy = new Decimal(0);
     let cx = state.cx, cy = state.cy;
     
-    // In Julia mode, z0 is pixel, c is constant.
-    // In Mandelbrot mode, z0 is 0, c is pixel.
     if (state.fractalMode === 1) {
         zx = state.cx; zy = state.cy;
         cx = state.juliaC.x; cy = state.juliaC.y;
@@ -268,7 +242,7 @@ function computeReferenceOrbit() {
         data[i*4+2] = Math.fround(fy); data[i*4+3] = fy - data[i*4+2];
         
         const zx2 = zx.mul(zx), zy2 = zy.mul(zy);
-        if (zx2.plus(zy2).gt(1000000)) { // large bailout for ref orbit
+        if (zx2.plus(zy2).gt(1000000)) { 
             state.refOrbitLen = i + 1;
             break;
         }
@@ -297,96 +271,88 @@ function render() {
     const useCPU = state.zoom > ZOOM_THRESHOLD;
     clearTimeout(cpuDebounceTimer);
 
+    // GPU Shader setup
+    gl.useProgram(program);
+    gl.uniform2f(uLocs.u_resolution, canvas.width, canvas.height);
+    gl.uniform1i(uLocs.u_maxIter, state.maxIter);
+    gl.uniform1i(uLocs.u_palette, state.palette);
+    gl.uniform1f(uLocs.u_colorCycle, state.colorCycle);
+    gl.uniform1f(uLocs.u_time, state.animTime);
+    gl.uniform1i(uLocs.u_fractalMode, state.fractalMode);
+
+    // Coordinate math
+    const cxf = state.cx.toNumber(), cyf = state.cy.toNumber();
+    const pixelScale = 3.0 / (state.zoom * canvas.height);
+
+    const juliaCx = state.juliaC.x.toNumber(), juliaCy = state.juliaC.y.toNumber();
+    gl.uniform4f(uLocs.u_juliaC, Math.fround(juliaCx), juliaCx - Math.fround(juliaCx), Math.fround(juliaCy), juliaCy - Math.fround(juliaCy));
+
+    const usePerturbation = state.zoom > 1000.0 && !useCPU;
+
     if (useCPU) {
-        // Compute reference orbit if missing or dirty
+        // CPU High-Precision Mode (Perturbation on Workers)
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
             state.refOrbitDirty = false;
         }
 
-        // Only start a new CPU render if camera has slowed down enough
         const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
                          state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
         const renderKey = `${state.cx.toFixed(10)}|${state.cy.toFixed(10)}|${state.zoom.toExponential(2)}`;
-        
-        if (!isMoving) {
-            if (state.lastRenderKey !== renderKey) {
-                console.log("[CPU Mode] View stable, scheduling render...");
-                cpuDebounceTimer = setTimeout(() => {
-                    startCpuRender();
-                }, 50);
-            }
-        } else {
-            // While moving, keep the GPU view
-            if (state.cpuTilesDone === 0) cpuOverlay.style.display = 'none';
+        if (!isMoving && state.lastRenderKey !== renderKey) {
+            cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
+        } else if (isMoving && state.cpuTilesDone === 0) {
+            cpuOverlay.style.display = 'none';
         }
 
-        // GPU still renders background (at its max precision)
-        gl.useProgram(program);
-        gl.uniform2f(uLocs.u_resolution, canvas.width, canvas.height);
-        gl.uniform1i(uLocs.u_maxIter, state.maxIter);
-        gl.uniform1i(uLocs.u_palette, state.palette);
-        gl.uniform1f(uLocs.u_colorCycle, state.colorCycle);
+        // Show low-detail GPU background while CPU works (standard DF64 mode)
         gl.uniform1i(uLocs.u_mode, 0); 
-        gl.uniform1f(uLocs.u_time, state.animTime);
-        gl.uniform1i(uLocs.u_fractalMode, state.fractalMode);
-        
-        const jcx = state.juliaC.x.toNumber(), jcy = state.juliaC.y.toNumber();
-        gl.uniform4f(uLocs.u_juliaC, Math.fround(jcx), jcx - Math.fround(jcx), Math.fround(jcy), jcy - Math.fround(jcy));
-        const cxf = state.cx.toNumber(), cyf = state.cy.toNumber();
-        const scale = 3.0 / (state.zoom * canvas.height);
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
         const cy_hi = Math.fround(cyf), cy_lo = cyf - cy_hi;
         gl.uniform4f(uLocs.u_center, cx_hi, cx_lo, cy_hi, cy_lo);
-        gl.uniform1f(uLocs.u_scale, scale);
-        gl.uniform1i(uLocs.u_refLen, 0);
+        gl.uniform1f(uLocs.u_scale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
-    } else {
-        // GPU mode: hide overlay
+    } else if (usePerturbation) {
+        // GPU Perturbation Mode (Razor Sharp!)
+        if (!state.refOrbitData || state.refOrbitDirty) {
+            computeReferenceOrbit();
+            state.refOrbitDirty = false;
+        }
+
         if (cpuOverlay) cpuOverlay.style.display = 'none';
-        // Cancel any pending CPU render
-        state.cpuRenderVersion++;
-        pendingTiles = [];
         state.cpuTilesTotal = 0;
         state.cpuTilesDone = 0;
         updateProgress();
 
-        gl.useProgram(program);
-        gl.uniform2f(uLocs.u_resolution, canvas.width, canvas.height);
-        gl.uniform1i(uLocs.u_maxIter, state.maxIter);
-        gl.uniform1i(uLocs.u_palette, state.palette);
-        gl.uniform1f(uLocs.u_colorCycle, state.colorCycle);
+        gl.uniform1i(uLocs.u_mode, 1); // 1 = Perturbation
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, refOrbitTex);
+        gl.uniform1i(uLocs.u_refOrbit, 0);
+        gl.uniform1i(uLocs.u_refLen, state.refOrbitLen);
+        
+        const dx = state.cx.minus(state.refCx).toNumber();
+        const dy = state.cy.minus(state.refCy).toNumber();
+        gl.uniform2f(uLocs.u_refOffset, dx, dy);
+        gl.uniform1f(uLocs.u_pixelScale, pixelScale);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+    } else {
+        // Standard GPU mode
+        if (cpuOverlay) cpuOverlay.style.display = 'none';
         gl.uniform1i(uLocs.u_mode, 0);
-        gl.uniform1f(uLocs.u_time, state.animTime);
-        gl.uniform1i(uLocs.u_fractalMode, state.fractalMode);
-
-        const jcx = state.juliaC.x.toNumber(), jcy = state.juliaC.y.toNumber();
-        gl.uniform4f(uLocs.u_juliaC, Math.fround(jcx), jcx - Math.fround(jcx), Math.fround(jcy), jcy - Math.fround(jcy));
-
-        const cxf = state.cx.toNumber(), cyf = state.cy.toNumber();
-        const scale = 3.0 / (state.zoom * canvas.height);
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
         const cy_hi = Math.fround(cyf), cy_lo = cyf - cy_hi;
         gl.uniform4f(uLocs.u_center, cx_hi, cx_lo, cy_hi, cy_lo);
-        gl.uniform1f(uLocs.u_scale, scale);
-        gl.uniform1i(uLocs.u_refLen, 0);
-
+        gl.uniform1f(uLocs.u_scale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    // Detect if view is entirely inside the set (all black) — GPU only
     detectInsideSet();
     updateUI();
 }
 
 function detectInsideSet() {
-    const toast = document.getElementById('inside-toast');
-    // For simplicity, we just check zoom level and if the center is likely inside
-    // Real check would require gl.readPixels but that's slow.
     const isDeep = state.zoom > 1000;
-    // Basic heuristic: if we are deep and not seeing a lot of iterations
-    // We'll leave this simple for now.
 }
 
 function updateUI() {
@@ -402,11 +368,6 @@ function updateUI() {
     document.getElementById('info-iter').textContent = state.maxIter;
     document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
     
-    const reLabel = document.querySelector('.label:nth-child(1)');
-    const imLabel = document.querySelector('.label:nth-child(3)');
-    // if (reLabel) reLabel.textContent = state.fractalMode === 1 ? 'Re(z)' : 'Re(c)';
-    // if (imLabel) imLabel.textContent = state.fractalMode === 1 ? 'Im(z)' : 'Im(c)';
-
     // Formula Bar
     const juliaInputs = document.getElementById('julia-c-inputs');
     const mandelText = document.getElementById('mandel-c-text');
@@ -417,160 +378,6 @@ function updateUI() {
         mandelText.classList.toggle('hidden', isJulia);
         if (isJulia) updateSteppers();
     }
-
-    // Hide presets and minimap in Julia mode
-    const bookmarks = document.getElementById('bookmarks');
-    const minimap = document.getElementById('minimap');
-    if (bookmarks) bookmarks.classList.toggle('hidden', !state.showUI || isJulia);
-    if (minimap) minimap.classList.toggle('hidden', !state.showUI || isJulia);
-
-    updateMinimap();
-}
-
-// === Interaction ===
-let isDragging = false, dragStartX, dragStartY, dragCx, dragCy;
-let lastTouchDist = 0;
-
-canvas.addEventListener('mousedown', (e) => {
-    if (e.button === 0) {
-        if (e.shiftKey) {
-            // Set Julia constant C to the clicked point
-            const viewWidth = 3.0 / state.zoom;
-            const viewHeight = (viewWidth * canvas.height) / canvas.width;
-            const dx = (e.clientX / window.innerWidth - 0.5) * viewWidth;
-            const dy = (e.clientY / window.innerHeight - 0.5) * viewHeight;
-            state.juliaC.x = state.cx.plus(new Decimal(dx));
-            state.juliaC.y = state.cy.plus(new Decimal(dy));
-            markOrbitDirty();
-            scheduleRender();
-        } else {
-            isDragging = true;
-            dragStartX = e.clientX; dragStartY = e.clientY;
-            dragCx = state.targetCx; dragCy = state.targetCy;
-        }
-    }
-});
-
-window.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-        const viewWidth = 3.0 / state.zoom;
-        const viewHeight = (viewWidth * canvas.height) / canvas.width;
-        const dx = (e.clientX - dragStartX) / window.innerWidth * viewWidth;
-        const dy = (e.clientY - dragStartY) / window.innerHeight * viewHeight;
-        state.targetCx = dragCx.minus(new Decimal(dx));
-        state.targetCy = dragCy.plus(new Decimal(dy)); // Inverted for Y-up
-    }
-});
-
-window.addEventListener('mouseup', (e) => {
-    if (isDragging) {
-        const dist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
-        if (dist < 8) {
-            // Click to center
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            const viewWidth = 3.0 / state.zoom;
-            const viewHeight = (viewWidth * canvas.height) / canvas.width;
-            
-            const dx = (x / rect.width - 0.5) * viewWidth;
-            const dy = (y / rect.height - 0.5) * viewHeight;
-            
-            state.targetCx = state.cx.plus(new Decimal(dx));
-            state.targetCy = state.cy.minus(new Decimal(dy)); // Inverted for Y-up
-            markOrbitDirty();
-        }
-        isDragging = false;
-    }
-});
-
-canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zoomFact = Math.exp(-e.deltaY * 0.001);
-    state.targetZoom *= zoomFact;
-}, { passive: false });
-
-canvas.addEventListener('dblclick', (e) => {
-    const viewWidth = 3.0 / state.zoom;
-    const viewHeight = (viewWidth * canvas.height) / canvas.width;
-    const dx = (e.clientX / window.innerWidth - 0.5) * viewWidth;
-    const dy = (e.clientY / window.innerHeight - 0.5) * viewHeight;
-    state.targetCx = state.targetCx.plus(new Decimal(dx));
-    state.targetCy = state.targetCy.plus(new Decimal(dy));
-    state.targetZoom *= 2.0;
-});
-
-// Touch
-canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-        isDragging = true;
-        dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
-        dragCx = state.targetCx; dragCy = state.targetCy;
-    } else if (e.touches.length === 2) {
-        lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    }
-}, { passive: false });
-
-canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (isDragging && e.touches.length === 1) {
-        const viewWidth = 3.0 / state.zoom;
-        const viewHeight = (viewWidth * canvas.height) / canvas.width;
-        const dx = (e.touches[0].clientX - dragStartX) / window.innerWidth * viewWidth;
-        const dy = (e.touches[0].clientY - dragStartY) / window.innerHeight * viewHeight;
-        state.targetCx = dragCx.minus(new Decimal(dx));
-        state.targetCy = dragCy.plus(new Decimal(dy)); // Inverted for Y-up
-    } else if (e.touches.length === 2) {
-        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        const factor = dist / lastTouchDist;
-        state.targetZoom *= factor;
-        state.zoom = state.targetZoom;
-        lastTouchDist = dist;
-    }
-}, { passive: false });
-
-canvas.addEventListener('touchend', (e) => {
-    if (isDragging && e.changedTouches.length === 1) {
-        const dist = Math.hypot(e.changedTouches[0].clientX - dragStartX, e.changedTouches[0].clientY - dragStartY);
-        if (dist < 15) {
-            // Tap to center
-            const rect = canvas.getBoundingClientRect();
-            const x = e.changedTouches[0].clientX - rect.left;
-            const y = e.changedTouches[0].clientY - rect.top;
-            
-            const viewWidth = 3.0 / state.zoom;
-            const viewHeight = (viewWidth * canvas.height) / canvas.width;
-            
-            const dx = (x / rect.width - 0.5) * viewWidth;
-            const dy = (y / rect.height - 0.5) * viewHeight;
-            
-            state.targetCx = state.cx.plus(new Decimal(dx));
-            state.targetCy = state.cy.minus(new Decimal(dy)); // Inverted for Y-up
-            markOrbitDirty();
-        }
-    }
-    isDragging = false;
-    markOrbitDirty();
-});
-
-// Keyboard
-window.addEventListener('keydown', (e) => {
-    switch (e.key.toLowerCase()) {
-        case 'p': state.palette = (state.palette + 1) % PALETTES.length; updatePalettePicker(); scheduleRender(); break;
-        case 'r': goToBookmark(BOOKMARKS[0]); break;
-        case 's': screenshot(); break;
-        case 'f': toggleFullscreen(); break;
-        case 'i': state.showUI = !state.showUI; toggleUIVisibility(); break;
-        case 'h': toggleInfoBox(); break;
-        case 'j': toggleFractalMode(); break;
-    }
-});
-
-// Render scheduling
-let renderPending = false;
-function scheduleRender() {
-    if (!renderPending) { renderPending = true; requestAnimationFrame(() => { renderPending = false; render(); updateFPS(); }); }
 }
 
 // === Palette Picker ===
@@ -610,14 +417,11 @@ function goToBookmark(b) {
     state.targetCx = new Decimal(b.cx);
     state.targetCy = new Decimal(b.cy);
     state.targetZoom = b.zoom;
-    
-    // If it's the 'Full Set', also reset fractal mode and Julia constant
     if (b.name === 'Full Set') {
         state.fractalMode = 0;
         state.juliaC.x = new Decimal('-0.8');
         state.juliaC.y = new Decimal('0.156');
     }
-    
     markOrbitDirty();
     updateSteppers();
 }
@@ -661,7 +465,6 @@ function updateMinimap() {
     const my = (state.cy.toNumber() / 3.0 + 0.5) * h;
     const mw = (viewWidth / 3.0) * w;
     const mh = (viewHeight / 3.0) * h;
-    
     ctxMinimap.strokeStyle = '#a78bfa';
     ctxMinimap.lineWidth = 2;
     ctxMinimap.strokeRect(mx - mw/2, my - mh/2, mw, mh);
@@ -675,7 +478,8 @@ function updateFPS() {
     frameCount++;
     const now = performance.now();
     if (now - fpsTime > 1000) {
-        document.getElementById('info-fps').textContent = Math.round(frameCount * 1000 / (now - fpsTime));
+        const fpsEl = document.getElementById('info-fps');
+        if (fpsEl) fpsEl.textContent = Math.round(frameCount * 1000 / (now - fpsTime));
         frameCount = 0; fpsTime = now;
     }
 }
@@ -685,24 +489,15 @@ function screenshot() {
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
     const originalZoom = state.zoom;
-
-    // Temporary high-res switch (2x resolution)
     canvas.width = originalWidth * 2;
     canvas.height = originalHeight * 2;
     gl.viewport(0, 0, canvas.width, canvas.height);
-    
-    // To keep the same framing at double the pixel density, 
-    // we must also double the zoom factor.
     state.zoom = originalZoom * 2;
-
-    render(); // Draw the high-res frame
-
+    render(); 
     const link = document.createElement('a');
     link.download = `mandelbrot_highres_${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
-
-    // Restore original state
     canvas.width = originalWidth;
     canvas.height = originalHeight;
     state.zoom = originalZoom;
@@ -722,8 +517,6 @@ function toggleUIVisibility() {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('hidden', !state.showUI);
     });
-    
-    // If hiding UI, also hide active info box
     if (!state.showUI) {
         document.getElementById('info-box').classList.remove('active');
         document.getElementById('info-box-backdrop').classList.remove('active');
@@ -741,29 +534,23 @@ function toggleInfoBox() {
 function initSteppers() {
     ['cx', 'cy'].forEach(part => {
         const container = document.getElementById(`stepper-${part}`);
+        if (!container) return;
         container.innerHTML = '';
-        // Create 8 digits (sign, 1, dot, 5 decimals)
         for (let i = 0; i < 7; i++) {
             const digit = document.createElement('div');
             digit.className = 'stepper-digit';
-            if (i === 2) { // Dot
-                digit.innerHTML = '<span class="digit-val">.</span>';
-            } else {
+            if (i === 2) { digit.innerHTML = '<span class="digit-val">.</span>'; } 
+            else {
                 const btnDown = document.createElement('button');
                 btnDown.className = 'step-btn'; btnDown.textContent = '−';
                 btnDown.onclick = () => stepDigit(part, i, -1);
-
                 const val = document.createElement('span');
                 val.className = 'digit-val'; val.id = `digit-${part}-${i}`;
                 val.textContent = '0';
-
                 const btnUp = document.createElement('button');
                 btnUp.className = 'step-btn'; btnUp.textContent = '+';
                 btnUp.onclick = () => stepDigit(part, i, 1);
-                
-                digit.appendChild(btnDown);
-                digit.appendChild(val);
-                digit.appendChild(btnUp);
+                digit.appendChild(btnDown); digit.appendChild(val); digit.appendChild(btnUp);
             }
             container.appendChild(digit);
         }
@@ -773,9 +560,8 @@ function initSteppers() {
 function updateSteppers() {
     ['cx', 'cy'].forEach(part => {
         const num = state.juliaC[part === 'cx' ? 'x' : 'y'];
-        const s = num.toFixed(5).padStart(8, ' '); // e.g. "-0.80000"
+        const s = num.toFixed(5).padStart(8, ' '); 
         const chars = s.split('');
-        // Map to our 7 slots (sign, unit, dot, 4 decimals)
         const slots = [chars[0], chars[1], '.', chars[3], chars[4], chars[5], chars[6]];
         slots.forEach((c, i) => {
             const el = document.getElementById(`digit-${part}-${i}`);
@@ -787,10 +573,9 @@ function updateSteppers() {
 function stepDigit(part, idx, delta) {
     let num = state.juliaC[part === 'cx' ? 'x' : 'y'];
     let change = new Decimal(0);
-    if (idx === 0) change = new Decimal(delta * 2); // Flip sign roughly or step units
+    if (idx === 0) change = new Decimal(delta * 2); 
     else if (idx === 1) change = new Decimal(delta);
     else if (idx > 2) change = new Decimal(delta).times(new Decimal(10).pow(-(idx - 2)));
-    
     state.juliaC[part === 'cx' ? 'x' : 'y'] = num.plus(change);
     markOrbitDirty();
     scheduleRender();
@@ -802,56 +587,122 @@ function toggleFractalMode() {
     state.refOrbitData = null;
     markOrbitDirty();
     if (state.fractalMode === 1) {
-        // Switch to a nice Julia set by default if just starting Julia
-        state.targetZoom = 1.0;
-        state.targetCx = new Decimal(0);
-        state.targetCy = new Decimal(0);
+        state.targetZoom = 1.0; state.targetCx = new Decimal(0); state.targetCy = new Decimal(0);
     } else {
         goToBookmark(BOOKMARKS[0]);
     }
 }
 
-// === Color Cycle + Smooth Zoom Animation Loop ===
-let lastFrameTime = performance.now();
+// === Interaction ===
+let isDragging = false;
+let dragStartX, dragStartY, dragCx, dragCy;
+let lastTouchDist = 0;
 
+canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    dragStartX = e.clientX; dragStartY = e.clientY;
+    dragCx = state.targetCx; dragCy = state.targetCy;
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+        const viewWidth = 3.0 / state.zoom;
+        const viewHeight = (viewWidth * canvas.height) / canvas.width;
+        const dx = (e.clientX - dragStartX) / window.innerWidth * viewWidth;
+        const dy = (e.clientY - dragStartY) / window.innerHeight * viewHeight;
+        state.targetCx = dragCx.minus(new Decimal(dx));
+        state.targetCy = dragCy.plus(new Decimal(dy));
+    }
+});
+
+window.addEventListener('mouseup', (e) => {
+    if (isDragging) {
+        const dist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+        if (dist < 8) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const viewWidth = 3.0 / state.zoom;
+            const viewHeight = (viewWidth * canvas.height) / canvas.width;
+            const dx = (x / rect.width - 0.5) * viewWidth;
+            const dy = (y / rect.height - 0.5) * viewHeight;
+            state.targetCx = state.cx.plus(new Decimal(dx));
+            state.targetCy = state.cy.minus(new Decimal(dy));
+            markOrbitDirty();
+        }
+        isDragging = false;
+    }
+});
+
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    state.targetZoom *= Math.exp(-e.deltaY * 0.001);
+}, { passive: false });
+
+canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+        isDragging = true;
+        dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
+        dragCx = state.targetCx; dragCy = state.targetCy;
+    } else if (e.touches.length === 2) {
+        lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (isDragging && e.touches.length === 1) {
+        const viewWidth = 3.0 / state.zoom;
+        const dx = (e.touches[0].clientX - dragStartX) / window.innerWidth * viewWidth;
+        const dy = (e.touches[0].clientY - dragStartY) / window.innerHeight * (viewWidth * canvas.height / canvas.width);
+        state.targetCx = dragCx.minus(new Decimal(dx));
+        state.targetCy = dragCy.plus(new Decimal(dy));
+    } else if (e.touches.length === 2) {
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        state.targetZoom *= (dist / lastTouchDist);
+        lastTouchDist = dist;
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { isDragging = false; markOrbitDirty(); });
+
+window.addEventListener('keydown', (e) => {
+    switch (e.key.toLowerCase()) {
+        case 'p': state.palette = (state.palette + 1) % PALETTES.length; updatePalettePicker(); break;
+        case 'r': goToBookmark(BOOKMARKS[0]); break;
+        case 's': screenshot(); break;
+        case 'f': toggleFullscreen(); break;
+        case 'i': state.showUI = !state.showUI; toggleUIVisibility(); break;
+        case 'h': toggleInfoBox(); break;
+        case 'j': toggleFractalMode(); break;
+    }
+});
+
+let renderPending = false;
+function scheduleRender() {
+    if (!renderPending) { renderPending = true; requestAnimationFrame(() => { renderPending = false; render(); }); }
+}
+
+let lastFrameTime = performance.now();
 function animationLoop(now) {
     requestAnimationFrame(animationLoop);
     const dt = (now - lastFrameTime) / 1000;
     lastFrameTime = now;
-    if (dt > 0.2) return; // ignore huge frame jumps (e.g. tab switch)
+    if (dt > 0.2) return;
     state.animTime += dt;
-
-    // Animate color cycling
     state.colorCycle += dt * 0.08; 
-
-    // Smooth zoom interpolation (exponential lerp)
-    // Slower value (0.4 instead of 0.05) for an even "nicer flight"
     const zoomLerp = 1 - Math.pow(0.4, dt); 
-    const logCurrent = Math.log(state.zoom);
-    const logTarget = Math.log(state.targetZoom);
-    const logNew = logCurrent + (logTarget - logCurrent) * zoomLerp;
-    state.zoom = Math.exp(logNew);
-
-    // Smooth center interpolation
+    state.zoom = Math.exp(Math.log(state.zoom) + (Math.log(state.targetZoom) - Math.log(state.zoom)) * zoomLerp);
     const cxDiff = state.targetCx.minus(state.cx).toNumber();
     const cyDiff = state.targetCy.minus(state.cy).toNumber();
     if (Math.abs(cxDiff) > 1e-30 || Math.abs(cyDiff) > 1e-30) {
         state.cx = state.cx.plus(new Decimal(cxDiff * zoomLerp));
         state.cy = state.cy.plus(new Decimal(cyDiff * zoomLerp));
     }
-
-    try {
-        render();
-    } catch (e) {
-        console.error('Render crash:', e);
-    }
+    render();
     updateFPS();
 }
 
-// === Window Resize ===
-window.addEventListener('resize', () => { resize(); });
-
-// === Button Wiring ===
 function wireButtons() {
     const actions = {
         'btn-reset': () => goToBookmark(BOOKMARKS[0]),
@@ -869,24 +720,10 @@ function wireButtons() {
     }
 }
 
-// === Init ===
 function init() {
     Decimal.set({ precision: 40 });
-    document.getElementById('progress-container').classList.add('hidden');
-    resize();
-    initProgram();
-    initPalettePicker();
-    initBookmarks();
-    initSteppers();
-    wireButtons();
-    renderMinimapBase();
-    render();
-
-    // Wiring moved back to top level for reliability
-    initWorkers();
-    requestAnimationFrame(animationLoop);
+    resize(); initProgram(); initPalettePicker(); initBookmarks(); initSteppers(); wireButtons();
+    renderMinimapBase(); initWorkers(); requestAnimationFrame(animationLoop);
 }
-
 init();
-
 })();
