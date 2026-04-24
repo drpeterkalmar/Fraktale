@@ -300,10 +300,11 @@ body {
 #bookmarks.hidden,
 #minimap.hidden,
 #formula-bar.hidden,
-#help-toast.hidden {
+#help-toast.hidden,
+#progress-container.hidden {
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-8px);
+    transform: translate(-50%, calc(-50% - 8px));
 }
 #minimap.hidden { transform: translateY(8px); }
 #bookmarks.hidden { transform: translateX(-50%) translateY(8px); }
@@ -548,4 +549,43 @@ body {
 }
 
 /* ===== ZOOM-IN CURSOR ANIMATION ===== */
+/* ===== CROSSHAIR ===== */
+#crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 30px;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0.4;
+    transition: opacity 0.3s;
+}
+
+#crosshair::before, #crosshair::after {
+    content: '';
+    position: absolute;
+    background: var(--accent);
+    box-shadow: 0 0 5px var(--accent-glow);
+}
+
+#crosshair::before {
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    transform: translateY(-50%);
+}
+
+#crosshair::after {
+    left: 50%;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    transform: translateX(-50%);
+}
+
+body.dragging #crosshair { opacity: 0.1; }
+
 body.dragging { cursor: grabbing !important; }
