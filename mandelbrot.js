@@ -620,7 +620,16 @@ function goToBookmark(b) {
     state.targetCx = new Decimal(b.cx);
     state.targetCy = new Decimal(b.cy);
     state.targetZoom = b.zoom;
+    
+    // If it's the 'Full Set', also reset fractal mode and Julia constant
+    if (b.name === 'Full Set') {
+        state.fractalMode = 0;
+        state.juliaC.x = new Decimal('-0.8');
+        state.juliaC.y = new Decimal('0.156');
+    }
+    
     markOrbitDirty();
+    updateSteppers();
 }
 
 // === Minimap ===
