@@ -434,11 +434,19 @@ function updateUI() {
     // Formula Bar
     const juliaInputs = document.getElementById('julia-c-inputs');
     const mandelText = document.getElementById('mandel-c-text');
+    const isJulia = state.fractalMode === 1;
+
     if (juliaInputs && mandelText) {
-        juliaInputs.classList.toggle('hidden', state.fractalMode !== 1);
-        mandelText.classList.toggle('hidden', state.fractalMode === 1);
-        if (state.fractalMode === 1) updateSteppers();
+        juliaInputs.classList.toggle('hidden', !isJulia);
+        mandelText.classList.toggle('hidden', isJulia);
+        if (isJulia) updateSteppers();
     }
+
+    // Hide presets and minimap in Julia mode
+    const bookmarks = document.getElementById('bookmarks');
+    const minimap = document.getElementById('minimap');
+    if (bookmarks) bookmarks.classList.toggle('hidden', !state.showUI || isJulia);
+    if (minimap) minimap.classList.toggle('hidden', !state.showUI || isJulia);
 
     updateMinimap();
 }
