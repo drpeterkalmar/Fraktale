@@ -84,7 +84,7 @@ const state = {
 };
 
 // df64 works well up to ~1e11 zoom. Beyond that, CPU workers take over.
-const ZOOM_THRESHOLD = 1e10;
+const ZOOM_THRESHOLD = 1e5;
 
 // === CPU Worker Pool ===
 const cpuOverlay = document.getElementById('cpu-overlay');
