@@ -269,7 +269,6 @@ function markOrbitDirty() { state.refOrbitDirty = true; }
 let cpuDebounceTimer = null;
 function render() {
     const useCPU = state.zoom > ZOOM_THRESHOLD;
-    clearTimeout(cpuDebounceTimer);
 
     // GPU Shader setup
     gl.useProgram(program);
@@ -302,12 +301,16 @@ function render() {
         const prec = Math.max(2, Math.floor(Math.log10(state.zoom)) + 2);
         const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}`;
         
-        if (!isMoving && state.lastRenderKey !== renderKey) {
-            state.lastRenderKey = renderKey;
-            console.log("[CPU Mode] View stable, scheduling render...");
-            cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
-        } else if (isMoving && state.cpuTilesDone === 0) {
-            cpuOverlay.style.display = 'none';
+        if (!isMoving) {
+            if (state.lastRenderKey !== renderKey) {
+                state.lastRenderKey = renderKey;
+                console.log("[CPU Mode] View stable, scheduling render...");
+                clearTimeout(cpuDebounceTimer);
+                cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
+            }
+        } else {
+            clearTimeout(cpuDebounceTimer);
+            if (state.cpuTilesDone === 0) cpuOverlay.style.display = 'none';
         }
 
         gl.uniform1i(uLocs.u_mode, 0); 
