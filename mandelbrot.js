@@ -498,15 +498,33 @@ function screenshot() {
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
     const originalZoom = state.zoom;
-    canvas.width = originalWidth * 2;
-    canvas.height = originalHeight * 2;
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    const highResW = originalWidth * 2;
+    const highResH = originalHeight * 2;
+
+    canvas.width = highResW;
+    canvas.height = highResH;
+    gl.viewport(0, 0, highResW, highResH);
     state.zoom = originalZoom * 2;
     render(); 
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = highResW;
+    tempCanvas.height = highResH;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // Composite GPU
+    tempCtx.drawImage(canvas, 0, 0);
+    
+    // Composite CPU if active
+    if (cpuOverlay.style.display !== 'none' && state.cpuTilesDone > 0) {
+        tempCtx.drawImage(cpuCanvas, 0, 0, highResW, highResH);
+    }
+
     const link = document.createElement('a');
-    link.download = `mandelbrot_highres_${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.download = `fractal_highres_${Date.now()}.png`;
+    link.href = tempCanvas.toDataURL('image/png');
     link.click();
+
     canvas.width = originalWidth;
     canvas.height = originalHeight;
     state.zoom = originalZoom;
@@ -645,7 +663,7 @@ window.addEventListener('mouseup', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
-    state.targetZoom *= Math.exp(-e.deltaY * 0.001);
+    state.targetZoom *= Math.exp(-e.deltaY * 0.0005); // Reduced sensitivity
 }, { passive: false });
 
 canvas.addEventListener('touchstart', (e) => {
