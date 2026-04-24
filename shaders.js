@@ -250,14 +250,16 @@ float mandelbrot_perturbation(vec2 pixel) {
         // Fetch reference orbit Z_n (df64 stored as hi+lo)
         float tx = (float(refIdx) + 0.5) / float(u_refLen);
         vec4 ref = texture(u_refOrbit, vec2(tx, 0.5));
-        // Use hi+lo sum for best available precision
-        float Zx = ref.x + ref.y;
-        float Zy = ref.z + ref.w;
+        float Zx_hi = ref.x;
+        float Zx_lo = ref.y;
+        float Zy_hi = ref.z;
+        float Zy_lo = ref.w;
 
-        // Full z = Z + dz
-        float zx = Zx + dzx;
-        float zy = Zy + dzy;
-        float mag2 = zx * zx + zy * zy;
+        // Perturbation formula: dz_{n+1} = 2*Z_n*dz_n + dz_n^2 + dc
+        // Expanded to preserve precision: 2*(Z_hi + Z_lo)*dz + dz^2 + dc
+        float zx_full = Zx_hi + Zx_lo + dzx;
+        float zy_full = Zy_hi + Zy_lo + dzy;
+        float mag2 = zx_full * zx_full + zy_full * zy_full;
 
         if (mag2 > 256.0) {
             float log_zn = log(mag2) * 0.5;
@@ -265,11 +267,13 @@ float mandelbrot_perturbation(vec2 pixel) {
             return float(i) + 1.0 - nu;
         }
 
-        // dz_{n+1} = 2*Z_n*dz_n + dz_n^2 + dc
-        float new_dzx = 2.0 * (Zx * dzx - Zy * dzy) + dzx * dzx - dzy * dzy + final_dcx;
-        float new_dzy = 2.0 * (Zx * dzy + Zy * dzx) + 2.0 * dzx * dzy + final_dcy;
-        dzx = new_dzx;
-        dzy = new_dzy;
+        // dz_{n+1} = 2.0 * (Z * dz) + dz^2 + dc
+        // Separating Z into hi and lo to keep small dz * Z_lo terms
+        float next_dzx = 2.0 * (Zx_hi * dzx - Zy_hi * dzy) + 2.0 * (Zx_lo * dzx - Zy_lo * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
+        float next_dzy = 2.0 * (Zx_hi * dzy + Zy_hi * dzx) + 2.0 * (Zx_lo * dzy + Zy_lo * dzx) + (2.0 * dzx * dzy) + final_dcy;
+        
+        dzx = next_dzx;
+        dzy = next_dzy;
 
         refIdx++;
         iter = float(i);
