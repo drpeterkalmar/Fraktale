@@ -226,7 +226,7 @@ float mandelbrot_standard(vec2 pixel) {
             new_zy = ds_add(ds_sub(ds_mul(ds(3.0), ds_mul(zx2, zy)), y3), cy);
         } else if (u_fractalMode == 5) {
             // Newton Fractal: Use standard floats for stability
-            vec2 z = vec2(zx.x, zy.x);
+            vec2 z = vec2(cx.x, cy.x);
             for (int j = 0; j < 80; j++) {
                 vec2 z2 = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y);
                 vec2 z3 = vec2(z.x*z2.x - z.y*z2.y, z.x*z2.y + z.y*z2.x);
@@ -338,7 +338,8 @@ void main() {
         vec2 uv = (vUv - 0.5) * u_resolution / min(u_resolution.x, u_resolution.y);
         
         // Camera controlled by zoom and pan
-        float dist = 2.5 / u_scale;
+        float zoom = 3.0 / (u_scale * u_resolution.y);
+        float dist = 2.5 / zoom;
         vec3 ro = vec3(0.0, 0.0, -dist); 
         vec3 rd = normalize(vec3(uv, 1.0));
         

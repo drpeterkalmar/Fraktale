@@ -292,6 +292,30 @@ function computeReferenceOrbit() {
 
 function markOrbitDirty() { state.refOrbitDirty = true; }
 
+// === Palette Functions for JS ===
+function hexToRgb(hex) {
+    const bigint = parseInt(hex.slice(1), 16);
+    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+}
+
+function getColor(smoothIter, maxIter, paletteIdx, colorCycle) {
+    const p = PALETTES[paletteIdx] || PALETTES[0];
+    const colors = p.colors;
+    let f = Math.sqrt(smoothIter / maxIter) * 64.0 + colorCycle;
+    const count = colors.length;
+    let t = (f % count + count) % count;
+    const i1 = Math.floor(t);
+    const i2 = (i1 + 1) % count;
+    const frac = t - i1;
+    const c1 = hexToRgb(colors[i1]);
+    const c2 = hexToRgb(colors[i2]);
+    return [
+        (c1[0] + (c2[0] - c1[0]) * frac),
+        (c1[1] + (c2[1] - c1[1]) * frac),
+        (c1[2] + (c2[2] - c1[2]) * frac)
+    ];
+}
+
 // === Render Loop ===
 let cpuDebounceTimer = null;
 function renderBuddhabrot() {
@@ -336,7 +360,10 @@ function renderBuddhabrot() {
 }
 
 function render() {
-    if (state.fractalMode === 7) return; 
+    if (state.fractalMode === 7) {
+        updateUI();
+        return; 
+    }
     
     const useCPU = state.zoom > ZOOM_THRESHOLD;
     const usePerturbation = state.zoom > 1000 && (state.fractalMode === 0 || state.fractalMode === 1);
