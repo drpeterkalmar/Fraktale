@@ -452,15 +452,12 @@ function updateUI() {
         else formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + ';
     }
     
-    // Hide minimap and bookmarks in Julia mode, and bookmarks for non-Mandelbrot
-    const minimap = document.getElementById('minimap');
-    const bookmarks = document.getElementById('bookmarks');
-    
-    if (minimap) minimap.classList.toggle('hidden', isJulia || !state.showUI);
+    // Only hide minimap if UI is hidden
+    if (minimap) minimap.classList.toggle('hidden', !state.showUI);
     // Only show Mandelbrot-specific bookmarks if in Mandelbrot mode
     if (bookmarks) bookmarks.classList.toggle('hidden', state.fractalMode !== 0 || !state.showUI);
     
-    if (!isJulia) updateMinimap();
+    updateMinimap();
 }
 
 // === Palette Picker ===
@@ -514,13 +511,23 @@ function renderMinimapBase() {
     const imgData = ctxMinimap.createImageData(w, h);
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-            let zx = 0, zy = 0;
-            let cx = (x / w - 0.5) * 3.0 - 0.5;
-            let cy = (0.5 - y / h) * 3.0; // Inverted Y
+            let zx, zy, cx, cy;
+            if (state.fractalMode === 1) { // Julia
+                zx = (x / w - 0.5) * 3.0;
+                zy = (0.5 - y / h) * 3.0;
+                cx = 0; cy = 0; // Fixed values handled inside loop
+            } else { // Others (Mandelbrot, Ship, etc)
+                zx = 0; zy = 0;
+                cx = (x / w - 0.5) * 3.0 - 0.5;
+                cy = (0.5 - y / h) * 3.0;
+            }
             let iter = 0;
             for (let i = 0; i < 64; i++) {
                 let nzx, nzy;
-                if (state.fractalMode === 2) { // Burning Ship
+                if (state.fractalMode === 1) { // Julia
+                    nzx = zx*zx - zy*zy + state.juliaC.x.toNumber();
+                    nzy = 2*zx*zy + state.juliaC.y.toNumber();
+                } else if (state.fractalMode === 2) { // Burning Ship
                     nzx = zx*zx - zy*zy + cx;
                     nzy = Math.abs(2*zx*zy) + cy;
                 } else if (state.fractalMode === 3) { // Tricorn
@@ -530,7 +537,7 @@ function renderMinimapBase() {
                     const x2 = zx*zx, y2 = zy*zy;
                     nzx = zx * (x2 - 3*y2) + cx;
                     nzy = zy * (3*x2 - y2) + cy;
-                } else { // Mandelbrot / Julia
+                } else { // Mandelbrot
                     nzx = zx*zx - zy*zy + cx;
                     nzy = 2*zx*zy + cy;
                 }
@@ -700,6 +707,7 @@ function stepDigit(part, idx, delta) {
     else if (idx > 2) change = new Decimal(delta).times(new Decimal(10).pow(-(idx - 2)));
     state.juliaC[part === 'cx' ? 'x' : 'y'] = num.plus(change);
     markOrbitDirty();
+    renderMinimapBase();
     scheduleRender();
     updateSteppers();
 }
