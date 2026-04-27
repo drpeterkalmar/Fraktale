@@ -725,7 +725,7 @@ function renderMinimapBase() {
 }
 
 function updateMinimap() {
-    if (!state.showUI || state.fractalMode === 7) return;
+    if (!state.showUI) return;
     if (!minimapBaseImg || typeof minimapBaseMode === 'undefined' || minimapBaseMode !== state.fractalMode) {
         renderMinimapBase();
         minimapBaseMode = state.fractalMode;
@@ -1157,10 +1157,15 @@ function animationLoop(now) {
     
     const cxDiff = state.targetCx.minus(state.cx).toNumber();
     const cyDiff = state.targetCy.minus(state.cy).toNumber();
-    if (Math.abs(cxDiff) > 1e-30 || Math.abs(cyDiff) > 1e-30) {
+    const viewPortDist = 3.0 / state.zoom;
+    
+    if (Math.abs(cxDiff) > viewPortDist * 1e-6 || Math.abs(cyDiff) > viewPortDist * 1e-6) {
         state.cx = state.cx.plus(new Decimal(cxDiff * panLerp));
         state.cy = state.cy.plus(new Decimal(cyDiff * panLerp));
         moved = true;
+    } else {
+        state.cx = state.targetCx;
+        state.cy = state.targetCy;
     }
     
     if (moved && state.fractalMode === 7 && state.buddhabrotHistogram) {
