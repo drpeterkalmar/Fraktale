@@ -225,37 +225,21 @@ float mandelbrot_standard(vec2 pixel) {
             new_zx = ds_add(ds_sub(x3, ds_mul(ds(3.0), ds_mul(zx, zy2))), cx);
             new_zy = ds_add(ds_sub(ds_mul(ds(3.0), ds_mul(zx2, zy)), y3), cy);
         } else if (u_fractalMode == 5) {
-            // Newton Fractal: z = z - (z^3 - 1) / (3z^2)
-            // This is (2z^3 + 1) / (3z^2)
-            vec2 x3 = ds_mul(zx, zx2);
-            vec2 y3 = ds_mul(zy, zy2);
-            // Num = 2z^3 + 1
-            vec2 num_re = ds_add(ds_mul(ds(2.0), ds_sub(x3, ds_mul(ds(3.0), ds_mul(zx, zy2)))), ds(1.0));
-            vec2 num_im = ds_mul(ds(2.0), ds_sub(ds_mul(ds(3.0), ds_mul(zx2, zy)), y3));
-            // Den = 3z^2
-            vec2 den_re = ds_mul(ds(3.0), ds_sub(zx2, zy2));
-            vec2 den_im = ds_mul(ds(6.0), ds_mul(zx, zy));
-            
-            // Complex division: (a+bi)/(c+di) = (ac+bd)/(c2+d2) + i(bc-ad)/(c2+d2)
-            vec2 d2 = ds_add(ds_mul(den_re, den_re), ds_mul(den_im, den_im));
-            if (d2.x < 1e-20) break; // Avoid div zero
-            
-            new_zx = ds_div(ds_add(ds_mul(num_re, den_re), ds_mul(num_im, den_im)), d2);
-            new_zy = ds_div(ds_sub(ds_mul(num_im, den_re), ds_mul(num_re, den_im)), d2);
-            
-            // Check for convergence to roots
-            // Root 1: (1, 0)
-            if (ds_add(ds_mul(ds_sub(new_zx, ds(1.0)), ds_sub(new_zx, ds(1.0))), ds_mul(new_zy, new_zy)).x < 0.0001) {
-                return float(i) + 1.0; 
+            // Newton Fractal: Use standard floats for stability
+            vec2 z = vec2(zx.x, zy.x);
+            for (int j = 0; j < 64; j++) {
+                vec2 z2 = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y);
+                vec2 z3 = vec2(z.x*z2.x - z.y*z2.y, z.x*z2.y + z.y*z2.x);
+                vec2 num = 2.0 * z3 + vec2(1.0, 0.0);
+                vec2 den = 3.0 * z2;
+                float d2 = dot(den, den);
+                if (d2 < 1e-15) break;
+                z = vec2(dot(num, den), num.y*den.x - num.x*den.y) / d2;
+                if (length(z - vec2(1.0, 0.0)) < 0.001) return float(i) + 1.0;
+                if (length(z - vec2(-0.5, 0.866)) < 0.001) return float(i) + 1001.0;
+                if (length(z - vec2(-0.5, -0.866)) < 0.001) return float(i) + 2001.0;
             }
-            // Root 2: (-0.5, sqrt(3)/2)
-            if (ds_add(ds_mul(ds_add(new_zx, ds(0.5)), ds_add(new_zx, ds(0.5))), ds_mul(ds_sub(new_zy, ds(0.866025)), ds_sub(new_zy, ds(0.866025)))).x < 0.0001) {
-                return float(i) + 1000.0; // Offset for coloring
-            }
-            // Root 3: (-0.5, -sqrt(3)/2)
-            if (ds_add(ds_mul(ds_add(new_zx, ds(0.5)), ds_add(new_zx, ds(0.5))), ds_mul(ds_add(new_zy, ds(0.866025)), ds_add(new_zy, ds(0.866025)))).x < 0.0001) {
-                return float(i) + 2000.0; // Offset for coloring
-            }
+            return -1.0;
         } else {
             // Mandelbrot / Julia
             new_zy = ds_add(ds_mul(ds(2.0), ds_mul(zx, zy)), cy);
@@ -352,7 +336,10 @@ void main() {
     if (u_fractalMode == 6) {
         // --- Simplified Mandelbulb 3D ---
         vec2 uv = (vUv - 0.5) * u_resolution / min(u_resolution.x, u_resolution.y);
-        vec3 ro = vec3(0.0, 0.0, -2.5); // Fixed camera
+        
+        // Camera controlled by zoom and pan
+        float dist = 2.5 / u_scale;
+        vec3 ro = vec3(0.0, 0.0, -dist); 
         vec3 rd = normalize(vec3(uv, 1.0));
         
         // Manual rotation logic
@@ -380,11 +367,11 @@ void main() {
                 if (m > 4.0) break;
             }
             float d = 0.25*log(m)*sqrt(m)/dz;
-            if (d < 0.002 || t > 10.0) break;
+            if (d < 0.002 || t > 12.0) break;
             t += d;
         }
 
-        if (t < 10.0) {
+        if (t < 12.0) {
             vec3 col = getColor(float(i)*0.1, u_palette);
             col *= (0.4 + 0.6 * clamp(1.0 - float(i)/60.0, 0.0, 1.0));
             fragColor = vec4(col, 1.0);

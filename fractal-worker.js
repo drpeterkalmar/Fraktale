@@ -4,13 +4,9 @@
 // ============================================================
 //  Palette functions
 // ============================================================
-function pal(t, a, b, c, d) {
-    const TAU = 6.28318530718;
-    return [
-        a[0] + b[0] * Math.cos(TAU * (c[0] * t + d[0])),
-        a[1] + b[1] * Math.cos(TAU * (c[1] * t + d[1])),
-        a[2] + b[2] * Math.cos(TAU * (c[2] * t + d[2]))
-    ];
+function hexToRgb(hex) {
+    const bigint = parseInt(hex.slice(1), 16);
+    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
 }
 
 const PALETTES = [
@@ -22,17 +18,23 @@ const PALETTES = [
     { name: "Aurora", colors: ["#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#34d399", "#6ee7b7", "#a7f3d0", "#ffffff"] }
 ];
 
-function hexToRgb(hex) {
-    const bigint = parseInt(hex.slice(1), 16);
-    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
-}
-
-function getColor(smoothIter, maxIter, paletteIdx, colorCycle) {
+function getColor(smoothIter, maxIter, paletteIdx, colorCycle, fractalMode) {
     const p = PALETTES[paletteIdx] || PALETTES[0];
     const colors = p.colors;
-    const f = smoothIter / 32.0 + colorCycle;
-    const count = colors.length;
     
+    let f, rootCol = [1, 1, 1];
+    if (fractalMode === 5) { // Newton coloring
+        const rootIdx = Math.floor(smoothIter / 1000);
+        const iter = smoothIter % 1000;
+        f = Math.sqrt(iter / maxIter) * 32.0 + colorCycle;
+        if (rootIdx === 0) rootCol = [1.0, 0.4, 0.4];
+        else if (rootIdx === 1) rootCol = [0.4, 1.0, 0.4];
+        else if (rootIdx === 2) rootCol = [0.5, 0.7, 1.0];
+    } else {
+        f = Math.sqrt(smoothIter / maxIter) * 64.0 + colorCycle;
+    }
+
+    const count = colors.length;
     let t = (f % count + count) % count;
     const i1 = Math.floor(t);
     const i2 = (i1 + 1) % count;
@@ -42,174 +44,114 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle) {
     const c2 = hexToRgb(colors[i2]);
     
     return [
-        c1[0] + (c2[0] - c1[0]) * frac,
-        c1[1] + (c2[1] - c1[1]) * frac,
-        c1[2] + (c2[2] - c1[2]) * frac
+        (c1[0] + (c2[0] - c1[0]) * frac) * rootCol[0],
+        (c1[1] + (c2[1] - c1[1]) * frac) * rootCol[1],
+        (c1[2] + (c2[2] - c1[2]) * frac) * rootCol[2]
     ];
 }
 
-// ============================================================
-//  Perturbation Theory Iteration (Float64)
-// ============================================================
-self.onmessage = function(e) {
-    const {
-        tile, canvasW, canvasH, 
-        baseDcx, baseDcy,
-        refOrbit, refLen, zoom, maxIter,
-        palette, colorCycle, fractalMode
-    } = e.data;
-
-    const { x: tileX, y: tileY, w: tileW, h: tileH } = tile;
-    const pixels = new Uint8ClampedArray(tileW * tileH * 4);
-
-    // View dimensions
-    const viewH = 3.0 / zoom;
-    const viewW = viewH * (canvasW / canvasH);
-
-    for (let py = 0; py < tileH; py++) {
-        for (let px = 0; px < tileW; px++) {
-            // Screen coordinates -0.5 to 0.5
-            const mx = ((tileX + px) / canvasW - 0.5);
-            const my = ((tileY + py) / canvasH - 0.5);
-
-            // dc is the precise distance from the reference orbit's starting C
-            let dcx = baseDcx + (mx * viewW);
-            let dcy = baseDcy - (my * viewH);
-
-            let dzx, dzy;
-            let final_dcx, final_dcy;
-
-            if (fractalMode === 1) { // Julia
-                dzx = dcx; dzy = dcy;
-                final_dcx = 0; final_dcy = 0;
-            } else if (fractalMode === 0) { // Mandelbrot Perturbation
-                dzx = 0; dzy = 0;
-                final_dcx = dcx; final_dcy = dcy;
-            } else { // Others (Absolute Mode)
-                dzx = 0; dzy = 0;
-                final_dcx = cx.toNumber() + (mx * viewW);
-                final_dcy = cy.toNumber() - (my * viewH);
-            }
-
-            let iter = 0;
-            let zx_full = 0;
-            let zy_full = 0;
-
-            while (iter < maxIter) {
-                let zx_ref = 0, zy_ref = 0;
-                if (iter < refLen) {
-                    zx_ref = refOrbit[iter * 2];
-                    zy_ref = refOrbit[iter * 2 + 1];
-                }
-
-                zx_full = zx_ref + dzx;
-                zy_full = zy_ref + dzy;
-
-                const mag2 = zx_full * zx_full + zy_full * zy_full;
-                if (mag2 > 256.0) {
-                    const log_zn = Math.log(mag2) * 0.5;
-                    const nu = Math.log(log_zn / Math.log(2)) / Math.log(2);
-                    const smoothIter = iter + 1.0 - nu;
-                    const col = getColor(smoothIter, maxIter, palette, colorCycle);
-                    const idx = (py * tileW + px) * 4;
-                    pixels[idx] = col[0]; pixels[idx+1] = col[1]; pixels[idx+2] = col[2]; pixels[idx+3] = 255;
-                    break;
-                }
-
-                if (fractalMode === 2) {
-                    const nx = dzx * dzx - dzy * dzy + final_dcx;
-                    const ny = Math.abs(2.0 * dzx * dzy) + final_dcy;
-                    dzx = nx; dzy = ny;
-                } else if (fractalMode === 3) {
-                    // Tricorn: Im = -2xy + cy
-                    const nx = dzx * dzx - dzy * dzy + final_dcx;
-                    const ny = -2.0 * dzx * dzy + final_dcy;
-                    dzx = nx; dzy = ny;
-                } else if (fractalMode === 4) {
-                    // Mandelbrot z^3
-                    const x2 = dzx * dzx;
-                    const y2 = dzy * dzy;
-                    const nx = dzx * (x2 - 3.0 * y2) + final_dcx;
-                    const ny = dzy * (3.0 * x2 - y2) + final_dcy;
-                    dzx = nx; dzy = ny;
-                } else if (fractalMode === 5) {
-                    // Newton: z = (2z^3 + 1) / (3z^2)
-                    const x2 = dzx * dzx;
-                    const y2 = dzy * dzy;
-                    const x3 = dzx * (x2 - 3.0 * y2);
-                    const y3 = dzy * (3.0 * x2 - y2);
-                    
-                    const num_re = 2.0 * x3 + 1.0;
-                    const num_im = 2.0 * y3;
-                    const den_re = 3.0 * (x2 - y2);
-                    const den_im = 6.0 * dzx * dzy;
-                    
-                    const d2 = den_re * den_re + den_im * den_im;
-                    if (d2 < 1e-20) break;
-                    
-                    const nx = (num_re * den_re + num_im * den_im) / d2;
-                    const ny = (num_im * den_re - num_re * den_im) / d2;
-                    dzx = nx; dzy = ny;
-                    
-                    // Convergence
-                    if ((dzx-1)**2 + dzy**2 < 0.0001) { iter = i + 1; break; }
-                    if ((dzx+0.5)**2 + (dzy-0.866025)**2 < 0.0001) { iter = i + 1000; break; }
-                    if ((dzx+0.5)**2 + (dzy+0.866025)**2 < 0.0001) { iter = i + 2000; break; }
-                } else {
-                    const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
-                    const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
-                    dzx = next_dzx; dzy = next_dzy;
-                }
-                iter++;
-            }
-
-            if (iter === maxIter) {
-                const idx = (py * tileW + px) * 4;
-                pixels[idx] = 0; pixels[idx+1] = 0; pixels[idx+2] = 0; pixels[idx+3] = 255;
-            }
-        }
-    }
-
-    } else if (e.data.type === 'buddhabrot') {
+self.onmessage = function (e) {
+    if (e.data.type === 'buddhabrot') {
         const { w, h, maxIter, minIter, samples } = e.data;
         const histogram = new Uint32Array(w * h);
-        
         for (let s = 0; s < samples; s++) {
             const cx = Math.random() * 4.0 - 2.5;
             const cy = Math.random() * 3.0 - 1.5;
-            
             let zx = 0, zy = 0;
             const orbitX = new Float64Array(maxIter);
             const orbitY = new Float64Array(maxIter);
-            let escaped = false;
-            let iterCount = 0;
-
+            let escaped = false, iterCount = 0;
             for (let i = 0; i < maxIter; i++) {
                 const x2 = zx * zx, y2 = zy * zy;
-                if (x2 + y2 > 4.0) {
-                    escaped = true;
-                    iterCount = i;
-                    break;
-                }
-                orbitX[i] = zx;
-                orbitY[i] = zy;
+                if (x2 + y2 > 4.0) { escaped = true; iterCount = i; break; }
+                orbitX[i] = zx; orbitY[i] = zy;
                 const nzx = x2 - y2 + cx;
                 const nzy = 2.0 * zx * zy + cy;
                 zx = nzx; zy = nzy;
             }
-
             if (escaped && iterCount >= minIter) {
                 for (let i = 0; i < iterCount; i++) {
                     const px = Math.floor((orbitX[i] + 2.0) / 3.0 * w);
                     const py = Math.floor((orbitY[i] + 1.5) / 3.0 * h);
-                    if (px >= 0 && px < w && py >= 0 && py < h) {
-                        histogram[py * w + px]++;
-                    }
+                    if (px >= 0 && px < w && py >= 0 && py < h) histogram[py * w + px]++;
                 }
             }
         }
         self.postMessage({ type: 'buddhabrotChunk', histogram }, [histogram.buffer]);
-    } else {
-        self.postMessage({ tile: e.data.tile, pixels: pixels.buffer, version: e.data.version }, [pixels.buffer]);
+        return;
     }
+
+    const { tile, canvasW, canvasH, viewW, viewH, baseDcx, baseDcy, refOrbit, refLen, maxIter, paletteIdx, colorCycle, fractalMode, cx, cy, refCx, refCy } = e.data;
+    const tileW = tile.w, tileH = tile.h, tileX = tile.x, tileY = tile.y;
+    const pixels = new Uint8ClampedArray(tileW * tileH * 4);
+
+    for (let py = 0; py < tileH; py++) {
+        for (let px = 0; px < tileW; px++) {
+            const mx = ((tileX + px) / canvasW - 0.5);
+            const my = ((tileY + py) / canvasH - 0.5);
+            let dcx = baseDcx + (mx * viewW);
+            let dcy = baseDcy - (my * viewH);
+
+            let dzx, dzy, final_dcx, final_dcy;
+            if (fractalMode === 1) { // Julia
+                dzx = dcx; dzy = dcy; final_dcx = 0; final_dcy = 0;
+            } else if (fractalMode === 0) { // Mandelbrot Perturbation
+                dzx = 0; dzy = 0; final_dcx = dcx; final_dcy = dcy;
+            } else { // Others (Absolute Mode)
+                dzx = 0; dzy = 0;
+                final_dcx = cx + (mx * viewW);
+                final_dcy = cy - (my * viewH);
+            }
+
+            let iter = 0, finalIter = -1;
+            while (iter < maxIter) {
+                if (fractalMode === 2) { // Burning Ship
+                    const nx = dzx * dzx - dzy * dzy + final_dcx;
+                    const ny = Math.abs(2.0 * dzx * dzy) + final_dcy;
+                    dzx = nx; dzy = ny;
+                    if (dzx*dzx + dzy*dzy > 4.0) { finalIter = iter; break; }
+                } else if (fractalMode === 3) { // Tricorn
+                    const nx = dzx * dzx - dzy * dzy + final_dcx;
+                    const ny = -2.0 * dzx * dzy + final_dcy;
+                    dzx = nx; dzy = ny;
+                    if (dzx*dzx + dzy*dzy > 4.0) { finalIter = iter; break; }
+                } else if (fractalMode === 4) { // Mandelbrot z^3
+                    const x2 = dzx * dzx, y2 = dzy * dzy;
+                    const nx = dzx * (x2 - 3.0 * y2) + final_dcx;
+                    const ny = dzy * (3.0 * x2 - y2) + final_dcy;
+                    dzx = nx; dzy = ny;
+                    if (dzx*dzx + dzy*dzy > 4.0) { finalIter = iter; break; }
+                } else if (fractalMode === 5) { // Newton
+                    const x2 = dzx * dzx, y2 = dzy * dzy;
+                    const x3 = dzx * (x2 - 3.0 * y2), y3 = dzy * (3.0 * x2 - y2);
+                    const num_re = 2.0 * x3 + 1.0, num_im = 2.0 * y3;
+                    const den_re = 3.0 * (x2 - y2), den_im = 6.0 * dzx * dzy;
+                    const d2 = den_re * den_re + den_im * den_im;
+                    if (d2 < 1e-20) break;
+                    dzx = (num_re * den_re + num_im * den_im) / d2;
+                    dzy = (num_im * den_re - num_re * den_im) / d2;
+                    if ((dzx-1)**2 + dzy**2 < 0.0001) { finalIter = iter + 1; break; }
+                    if ((dzx+0.5)**2 + (dzy-0.866)**2 < 0.0001) { finalIter = iter + 1001; break; }
+                    if ((dzx+0.5)**2 + (dzy+0.866)**2 < 0.0001) { finalIter = iter + 2001; break; }
+                } else { // Mandelbrot / Julia Perturbation
+                    let zx_ref = 0, zy_ref = 0;
+                    if (iter < refLen) { zx_ref = refOrbit[iter * 2]; zy_ref = refOrbit[iter * 2 + 1]; }
+                    const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
+                    const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
+                    dzx = next_dzx; dzy = next_dzy;
+                    if ((zx_ref + dzx)**2 + (zy_ref + dzy)**2 > 4.0) { finalIter = iter; break; }
+                }
+                iter++;
+            }
+
+            const idx = (py * tileW + px) * 4;
+            if (finalIter >= 0) {
+                const col = getColor(finalIter, maxIter, paletteIdx, colorCycle, fractalMode);
+                pixels[idx] = col[0]; pixels[idx+1] = col[1]; pixels[idx+2] = col[2]; pixels[idx+3] = 255;
+            } else {
+                pixels[idx] = 0; pixels[idx+1] = 0; pixels[idx+2] = 0; pixels[idx+3] = 255;
+            }
+        }
+    }
+    self.postMessage({ tile, pixels: pixels.buffer, version: e.data.version }, [pixels.buffer]);
 };
