@@ -63,6 +63,13 @@ vec2 ds_add(vec2 a, vec2 b) {
 vec2 ds_neg(vec2 a) { return -a; }
 vec2 ds_abs(vec2 a) { return (a.x < 0.0) ? -a : a; }
 
+vec2 ds_div(vec2 a, vec2 b) {
+    float r = a.x / b.x;
+    vec2 res = ds_mul(ds(r), b);
+    vec2 diff = ds_sub(a, res);
+    return ds_add(ds(r), ds(diff.x / b.x));
+}
+
 vec2 ds_sub(vec2 a, vec2 b) {
     return ds_add(a, vec2(-b.x, -b.y));
 }
@@ -154,6 +161,13 @@ vec3 getColor(float t, int pid) {
 //  Standard Mandelbrot with df64
 // ============================================================
 
+vec2 ds_mul_complex_re(vec2 ax, vec2 ay, vec2 bx, vec2 by) {
+    return ds_sub(ds_mul(ax, bx), ds_mul(ay, by));
+}
+vec2 ds_mul_complex_im(vec2 ax, vec2 ay, vec2 bx, vec2 by) {
+    return ds_add(ds_mul(ax, by), ds_mul(ay, bx));
+}
+
 float mandelbrot_standard(vec2 pixel) {
     float px = (pixel.x - 0.5) * u_resolution.x;
     float py = (pixel.y - 0.5) * u_resolution.y;
@@ -205,12 +219,43 @@ float mandelbrot_standard(vec2 pixel) {
             new_zy = ds_add(ds_neg(ds_mul(ds(2.0), ds_mul(zx, zy))), cy);
             new_zx = ds_add(ds_sub(zx2, zy2), cx);
         } else if (u_fractalMode == 4) {
-            // Mandelbrot z^3: z = z^3 + c
-            // Re = x^3 - 3xy^2, Im = 3x^2y - y^3
+            // Mandelbrot z^3
             vec2 x3 = ds_mul(zx, zx2);
             vec2 y3 = ds_mul(zy, zy2);
             new_zx = ds_add(ds_sub(x3, ds_mul(ds(3.0), ds_mul(zx, zy2))), cx);
             new_zy = ds_add(ds_sub(ds_mul(ds(3.0), ds_mul(zx2, zy)), y3), cy);
+        } else if (u_fractalMode == 5) {
+            // Newton Fractal: z = z - (z^3 - 1) / (3z^2)
+            // This is (2z^3 + 1) / (3z^2)
+            vec2 x3 = ds_mul(zx, zx2);
+            vec2 y3 = ds_mul(zy, zy2);
+            // Num = 2z^3 + 1
+            vec2 num_re = ds_add(ds_mul(ds(2.0), ds_sub(x3, ds_mul(ds(3.0), ds_mul(zx, zy2)))), ds(1.0));
+            vec2 num_im = ds_mul(ds(2.0), ds_sub(ds_mul(ds(3.0), ds_mul(zx2, zy)), y3));
+            // Den = 3z^2
+            vec2 den_re = ds_mul(ds(3.0), ds_sub(zx2, zy2));
+            vec2 den_im = ds_mul(ds(6.0), ds_mul(zx, zy));
+            
+            // Complex division: (a+bi)/(c+di) = (ac+bd)/(c2+d2) + i(bc-ad)/(c2+d2)
+            vec2 d2 = ds_add(ds_mul(den_re, den_re), ds_mul(den_im, den_im));
+            if (d2.x < 1e-20) break; // Avoid div zero
+            
+            new_zx = ds_div(ds_add(ds_mul(num_re, den_re), ds_mul(num_im, den_im)), d2);
+            new_zy = ds_div(ds_sub(ds_mul(num_im, den_re), ds_mul(num_re, den_im)), d2);
+            
+            // Check for convergence to roots
+            // Root 1: (1, 0)
+            if (ds_add(ds_mul(ds_sub(new_zx, ds(1.0)), ds_sub(new_zx, ds(1.0))), ds_mul(new_zy, new_zy)).x < 0.0001) {
+                return float(i) + 1.0; 
+            }
+            // Root 2: (-0.5, sqrt(3)/2)
+            if (ds_add(ds_mul(ds_add(new_zx, ds(0.5)), ds_add(new_zx, ds(0.5))), ds_mul(ds_sub(new_zy, ds(0.866025)), ds_sub(new_zy, ds(0.866025)))).x < 0.0001) {
+                return float(i) + 1000.0; // Offset for coloring
+            }
+            // Root 3: (-0.5, -sqrt(3)/2)
+            if (ds_add(ds_mul(ds_add(new_zx, ds(0.5)), ds_add(new_zx, ds(0.5))), ds_mul(ds_add(new_zy, ds(0.866025)), ds_add(new_zy, ds(0.866025)))).x < 0.0001) {
+                return float(i) + 2000.0; // Offset for coloring
+            }
         } else {
             // Mandelbrot / Julia
             new_zy = ds_add(ds_mul(ds(2.0), ds_mul(zx, zy)), cy);

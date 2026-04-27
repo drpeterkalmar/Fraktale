@@ -412,13 +412,13 @@ function updateUI() {
     const isJulia = state.fractalMode === 1;
     const titleEl = document.getElementById('info-title');
     if (titleEl) {
-        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³'];
+        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³', 'NEWTON'];
         titleEl.textContent = titles[state.fractalMode] || 'FRAKTAL';
     }
 
     const modeIcon = document.getElementById('mode-icon');
     if (modeIcon) {
-        const icons = ['M', 'J', 'B', 'T', '3'];
+        const icons = ['M', 'J', 'B', 'T', '3', 'N'];
         modeIcon.textContent = icons[state.fractalMode] || 'F';
     }
 
@@ -446,11 +446,14 @@ function updateUI() {
     
     const formulaBase = document.getElementById('formula-base');
     if (formulaBase) {
-        if (state.fractalMode === 4) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>3</sup> + ';
+        if (state.fractalMode === 5) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub> - (z<sub>n</sub><sup>3</sup> - 1) / (3z<sub>n</sub><sup>2</sup>)';
+        else if (state.fractalMode === 4) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>3</sup> + ';
         else if (state.fractalMode === 3) formulaBase.innerHTML = 'z<sub>n+1</sub> = conj(z<sub>n</sub>)<sup>2</sup> + ';
         else if (state.fractalMode === 2) formulaBase.innerHTML = 'z<sub>n+1</sub> = (|Re(z)| + i|Im(z)|)<sup>2</sup> + ';
         else formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + ';
     }
+    
+    if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode === 5);
     
     // Only hide minimap if UI is hidden
     if (minimap) minimap.classList.toggle('hidden', !state.showUI);
@@ -537,6 +540,22 @@ function renderMinimapBase() {
                     const x2 = zx*zx, y2 = zy*zy;
                     nzx = zx * (x2 - 3*y2) + cx;
                     nzy = zy * (3*x2 - y2) + cy;
+                } else if (state.fractalMode === 5) { // Newton
+                    const x2 = zx*zx, y2 = zy*zy;
+                    const x3 = zx * (x2 - 3*y2);
+                    const y3 = zy * (3*x2 - y2);
+                    const num_re = 2.0 * x3 + 1.0;
+                    const num_im = 2.0 * y3;
+                    const den_re = 3.0 * (x2 - y2);
+                    const den_im = 6.0 * zx * zy;
+                    const d2 = den_re * den_re + den_im * den_im;
+                    if (d2 < 1e-10) break;
+                    nzx = (num_re * den_re + num_im * den_im) / d2;
+                    nzy = (num_im * den_re - num_re * den_im) / d2;
+                    // Roots
+                    if ((nzx-1)**2 + nzy**2 < 0.01) { iter = i + 1; break; }
+                    if ((nzx+0.5)**2 + (nzy-0.866)**2 < 0.01) { iter = i + 1000; break; }
+                    if ((nzx+0.5)**2 + (nzy+0.866)**2 < 0.01) { iter = i + 2000; break; }
                 } else { // Mandelbrot
                     nzx = zx*zx - zy*zy + cx;
                     nzy = 2*zx*zy + cy;
@@ -713,7 +732,7 @@ function stepDigit(part, idx, delta) {
 }
 
 function toggleFractalMode() {
-    setFractalMode((state.fractalMode + 1) % 5);
+    setFractalMode((state.fractalMode + 1) % 6);
 }
 
 function setFractalMode(mode) {
@@ -728,6 +747,9 @@ function setFractalMode(mode) {
     } else if (state.fractalMode === 2) {
         // Burning Ship
         state.targetZoom = 1.0; state.targetCx = new Decimal('-0.5'); state.targetCy = new Decimal('-0.5');
+    } else if (state.fractalMode === 5) {
+        // Newton
+        state.targetZoom = 1.0; state.targetCx = new Decimal(0); state.targetCy = new Decimal(0);
     } else {
         // Others: default view
         goToBookmark(BOOKMARKS[0]);

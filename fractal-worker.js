@@ -128,6 +128,29 @@ self.onmessage = function(e) {
                     const nx = dzx * (x2 - 3.0 * y2) + final_dcx;
                     const ny = dzy * (3.0 * x2 - y2) + final_dcy;
                     dzx = nx; dzy = ny;
+                } else if (fractalMode === 5) {
+                    // Newton: z = (2z^3 + 1) / (3z^2)
+                    const x2 = dzx * dzx;
+                    const y2 = dzy * dzy;
+                    const x3 = dzx * (x2 - 3.0 * y2);
+                    const y3 = dzy * (3.0 * x2 - y2);
+                    
+                    const num_re = 2.0 * x3 + 1.0;
+                    const num_im = 2.0 * y3;
+                    const den_re = 3.0 * (x2 - y2);
+                    const den_im = 6.0 * dzx * dzy;
+                    
+                    const d2 = den_re * den_re + den_im * den_im;
+                    if (d2 < 1e-20) break;
+                    
+                    const nx = (num_re * den_re + num_im * den_im) / d2;
+                    const ny = (num_im * den_re - num_re * den_im) / d2;
+                    dzx = nx; dzy = ny;
+                    
+                    // Convergence
+                    if ((dzx-1)**2 + dzy**2 < 0.0001) { iter = i + 1; break; }
+                    if ((dzx+0.5)**2 + (dzy-0.866025)**2 < 0.0001) { iter = i + 1000; break; }
+                    if ((dzx+0.5)**2 + (dzy+0.866025)**2 < 0.0001) { iter = i + 2000; break; }
                 } else {
                     const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
                     const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
