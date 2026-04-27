@@ -79,12 +79,16 @@ self.onmessage = function(e) {
             let dzx, dzy;
             let final_dcx, final_dcy;
 
-            if (fractalMode === 1) {
+            if (fractalMode === 1) { // Julia
                 dzx = dcx; dzy = dcy;
                 final_dcx = 0; final_dcy = 0;
-            } else {
+            } else if (fractalMode === 0) { // Mandelbrot Perturbation
                 dzx = 0; dzy = 0;
                 final_dcx = dcx; final_dcy = dcy;
+            } else { // Others (Absolute Mode)
+                dzx = 0; dzy = 0;
+                final_dcx = cx.toNumber() + (mx * viewW);
+                final_dcy = cy.toNumber() - (my * viewH);
             }
 
             let iter = 0;
@@ -166,5 +170,46 @@ self.onmessage = function(e) {
         }
     }
 
-    self.postMessage({ tile, pixels: pixels.buffer, version: e.data.version }, [pixels.buffer]);
+    } else if (e.data.type === 'buddhabrot') {
+        const { w, h, maxIter, minIter, samples } = e.data;
+        const histogram = new Uint32Array(w * h);
+        
+        for (let s = 0; s < samples; s++) {
+            const cx = Math.random() * 4.0 - 2.5;
+            const cy = Math.random() * 3.0 - 1.5;
+            
+            let zx = 0, zy = 0;
+            const orbitX = new Float64Array(maxIter);
+            const orbitY = new Float64Array(maxIter);
+            let escaped = false;
+            let iterCount = 0;
+
+            for (let i = 0; i < maxIter; i++) {
+                const x2 = zx * zx, y2 = zy * zy;
+                if (x2 + y2 > 4.0) {
+                    escaped = true;
+                    iterCount = i;
+                    break;
+                }
+                orbitX[i] = zx;
+                orbitY[i] = zy;
+                const nzx = x2 - y2 + cx;
+                const nzy = 2.0 * zx * zy + cy;
+                zx = nzx; zy = nzy;
+            }
+
+            if (escaped && iterCount >= minIter) {
+                for (let i = 0; i < iterCount; i++) {
+                    const px = Math.floor((orbitX[i] + 2.0) / 3.0 * w);
+                    const py = Math.floor((orbitY[i] + 1.5) / 3.0 * h);
+                    if (px >= 0 && px < w && py >= 0 && py < h) {
+                        histogram[py * w + px]++;
+                    }
+                }
+            }
+        }
+        self.postMessage({ type: 'buddhabrotChunk', histogram }, [histogram.buffer]);
+    } else {
+        self.postMessage({ tile: e.data.tile, pixels: pixels.buffer, version: e.data.version }, [pixels.buffer]);
+    }
 };
