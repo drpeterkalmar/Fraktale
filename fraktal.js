@@ -416,9 +416,6 @@ function updateUI() {
         titleEl.textContent = titles[state.fractalMode] || 'FRAKTAL';
     }
 
-    const modeSelect = document.getElementById('select-fractal-mode');
-    if (modeSelect) modeSelect.value = state.fractalMode;
-
     const modeIcon = document.getElementById('mode-icon');
     if (modeIcon) {
         const icons = ['M', 'J', 'B', 'T', '3'];
@@ -978,12 +975,6 @@ function wireButtons() {
         zoomInfo.parentElement.addEventListener('click', () => {
             state.zoomFormat = state.zoomFormat === 'words' ? 'scientific' : 'words';
             updateUI();
-        });
-    }
-    const modeSelect = document.getElementById('select-fractal-mode');
-    if (modeSelect) {
-        modeSelect.addEventListener('change', (e) => {
-            setFractalMode(parseInt(e.target.value));
         });
     }
 }
