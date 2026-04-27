@@ -112,9 +112,15 @@ self.onmessage = function(e) {
                     break;
                 }
 
-                const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
-                const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
-                dzx = next_dzx; dzy = next_dzy;
+                if (fractalMode === 2) {
+                    const next_dzx = dzx * dzx - dzy * dzy + final_dcx;
+                    const next_dzy = Math.abs(2.0 * dzx * dzy) + final_dcy;
+                    dzx = next_dzx; dzy = next_dzy;
+                } else {
+                    const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
+                    const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
+                    dzx = next_dzx; dzy = next_dzy;
+                }
                 iter++;
             }
 

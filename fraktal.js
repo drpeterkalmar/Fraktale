@@ -410,8 +410,20 @@ function formatZoom(z) {
 
 function updateUI() {
     const isJulia = state.fractalMode === 1;
+    const isBurning = state.fractalMode === 2;
     const titleEl = document.getElementById('info-title');
-    if (titleEl) titleEl.textContent = isJulia ? 'JULIA-MENGE' : 'MANDELBROT';
+    if (titleEl) {
+        if (isJulia) titleEl.textContent = 'JULIA-MENGE';
+        else if (isBurning) titleEl.textContent = 'BURNING SHIP';
+        else titleEl.textContent = 'MANDELBROT';
+    }
+
+    const modeIcon = document.getElementById('mode-icon');
+    if (modeIcon) {
+        if (isJulia) modeIcon.textContent = 'J';
+        else if (isBurning) modeIcon.textContent = 'B';
+        else modeIcon.textContent = 'M';
+    }
 
     document.getElementById('info-re').textContent = state.cx.toFixed(10);
     document.getElementById('info-im').textContent = state.cy.toFixed(10);
@@ -673,14 +685,23 @@ function stepDigit(part, idx, delta) {
 }
 
 function toggleFractalMode() {
-    state.fractalMode = state.fractalMode === 0 ? 1 : 0;
+    state.fractalMode = (state.fractalMode + 1) % 3;
     state.refOrbitData = null;
     markOrbitDirty();
+    
+    // Reset view for specific modes if needed
     if (state.fractalMode === 1) {
+        // Julia: center at 0,0
         state.targetZoom = 1.0; state.targetCx = new Decimal(0); state.targetCy = new Decimal(0);
+    } else if (state.fractalMode === 2) {
+        // Burning Ship: usually looks good at slightly different start
+        state.targetZoom = 1.0; state.targetCx = new Decimal('-0.5'); state.targetCy = new Decimal('-0.5');
     } else {
+        // Mandelbrot: default view
         goToBookmark(BOOKMARKS[0]);
     }
+    
+    updateUI();
 }
 
 function toggleZoomMode() {
@@ -865,7 +886,9 @@ window.addEventListener('keydown', (e) => {
         case 'f': toggleFullscreen(); break;
         case 'i': state.showUI = !state.showUI; toggleUIVisibility(); break;
         case 'h': toggleInfoBox(); break;
-        case 'j': toggleFractalMode(); break;
+        case 'j':
+        case 'm':
+        case 'b': toggleFractalMode(); break;
     }
 });
 
@@ -904,7 +927,7 @@ function wireButtons() {
         'btn-screenshot': () => screenshot(),
         'btn-fullscreen': () => toggleFullscreen(),
         'btn-zoom-mode': () => toggleZoomMode(),
-        'btn-julia-toggle': () => toggleFractalMode(),
+        'btn-mode-toggle': () => toggleFractalMode(),
         'btn-help-toggle': () => toggleInfoBox(),
         'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); },
         'info-box-close': () => toggleInfoBox(),

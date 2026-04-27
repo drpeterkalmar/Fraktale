@@ -192,7 +192,15 @@ float mandelbrot_standard(vec2 pixel) {
             return iter;
         }
 
-        vec2 new_zy = ds_add(ds_mul(ds(2.0), ds_mul(zx, zy)), cy);
+        vec2 new_zy;
+        if (u_fractalMode == 2) {
+            // Burning Ship: Im(z) = 2 * abs(Re(z) * Im(z)) + Im(c)
+            // Using ds_mul for double-single precision
+            vec2 zx_zy = ds_mul(zx, zy);
+            new_zy = ds_add(ds_mul(ds(2.0), vec2(abs(zx_zy.x), zx_zy.y)), cy); // Simplified abs for ds
+        } else {
+            new_zy = ds_add(ds_mul(ds(2.0), ds_mul(zx, zy)), cy);
+        }
         vec2 new_zx = ds_add(ds_sub(zx2, zy2), cx);
         zx = new_zx;
         zy = new_zy;

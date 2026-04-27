@@ -27,8 +27,16 @@ Keine Angst vor Mathe! Die Formel funktioniert wie ein Spiel:
 - **Doppelklick:** Zentrieren und schneller hineinzoomen.
 - **Taste `S`:** Mache ein cooles Foto von deiner Entdeckung.
 - **Taste `P`:** Wechsle die Farben (Paletten).
-- **Taste `J`:** Wechsle zur Julia-Menge (deine eigene, veränderbare Welt!).
+- **Taste `M` / `J`:** Wechsle den Modus (Mandelbrot, Julia-Menge oder **Burning Ship**).
+- **Taste `Z` / Lupe:** Aktiviere den Zoom-Modus, um ein Rechteck zu ziehen.
+- **Shift + Ziehen:** Ziehe einen Rahmen auf, um genau diesen Bereich zu vergrößern.
 - **Shift + Klick:** Erschaffe eine Julia-Welt genau an dieser Stelle.
+
+## 🌌 Andere Welten entdecken
+- **Burning Ship:** Sieht aus wie ein brennendes Schiff am Horizont. Wir nehmen die normale Formel, aber machen alles "positiv" (Absolutwert) vor dem Rechnen.
+- **Buddhabrot:** Ein Fraktal, das wie ein meditierender Buddha aussieht. Es zeigt die Wege, die Punkte nehmen, wenn sie ins Unendliche abhauen.
+- **Mandelbulb:** Die 3D-Version des Mandelbrot-Männchens – wie alienartige Kathedralen!
+- **Newton-Fraktale:** Entstehen durch das Suchen von Nullstellen in Gleichungen. Jeder Startwert landet bei einer anderen "Antwort" und bekommt eine eigene Farbe.
 
 ## 🛠️ Installation & Start
 
