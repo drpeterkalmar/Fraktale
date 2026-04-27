@@ -120,6 +120,7 @@ function onWorkerMessage(e) {
     if (e.data.type === 'buddhabrotChunk') {
         e.target.buddhabrotBusy = false;
         if (state.fractalMode !== 7) return;
+        if (e.data.version !== state.cpuRenderVersion) return;
         const chunk = e.data.histogram;
         const hist = state.buddhabrotHistogram;
         if (!hist) return;
@@ -355,7 +356,8 @@ function renderBuddhabrot() {
                 zoom: state.zoom,
                 maxIter: 200,
                 minIter: 20,
-                samples: 5000
+                samples: 5000,
+                version: state.cpuRenderVersion
             });
         }
     });
@@ -1171,6 +1173,7 @@ function animationLoop(now) {
     if (moved && state.fractalMode === 7 && state.buddhabrotHistogram) {
         state.buddhabrotHistogram.fill(0);
         state.buddhabrotMax = 0;
+        state.cpuRenderVersion++;
     }
     if (state.fractalMode === 7) renderBuddhabrot();
     render();

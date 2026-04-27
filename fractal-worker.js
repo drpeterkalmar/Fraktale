@@ -52,7 +52,7 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle, fractalMode) {
 
 self.onmessage = function (e) {
     if (e.data.type === 'buddhabrot') {
-        const { w, h, maxIter, minIter, samples, cx: centerX, cy: centerY, zoom } = e.data;
+        const { w, h, maxIter, minIter, samples, cx: centerX, cy: centerY, zoom, version } = e.data;
         const histogram = new Uint32Array(w * h);
         const pixelScale = 3.0 / (zoom * h);
         
@@ -80,7 +80,7 @@ self.onmessage = function (e) {
                 }
             }
         }
-        self.postMessage({ type: 'buddhabrotChunk', histogram }, [histogram.buffer]);
+        self.postMessage({ type: 'buddhabrotChunk', histogram, version }, [histogram.buffer]);
         return;
     }
 
