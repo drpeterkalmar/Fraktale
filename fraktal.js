@@ -297,7 +297,7 @@ function render() {
     const juliaCx = state.juliaC.x.toNumber(), juliaCy = state.juliaC.y.toNumber();
     gl.uniform4f(uLocs.u_juliaC, Math.fround(juliaCx), juliaCx - Math.fround(juliaCx), Math.fround(juliaCy), juliaCy - Math.fround(juliaCy));
 
-    const usePerturbation = state.zoom >= 100000.0 && !useCPU;
+    const usePerturbation = state.zoom >= 100000.0 && !useCPU && state.fractalMode < 2;
 
     if (useCPU) {
         // CPU High-Precision Mode

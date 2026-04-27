@@ -63,13 +63,6 @@ vec2 ds_add(vec2 a, vec2 b) {
 vec2 ds_neg(vec2 a) { return -a; }
 vec2 ds_abs(vec2 a) { return (a.x < 0.0) ? -a : a; }
 
-vec2 ds_div(vec2 a, vec2 b) {
-    float r = a.x / b.x;
-    vec2 res = ds_mul(ds(r), b);
-    vec2 diff = ds_sub(a, res);
-    return ds_add(ds(r), ds(diff.x / b.x));
-}
-
 vec2 ds_sub(vec2 a, vec2 b) {
     return ds_add(a, vec2(-b.x, -b.y));
 }
@@ -89,6 +82,13 @@ vec2 ds_mul(vec2 a, vec2 b) {
     e += a.x * b.y + a.y * b.x;
     float r = p + e;
     return vec2(r, e - (r - p));
+}
+
+vec2 ds_div(vec2 a, vec2 b) {
+    float r = a.x / b.x;
+    vec2 res = ds_mul(ds(r), b);
+    vec2 diff = ds_sub(a, res);
+    return ds_add(ds(r), ds(diff.x / b.x));
 }
 
 // ============================================================
@@ -350,7 +350,7 @@ float mandelbrot_perturbation(vec2 pixel) {
 
 void main() {
     float smoothIter;
-    if (u_mode == 1 && u_fractalMode != 2) {
+    if (u_mode == 1 && u_fractalMode < 2) {
         smoothIter = mandelbrot_perturbation(vUv);
     } else {
         smoothIter = mandelbrot_standard(vUv);
