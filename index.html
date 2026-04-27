@@ -31,19 +31,19 @@
         </div>
         <div class="info-grid">
             <div class="info-row">
-                <span class="label">Re</span>
+                <span id="info-re-label" class="label">Re</span>
                 <span id="info-re" class="value mono">−0.500000</span>
             </div>
             <div class="info-row">
-                <span class="label">Im</span>
+                <span id="info-im-label" class="label">Im</span>
                 <span id="info-im" class="value mono">0.000000</span>
             </div>
             <div class="info-row">
-                <span class="label">Zoom</span>
+                <span id="info-zoom-label" class="label">Zoom</span>
                 <span id="info-zoom" class="value mono">1.0×</span>
             </div>
             <div class="info-row">
-                <span class="label">Iterationen</span>
+                <span id="info-iter-label" class="label">Iterationen</span>
                 <div class="iter-ctrl">
                     <button id="btn-iter-down" class="iter-btn" title="Weniger Details (−)">−</button>
                     <span id="info-iter" class="value mono">500</span>
@@ -51,16 +51,16 @@
                 </div>
             </div>
             <div class="info-row">
-                <span class="label">Mode</span>
+                <span id="info-mode-label" class="label">Mode</span>
                 <span id="info-mode" class="value">GPU f64</span>
             </div>
             <div class="info-row">
-                <span class="label">FPS</span>
+                <span id="info-fps-label" class="label">FPS</span>
                 <span id="info-fps" class="value mono">--</span>
             </div>
             <div class="info-row">
-                <span class="label">Version</span>
-                <span id="info-version" class="value mono">v1.10</span>
+                <span id="info-version-label" class="label">Version</span>
+                <span id="info-version" class="value mono">v1.11</span>
             </div>
         </div>
     </div>
@@ -102,6 +102,9 @@
         <button id="btn-info-toggle" class="ctrl-btn glass-panel" title="Toggle Info (I)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
         </button>
+        <button id="btn-lang-toggle" class="ctrl-btn glass-panel" title="Sprache wechseln (L)">
+            <span id="lang-icon" style="font-weight:700;font-size:0.9rem;font-family:'Inter'">DE</span>
+        </button>
     </div>
 
     <!-- Formula Bar (bottom-center) -->
@@ -126,35 +129,35 @@
     <div id="info-box-backdrop"></div>
     <div id="info-box" class="glass-panel">
         <button id="info-box-close" title="Schließen">&times;</button>
-        <h2>Was ist ein Fraktal? 🌀</h2>
-        <p>Ein Fraktal ist ein mathematisches Wunderwerk. Stell dir ein Bild vor, in das du immer weiter hineinzoomen kannst, und es tauchen immer wieder neue, wunderschöne Muster auf, die dem Ganzen ähneln.</p>
+        <h2 id="help-title">Was ist ein Fraktal? 🌀</h2>
+        <p id="help-desc">Ein Fraktal ist ein mathematisches Wunderwerk. Stell dir ein Bild vor, in das du immer weiter hineinzoomen kannst, und es tauchen immer wieder neue, wunderschöne Muster auf, die dem Ganzen ähneln.</p>
         
         <div class="info-section">
-            <h3>Die Zauberformel: z = z² + c ✨</h3>
-            <p>Du nimmst eine Zahl (z), nimmst sie mit sich selbst mal (z²) und zählst eine feste Zahl (c) dazu. Das Ergebnis nimmst du dann als neues (z) und machst das immer wieder.</p>
+            <h3 id="magic-title">Die Zauberformel: z = z² + c ✨</h3>
+            <p id="magic-desc">Du nimmst eine Zahl (z), nimmst sie mit sich selbst mal (z²) und zählst eine feste Zahl (c) dazu. Das Ergebnis nimmst du dann als neues (z) und machst das immer wieder.</p>
         </div>
 
         <div class="info-section">
-            <h3>Warum ist das "Männchen" schwarz? 🌑</h3>
+            <h3 id="black-title">Warum ist das "Männchen" schwarz? 🌑</h3>
             <p>Das ist eine tolle Frage! Wenn du die Zauberformel immer wieder anwendest, gibt es zwei Möglichkeiten:</p>
             <ul>
-                <li><strong>Gefangen:</strong> Die Zahl bleibt klein und "kreist" immer weiter herum. Diese Punkte gehören zum Fraktal und wir malen sie <strong>schwarz</strong> an.</li>
-                <li><strong>Flucht:</strong> Die Zahl wird riesig und schießt wie eine Rakete ins Unendliche ab!</li>
+                <li><strong id="trapped-label">Gefangen:</strong> <span id="trapped-desc">Die Zahl bleibt klein und "kreist" immer weiter herum. Diese Punkte gehören zum Fraktal und wir malen sie schwarz an.</span></li>
+                <li><strong id="escape-label">Flucht:</strong> <span id="escape-desc">Die Zahl wird riesig und schießt wie eine Rakete ins Unendliche ab!</span></li>
             </ul>
         </div>
 
         <div class="info-section">
-            <h3>Woher kommen die bunten Farben? 🌈</h3>
-            <p>Die Farben zeigen uns, wie schnell eine Zahl "geflüchtet" ist. Eine Zahl, die schon nach 3 Schritten riesig wird, bekommt eine andere Farbe als eine, die 100 Schritte gebraucht hat. So entstehen diese wunderschönen, leuchtenden Ränder!</p>
+            <h3 id="color-title">Woher kommen die bunten Farben? 🌈</h3>
+            <p id="color-desc">Die Farben zeigen uns, wie schnell eine Zahl "geflüchtet" ist. Eine Zahl, die schon nach 3 Schritten riesig wird, bekommt eine andere Farbe als eine, die 100 Schritte gebraucht hat. So entstehen diese wunderschönen, leuchtenden Ränder!</p>
         </div>
 
         <div class="info-section">
-            <h3>Steuerung 🎮</h3>
+            <h3 id="ctrl-title">Steuerung 🎮</h3>
             <ul>
-                <li><strong>Scrollen:</strong> Rein- und Rauszoomen.</li>
-                <li><strong>Ziehen:</strong> Den Bildausschnitt verschieben.</li>
-                <li><strong>Shift + Ziehen:</strong> Ein Rechteck ziehen, um genau diesen Bereich zu vergrößern.</li>
-                <li><strong>Doppelklick:</strong> Den Punkt in die Mitte rücken.</li>
+                <li id="ctrl-scroll"><strong>Scrollen:</strong> Rein- und Rauszoomen.</li>
+                <li id="ctrl-drag"><strong>Ziehen:</strong> Den Bildausschnitt verschieben.</li>
+                <li id="ctrl-shift"><strong>Shift + Ziehen:</strong> Ein Rechteck ziehen.</li>
+                <li id="ctrl-keys"><strong>Tasten:</strong> Pfeiltasten zum Bewegen, +/− für Details.</li>
             </ul>
         </div>
 
@@ -193,7 +196,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js"></script>
-    <script src="shaders.js?v=1.9"></script>
-    <script src="fraktal.js?v=1.9"></script>
+    <script src="translations.js?v=1.11"></script>
+    <script src="shaders.js?v=1.11"></script>
+    <script src="fraktal.js?v=1.11"></script>
 </body>
 </html>

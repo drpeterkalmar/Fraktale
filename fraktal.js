@@ -81,6 +81,7 @@ const state = {
     cpuTilesTotal: 0,
     cpuTilesDone: 0,
     showUI: true,
+    lang: 'de',
     lastRenderKey: '',
     selectionMode: false,
     buddhabrotHistogram: null,
@@ -478,40 +479,77 @@ function updateUI() {
     }
 
     const modeIcon = document.getElementById('mode-icon');
-    if (modeIcon) {
-        const icons = ['M', 'J', 'B', 'T', '3', 'N', '3D', 'ॐ'];
-        modeIcon.textContent = icons[state.fractalMode] || 'F';
-    }
-
-    document.getElementById('info-re').textContent = state.cx.toFixed(10);
-    document.getElementById('info-im').textContent = state.cy.toFixed(10);
-    document.getElementById('info-zoom').textContent = formatZoom(state.zoom);
-    document.getElementById('info-iter').textContent = state.maxIter;
-    document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
-
-    const juliaInputs = document.getElementById('julia-c-inputs');
-    const mandelText = document.getElementById('mandel-c-text');
-
-    if (isJulia) {
-        if (juliaInputs && mandelText) {
-            juliaInputs.classList.toggle('hidden', false);
-            mandelText.classList.toggle('hidden', true);
-            updateSteppers();
-        }
-    } else {
-        if (juliaInputs && mandelText) {
-            juliaInputs.classList.toggle('hidden', true);
-            mandelText.classList.toggle('hidden', false);
-        }
-    }
-    
+    const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = 'v1.10';
+    if (versionEl) versionEl.textContent = 'v1.11';
+
+    // Localize simple labels
+    const labelMap = {
+        'info-re-label': t.re,
+        'info-im-label': t.im,
+        'info-zoom-label': t.zoom,
+        'info-iter-label': t.iterations,
+        'info-mode-label': t.mode,
+        'info-fps-label': t.fps,
+        'info-version-label': t.version,
+        'formula-label-text': t.formula
+    };
+    for (const [id, val] of Object.entries(labelMap)) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    }
+
+    // Help Box Localization
+    const helpMap = {
+        'help-title': t.what_is_fractal,
+        'help-desc': t.fractal_desc,
+        'magic-title': t.magic_formula,
+        'magic-desc': t.magic_desc,
+        'black-title': t.why_black,
+        'trapped-label': t.trapped,
+        'trapped-desc': t.trapped_desc,
+        'escape-label': t.escape,
+        'escape-desc': t.escape_desc,
+        'color-title': t.color_origin,
+        'color-desc': t.color_desc,
+        'ctrl-title': t.controls,
+        'ctrl-scroll': t.ctrl_scroll,
+        'ctrl-drag': t.ctrl_drag,
+        'ctrl-shift': t.ctrl_shift,
+        'ctrl-keys': t.ctrl_keys
+    };
+    for (const [id, val] of Object.entries(helpMap)) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = val;
+    }
+
+    // Mode Titles
+    const modeTitles = [t.mandelbrot, t.julia, t.burning_ship, t.tricorn, t.mandel_z3, t.newton, t.mandelbulb, t.buddhabrot];
+    if (infoTitle) infoTitle.textContent = modeTitles[state.fractalMode] || '???';
+
+    // Tooltips
+    const tooltipMap = {
+        'btn-reset': t.reset_view,
+        'btn-screenshot': t.screenshot,
+        'btn-fullscreen': t.fullscreen,
+        'btn-zoom-mode': t.zoom_mode,
+        'btn-mode-toggle': t.change_mode,
+        'btn-help-toggle': t.help,
+        'btn-info-toggle': t.toggle_info,
+        'btn-lang-toggle': t.change_lang
+    };
+    for (const [id, val] of Object.entries(tooltipMap)) {
+        const el = document.getElementById(id);
+        if (el) el.title = val;
+    }
+
+    const langIcon = document.getElementById('lang-icon');
+    if (langIcon) langIcon.textContent = state.lang.toUpperCase();
 
     const formulaBase = document.getElementById('formula-base');
     if (formulaBase) {
-        if (state.fractalMode === 7) formulaBase.innerHTML = 'Buddhabrot (Accumulation Mode)';
-        else if (state.fractalMode === 6) formulaBase.innerHTML = 'Mandelbulb 3D (Raymarching)';
+        if (state.fractalMode === 7) formulaBase.innerHTML = t.buddhabrot + ' (Accumulation)';
+        else if (state.fractalMode === 6) formulaBase.innerHTML = t.mandelbulb + ' (Raymarching)';
         else if (state.fractalMode === 5) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub> - (z<sub>n</sub><sup>3</sup> - 1) / (3z<sub>n</sub><sup>2</sup>)';
         else if (state.fractalMode === 4) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>3</sup> + ';
         else if (state.fractalMode === 3) formulaBase.innerHTML = 'z<sub>n+1</sub> = conj(z<sub>n</sub>)<sup>2</sup> + ';
@@ -833,6 +871,12 @@ function setFractalMode(mode) {
     updateUI();
 }
 
+function toggleLanguage() {
+    const langs = ['de', 'en', 'hu'];
+    state.lang = langs[(langs.indexOf(state.lang) + 1) % langs.length];
+    updateUI();
+}
+
 function toggleZoomMode() {
     state.selectionMode = !state.selectionMode;
     const btn = document.getElementById('btn-zoom-mode');
@@ -1066,6 +1110,7 @@ function wireButtons() {
         'btn-mode-toggle': () => toggleFractalMode(),
         'btn-help-toggle': () => toggleInfoBox(),
         'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); },
+        'btn-lang-toggle': () => toggleLanguage(),
         'info-box-backdrop': () => toggleInfoBox(),
         'btn-iter-up': () => { state.maxIter = Math.floor(state.maxIter * 1.2); markOrbitDirty(); updateUI(); scheduleRender(); },
         'btn-iter-down': () => { state.maxIter = Math.max(100, Math.floor(state.maxIter / 1.2)); markOrbitDirty(); updateUI(); scheduleRender(); }
