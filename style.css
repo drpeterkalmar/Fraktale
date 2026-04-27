@@ -248,11 +248,15 @@ body {
     border: 1px solid var(--glass-border);
 }
 
-.ctrl-btn:hover {
+.ctrl-btn:hover, .ctrl-btn.active {
     background: var(--accent);
     color: var(--bg);
     border-color: var(--accent);
     transform: scale(1.1);
+}
+
+.ctrl-btn.active {
+    box-shadow: 0 0 15px var(--accent-glow);
 }
 
 .ctrl-btn svg {

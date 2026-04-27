@@ -82,6 +82,7 @@ const state = {
     cpuTilesDone: 0,
     showUI: true,
     lastRenderKey: '',
+    selectionMode: false,
 };
 
 // df64 works well up to ~1e11 zoom. Beyond that, CPU workers take over.
@@ -682,6 +683,13 @@ function toggleFractalMode() {
     }
 }
 
+function toggleZoomMode() {
+    state.selectionMode = !state.selectionMode;
+    const btn = document.getElementById('btn-zoom-mode');
+    if (btn) btn.classList.toggle('active', state.selectionMode);
+    canvas.style.cursor = state.selectionMode ? 'crosshair' : 'default';
+}
+
 // === Interaction ===
 let isDragging = false;
 let isSelecting = false;
@@ -689,9 +697,10 @@ let selectStartX, selectStartY;
 const selectionBox = document.getElementById('selection-box');
 let dragStartX, dragStartY, dragCx, dragCy;
 let lastTouchDist = 0;
+let lastTouchX = 0, lastTouchY = 0;
 
 canvas.addEventListener('mousedown', (e) => {
-    if (e.shiftKey) {
+    if (e.shiftKey || state.selectionMode) {
         isSelecting = true;
         selectStartX = e.clientX;
         selectStartY = e.clientY;
@@ -727,40 +736,48 @@ window.addEventListener('mousemove', (e) => {
     }
 });
 
+function finishSelection(clientX, clientY) {
+    if (!isSelecting) return;
+    isSelecting = false;
+    selectionBox.style.display = 'none';
+    
+    const rect = canvas.getBoundingClientRect();
+    const x1 = selectStartX - rect.left;
+    const y1 = selectStartY - rect.top;
+    const x2 = clientX - rect.left;
+    const y2 = clientY - rect.top;
+    
+    const boxW = Math.abs(x2 - x1);
+    const boxH = Math.abs(y2 - y1);
+    
+    if (boxW > 5 && boxH > 5) {
+        const centerX = (x1 + x2) / 2;
+        const centerY = (y1 + y2) / 2;
+        
+        const viewHeight = 3.0 / state.zoom;
+        const viewWidth = viewHeight * (canvas.width / canvas.height);
+        
+        const dx = (centerX / rect.width - 0.5) * viewWidth;
+        const dy = (centerY / rect.height - 0.5) * viewHeight;
+        
+        state.cx = state.cx.plus(new Decimal(dx));
+        state.cy = state.cy.minus(new Decimal(dy));
+        state.targetCx = state.cx;
+        state.targetCy = state.cy;
+        
+        const zoomFactor = Math.min(rect.width / boxW, rect.height / boxH);
+        state.zoom *= zoomFactor;
+        state.targetZoom = state.zoom;
+        markOrbitDirty();
+
+        // Auto-disable selection mode after zoom on mobile
+        if (state.selectionMode) toggleZoomMode();
+    }
+}
+
 window.addEventListener('mouseup', (e) => {
     if (isSelecting) {
-        isSelecting = false;
-        selectionBox.style.display = 'none';
-        
-        const rect = canvas.getBoundingClientRect();
-        const x1 = selectStartX - rect.left;
-        const y1 = selectStartY - rect.top;
-        const x2 = e.clientX - rect.left;
-        const y2 = e.clientY - rect.top;
-        
-        const boxW = Math.abs(x2 - x1);
-        const boxH = Math.abs(y2 - y1);
-        
-        if (boxW > 5 && boxH > 5) {
-            const centerX = (x1 + x2) / 2;
-            const centerY = (y1 + y2) / 2;
-            
-            const viewHeight = 3.0 / state.zoom;
-            const viewWidth = viewHeight * (canvas.width / canvas.height);
-            
-            const dx = (centerX / rect.width - 0.5) * viewWidth;
-            const dy = (centerY / rect.height - 0.5) * viewHeight;
-            
-            state.cx = state.cx.plus(new Decimal(dx));
-            state.cy = state.cy.minus(new Decimal(dy));
-            state.targetCx = state.cx;
-            state.targetCy = state.cy;
-            
-            const zoomFactor = Math.min(rect.width / boxW, rect.height / boxH);
-            state.zoom *= zoomFactor;
-            state.targetZoom = state.zoom;
-            markOrbitDirty();
-        }
+        finishSelection(e.clientX, e.clientY);
     } else if (isDragging) {
         if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) < 8) {
             const rect = canvas.getBoundingClientRect();
@@ -782,9 +799,22 @@ canvas.addEventListener('wheel', (e) => {
 
 canvas.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) {
-        isDragging = true;
-        dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
-        dragCx = state.targetCx; dragCy = state.targetCy;
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
+        if (state.selectionMode) {
+            isSelecting = true;
+            selectStartX = lastTouchX;
+            selectStartY = lastTouchY;
+            selectionBox.style.display = 'block';
+            selectionBox.style.left = selectStartX + 'px';
+            selectionBox.style.top = selectStartY + 'px';
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+        } else {
+            isDragging = true;
+            dragStartX = lastTouchX; dragStartY = lastTouchY;
+            dragCx = state.targetCx; dragCy = state.targetCy;
+        }
     } else if (e.touches.length === 2) {
         lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     }
@@ -792,12 +822,25 @@ canvas.addEventListener('touchstart', (e) => {
 
 canvas.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    if (isDragging && e.touches.length === 1) {
-        const viewWidth = 3.0 / state.zoom;
-        const dx = (e.touches[0].clientX - dragStartX) / window.innerWidth * viewWidth;
-        const dy = (e.touches[0].clientY - dragStartY) / window.innerHeight * (viewWidth * canvas.height / canvas.width);
-        state.targetCx = dragCx.minus(new Decimal(dx));
-        state.targetCy = dragCy.plus(new Decimal(dy));
+    if (e.touches.length === 1) {
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
+        if (isSelecting) {
+            const x = Math.min(lastTouchX, selectStartX);
+            const y = Math.min(lastTouchY, selectStartY);
+            const w = Math.abs(lastTouchX - selectStartX);
+            const h = Math.abs(lastTouchY - selectStartY);
+            selectionBox.style.left = x + 'px';
+            selectionBox.style.top = y + 'px';
+            selectionBox.style.width = w + 'px';
+            selectionBox.style.height = h + 'px';
+        } else if (isDragging) {
+            const viewWidth = 3.0 / state.zoom;
+            const dx = (lastTouchX - dragStartX) / window.innerWidth * viewWidth;
+            const dy = (lastTouchY - dragStartY) / window.innerHeight * (viewWidth * canvas.height / canvas.width);
+            state.targetCx = dragCx.minus(new Decimal(dx));
+            state.targetCy = dragCy.plus(new Decimal(dy));
+        }
     } else if (e.touches.length === 2) {
         const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         state.targetZoom *= (dist / lastTouchDist);
@@ -805,13 +848,20 @@ canvas.addEventListener('touchmove', (e) => {
     }
 }, { passive: false });
 
-canvas.addEventListener('touchend', () => { isDragging = false; markOrbitDirty(); });
+canvas.addEventListener('touchend', () => {
+    if (isSelecting) {
+        finishSelection(lastTouchX, lastTouchY);
+    }
+    isDragging = false; 
+    markOrbitDirty(); 
+});
 
 window.addEventListener('keydown', (e) => {
     switch (e.key.toLowerCase()) {
         case 'p': state.palette = (state.palette + 1) % PALETTES.length; updatePalettePicker(); break;
         case 'r': goToBookmark(BOOKMARKS[0]); break;
         case 's': screenshot(); break;
+        case 'z': toggleZoomMode(); break;
         case 'f': toggleFullscreen(); break;
         case 'i': state.showUI = !state.showUI; toggleUIVisibility(); break;
         case 'h': toggleInfoBox(); break;
@@ -853,6 +903,7 @@ function wireButtons() {
         'btn-reset': () => goToBookmark(BOOKMARKS[0]),
         'btn-screenshot': () => screenshot(),
         'btn-fullscreen': () => toggleFullscreen(),
+        'btn-zoom-mode': () => toggleZoomMode(),
         'btn-julia-toggle': () => toggleFractalMode(),
         'btn-help-toggle': () => toggleInfoBox(),
         'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); },
