@@ -1,4 +1,4 @@
-# 🌀 Fraktal Explorer 🚀
+# 🌀 Fraktal Explorer 🚀 
 
 Willkommen in der unendlichen Welt der Mathematik! Mit diesem Tool kannst du das berühmte **Mandelbrot-Männchen** erforschen und so weit hineinzoomen, wie du willst – es tauchen immer wieder neue, wunderschöne Muster auf!
 
