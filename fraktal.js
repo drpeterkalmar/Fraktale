@@ -16,9 +16,9 @@ const BOOKMARKS = [
     { name: 'Seahorse',    cx: '-0.7463',  cy: '0.1102',  zoom: 200 },
     { name: 'Elephant',    cx: '0.2819',    cy: '0.0100',   zoom: 50 },
     { name: 'Double Spiral', cx: '-0.74529',  cy: '0.11307', zoom: 20000 },
-    { name: 'Lightning',   cx: '-1.25066',  cy: '0.02012',  zoom: 1000 },
+    { name: 'Star',        cx: '-1.25066',  cy: '0.02012',  zoom: 1000 },
     { name: 'Antenna',     cx: '-1.401155', cy: '0.0', zoom: 500 },
-    { name: 'Star',        cx: '-0.16',     cy: '1.0405',   zoom: 200 },
+    { name: 'Lightning',   cx: '-0.16',     cy: '1.0405',   zoom: 200 },
 ];
 
 // === WebGL Setup ===
@@ -330,6 +330,9 @@ function renderBuddhabrot() {
                 type: 'buddhabrot',
                 w: canvas.width,
                 h: canvas.height,
+                cx: state.cx.toNumber(),
+                cy: state.cy.toNumber(),
+                zoom: state.zoom,
                 maxIter: 200,
                 minIter: 20,
                 samples: 5000
@@ -370,7 +373,7 @@ function render() {
     }
     
     const useCPU = state.zoom > ZOOM_THRESHOLD;
-    const usePerturbation = state.zoom > 1000 && (state.fractalMode === 0 || state.fractalMode === 1);
+    const usePerturbation = false; // Disabled, using stable df64 instead
 
     // GPU Shader setup
     gl.useProgram(program);
@@ -640,10 +643,10 @@ function renderMinimapBase() {
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
             let zx, zy, cx, cy;
-            if (state.fractalMode === 1) { // Julia
+            if (state.fractalMode === 1 || state.fractalMode === 5) { // Julia or Newton
                 zx = (x / w - 0.5) * 3.0;
                 zy = (0.5 - y / h) * 3.0;
-                cx = 0; cy = 0; // Fixed values handled inside loop
+                cx = 0; cy = 0; 
             } else { // Others (Mandelbrot, Ship, etc)
                 zx = 0; zy = 0;
                 cx = (x / w - 0.5) * 3.0 - 0.5;
@@ -1109,13 +1112,26 @@ function animationLoop(now) {
     const zoomLerp = 1 - Math.pow(0.4, dt); 
     const panLerp = 1 - Math.pow(0.1, dt); // Much faster pan
     
-    state.zoom = Math.exp(Math.log(state.zoom) + (Math.log(state.targetZoom) - Math.log(state.zoom)) * zoomLerp);
+    let moved = false;
+    const zoomDiff = Math.abs(state.targetZoom - state.zoom) / state.zoom;
+    if (zoomDiff > 0.0001) {
+        state.zoom = Math.exp(Math.log(state.zoom) + (Math.log(state.targetZoom) - Math.log(state.zoom)) * zoomLerp);
+        moved = true;
+    } else {
+        state.zoom = state.targetZoom;
+    }
     
     const cxDiff = state.targetCx.minus(state.cx).toNumber();
     const cyDiff = state.targetCy.minus(state.cy).toNumber();
     if (Math.abs(cxDiff) > 1e-30 || Math.abs(cyDiff) > 1e-30) {
         state.cx = state.cx.plus(new Decimal(cxDiff * panLerp));
         state.cy = state.cy.plus(new Decimal(cyDiff * panLerp));
+        moved = true;
+    }
+    
+    if (moved && state.fractalMode === 7 && state.buddhabrotHistogram) {
+        state.buddhabrotHistogram.fill(0);
+        state.buddhabrotMax = 0;
     }
     if (state.fractalMode === 7) renderBuddhabrot();
     render();

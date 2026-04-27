@@ -52,9 +52,12 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle, fractalMode) {
 
 self.onmessage = function (e) {
     if (e.data.type === 'buddhabrot') {
-        const { w, h, maxIter, minIter, samples } = e.data;
+        const { w, h, maxIter, minIter, samples, cx: centerX, cy: centerY, zoom } = e.data;
         const histogram = new Uint32Array(w * h);
+        const pixelScale = 3.0 / (zoom * h);
+        
         for (let s = 0; s < samples; s++) {
+            // Sample points primarily from the main cardioid area to find interesting escaping orbits
             const cx = Math.random() * 4.0 - 2.5;
             const cy = Math.random() * 3.0 - 1.5;
             let zx = 0, zy = 0;
@@ -71,8 +74,8 @@ self.onmessage = function (e) {
             }
             if (escaped && iterCount >= minIter) {
                 for (let i = 0; i < iterCount; i++) {
-                    const px = Math.floor((orbitX[i] + 2.0) / 3.0 * w);
-                    const py = Math.floor((orbitY[i] + 1.5) / 3.0 * h);
+                    const px = Math.floor((orbitX[i] - centerX) / pixelScale + w / 2.0);
+                    const py = Math.floor((centerY - orbitY[i]) / pixelScale + h / 2.0);
                     if (px >= 0 && px < w && py >= 0 && py < h) histogram[py * w + px]++;
                 }
             }
