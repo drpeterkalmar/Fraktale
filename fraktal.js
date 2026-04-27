@@ -60,6 +60,10 @@ function resize() {
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     gl.viewport(0, 0, canvas.width, canvas.height);
+    if (state.fractalMode === 7) {
+        state.buddhabrotHistogram = new Uint32Array(canvas.width * canvas.height);
+        state.buddhabrotMax = 0;
+    }
 }
 
 // === State ===
@@ -223,12 +227,18 @@ function startCpuRender() {
                 tile: next,
                 canvasW: canvas.width,
                 canvasH: canvas.height,
+                viewW: 3.0 * (canvas.width / canvas.height) / state.zoom,
+                viewH: 3.0 / state.zoom,
                 baseDcx, baseDcy,
                 refOrbit: workerRefOrbit,
                 refLen: state.refOrbitLen,
+                cx: state.cx.toNumber(),
+                cy: state.cy.toNumber(),
+                refCx: state.refCx.toNumber(),
+                refCy: state.refCy.toNumber(),
                 zoom: state.zoom,
                 maxIter: state.maxIter,
-                palette: state.palette,
+                paletteIdx: state.palette,
                 colorCycle: state.colorCycle,
                 fractalMode: state.fractalMode,
                 version: state.cpuRenderVersion
@@ -885,9 +895,11 @@ function setFractalMode(mode) {
         state.buddhabrotHistogram = new Uint32Array(canvas.width * canvas.height);
         state.buddhabrotMax = 0;
         state.buddhabrotActive = true;
+        if (cpuOverlay) cpuOverlay.style.display = 'block';
     } else {
         // Others: default view
         state.buddhabrotActive = false;
+        if (cpuOverlay) cpuOverlay.style.display = 'none';
         goToBookmark(BOOKMARKS[0]);
     }
     
