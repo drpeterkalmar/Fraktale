@@ -430,23 +430,38 @@ function updateUI() {
     document.getElementById('info-zoom').textContent = formatZoom(state.zoom);
     document.getElementById('info-iter').textContent = state.maxIter;
     document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
-    
-    // Formula Bar
+
     const juliaInputs = document.getElementById('julia-c-inputs');
     const mandelText = document.getElementById('mandel-c-text');
 
-    if (juliaInputs && mandelText) {
-        juliaInputs.classList.toggle('hidden', !isJulia);
-        mandelText.classList.toggle('hidden', isJulia);
-        if (isJulia) updateSteppers();
+    if (isJulia) {
+        if (juliaInputs && mandelText) {
+            juliaInputs.classList.toggle('hidden', false);
+            mandelText.classList.toggle('hidden', true);
+            updateSteppers();
+        }
+    } else {
+        if (juliaInputs && mandelText) {
+            juliaInputs.classList.toggle('hidden', true);
+            mandelText.classList.toggle('hidden', false);
+        }
     }
     
-    // Hide minimap and bookmarks in Julia mode
+    const formulaBase = document.getElementById('formula-base');
+    if (formulaBase) {
+        if (state.fractalMode === 4) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>3</sup> + ';
+        else if (state.fractalMode === 3) formulaBase.innerHTML = 'z<sub>n+1</sub> = conj(z<sub>n</sub>)<sup>2</sup> + ';
+        else if (state.fractalMode === 2) formulaBase.innerHTML = 'z<sub>n+1</sub> = (|Re(z)| + i|Im(z)|)<sup>2</sup> + ';
+        else formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + ';
+    }
+    
+    // Hide minimap and bookmarks in Julia mode, and bookmarks for non-Mandelbrot
     const minimap = document.getElementById('minimap');
     const bookmarks = document.getElementById('bookmarks');
     
     if (minimap) minimap.classList.toggle('hidden', isJulia || !state.showUI);
-    if (bookmarks) bookmarks.classList.toggle('hidden', isJulia || !state.showUI);
+    // Only show Mandelbrot-specific bookmarks if in Mandelbrot mode
+    if (bookmarks) bookmarks.classList.toggle('hidden', state.fractalMode !== 0 || !state.showUI);
     
     if (!isJulia) updateMinimap();
 }
@@ -512,9 +527,22 @@ function renderMinimapBase() {
             let cy = (0.5 - y / h) * 3.0; // Inverted Y
             let iter = 0;
             for (let i = 0; i < 64; i++) {
-                let nzx = zx*zx - zy*zy + cx;
-                zy = 2*zx*zy + cy;
-                zx = nzx;
+                let nzx, nzy;
+                if (state.fractalMode === 2) { // Burning Ship
+                    nzx = zx*zx - zy*zy + cx;
+                    nzy = Math.abs(2*zx*zy) + cy;
+                } else if (state.fractalMode === 3) { // Tricorn
+                    nzx = zx*zx - zy*zy + cx;
+                    nzy = -2*zx*zy + cy;
+                } else if (state.fractalMode === 4) { // z3
+                    const x2 = zx*zx, y2 = zy*zy;
+                    nzx = zx * (x2 - 3*y2) + cx;
+                    nzy = zy * (3*x2 - y2) + cy;
+                } else { // Mandelbrot / Julia
+                    nzx = zx*zx - zy*zy + cx;
+                    nzy = 2*zx*zy + cy;
+                }
+                zx = nzx; zy = nzy;
                 if (zx*zx + zy*zy > 4) break;
                 iter++;
             }
@@ -705,6 +733,7 @@ function setFractalMode(mode) {
         goToBookmark(BOOKMARKS[0]);
     }
     
+    renderMinimapBase();
     updateUI();
 }
 
