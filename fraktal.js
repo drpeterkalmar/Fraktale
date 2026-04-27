@@ -335,6 +335,7 @@ function renderBuddhabrot() {
 }
 
 function render() {
+    if (state.fractalMode === 7) return; // Buddhabrot mode handles its own rendering
     const useCPU = state.zoom > ZOOM_THRESHOLD;
 
     // GPU Shader setup
@@ -504,6 +505,9 @@ function updateUI() {
         }
     }
     
+    const versionEl = document.getElementById('info-version');
+    if (versionEl) versionEl.textContent = 'v1.10';
+
     const formulaBase = document.getElementById('formula-base');
     if (formulaBase) {
         if (state.fractalMode === 7) formulaBase.innerHTML = 'Buddhabrot (Accumulation Mode)';
