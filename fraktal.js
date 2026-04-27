@@ -410,19 +410,19 @@ function formatZoom(z) {
 
 function updateUI() {
     const isJulia = state.fractalMode === 1;
-    const isBurning = state.fractalMode === 2;
     const titleEl = document.getElementById('info-title');
     if (titleEl) {
-        if (isJulia) titleEl.textContent = 'JULIA-MENGE';
-        else if (isBurning) titleEl.textContent = 'BURNING SHIP';
-        else titleEl.textContent = 'MANDELBROT';
+        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³'];
+        titleEl.textContent = titles[state.fractalMode] || 'FRAKTAL';
     }
+
+    const modeSelect = document.getElementById('select-fractal-mode');
+    if (modeSelect) modeSelect.value = state.fractalMode;
 
     const modeIcon = document.getElementById('mode-icon');
     if (modeIcon) {
-        if (isJulia) modeIcon.textContent = 'J';
-        else if (isBurning) modeIcon.textContent = 'B';
-        else modeIcon.textContent = 'M';
+        const icons = ['M', 'J', 'B', 'T', '3'];
+        modeIcon.textContent = icons[state.fractalMode] || 'F';
     }
 
     document.getElementById('info-re').textContent = state.cx.toFixed(10);
@@ -685,7 +685,11 @@ function stepDigit(part, idx, delta) {
 }
 
 function toggleFractalMode() {
-    state.fractalMode = (state.fractalMode + 1) % 3;
+    setFractalMode((state.fractalMode + 1) % 5);
+}
+
+function setFractalMode(mode) {
+    state.fractalMode = mode;
     state.refOrbitData = null;
     markOrbitDirty();
     
@@ -694,10 +698,10 @@ function toggleFractalMode() {
         // Julia: center at 0,0
         state.targetZoom = 1.0; state.targetCx = new Decimal(0); state.targetCy = new Decimal(0);
     } else if (state.fractalMode === 2) {
-        // Burning Ship: usually looks good at slightly different start
+        // Burning Ship
         state.targetZoom = 1.0; state.targetCx = new Decimal('-0.5'); state.targetCy = new Decimal('-0.5');
     } else {
-        // Mandelbrot: default view
+        // Others: default view
         goToBookmark(BOOKMARKS[0]);
     }
     
@@ -945,6 +949,12 @@ function wireButtons() {
         zoomInfo.parentElement.addEventListener('click', () => {
             state.zoomFormat = state.zoomFormat === 'words' ? 'scientific' : 'words';
             updateUI();
+        });
+    }
+    const modeSelect = document.getElementById('select-fractal-mode');
+    if (modeSelect) {
+        modeSelect.addEventListener('change', (e) => {
+            setFractalMode(parseInt(e.target.value));
         });
     }
 }

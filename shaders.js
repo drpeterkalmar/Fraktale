@@ -195,14 +195,27 @@ float mandelbrot_standard(vec2 pixel) {
             return iter;
         }
 
-        vec2 new_zy;
+        vec2 new_zx, new_zy;
         if (u_fractalMode == 2) {
-            // Burning Ship: Im(z) = 2 * abs(Re(z) * Im(z)) + Im(c)
+            // Burning Ship
             new_zy = ds_add(ds_abs(ds_mul(ds(2.0), ds_mul(zx, zy))), cy);
+            new_zx = ds_add(ds_sub(zx2, zy2), cx);
+        } else if (u_fractalMode == 3) {
+            // Tricorn (Mandelbar): z = conj(z)^2 + c
+            new_zy = ds_add(ds_neg(ds_mul(ds(2.0), ds_mul(zx, zy))), cy);
+            new_zx = ds_add(ds_sub(zx2, zy2), cx);
+        } else if (u_fractalMode == 4) {
+            // Mandelbrot z^3: z = z^3 + c
+            // Re = x^3 - 3xy^2, Im = 3x^2y - y^3
+            vec2 x3 = ds_mul(zx, zx2);
+            vec2 y3 = ds_mul(zy, zy2);
+            new_zx = ds_add(ds_sub(x3, ds_mul(ds(3.0), ds_mul(zx, zy2))), cx);
+            new_zy = ds_add(ds_sub(ds_mul(ds(3.0), ds_mul(zx2, zy)), y3), cy);
         } else {
+            // Mandelbrot / Julia
             new_zy = ds_add(ds_mul(ds(2.0), ds_mul(zx, zy)), cy);
+            new_zx = ds_add(ds_sub(zx2, zy2), cx);
         }
-        vec2 new_zx = ds_add(ds_sub(zx2, zy2), cx);
         zx = new_zx;
         zy = new_zy;
 

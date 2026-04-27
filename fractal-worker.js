@@ -116,6 +116,18 @@ self.onmessage = function(e) {
                     const nx = dzx * dzx - dzy * dzy + final_dcx;
                     const ny = Math.abs(2.0 * dzx * dzy) + final_dcy;
                     dzx = nx; dzy = ny;
+                } else if (fractalMode === 3) {
+                    // Tricorn: Im = -2xy + cy
+                    const nx = dzx * dzx - dzy * dzy + final_dcx;
+                    const ny = -2.0 * dzx * dzy + final_dcy;
+                    dzx = nx; dzy = ny;
+                } else if (fractalMode === 4) {
+                    // Mandelbrot z^3
+                    const x2 = dzx * dzx;
+                    const y2 = dzy * dzy;
+                    const nx = dzx * (x2 - 3.0 * y2) + final_dcx;
+                    const ny = dzy * (3.0 * x2 - y2) + final_dcy;
+                    dzx = nx; dzy = ny;
                 } else {
                     const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
                     const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;

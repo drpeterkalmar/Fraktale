@@ -54,6 +54,15 @@
                 <span class="label">FPS</span>
                 <span id="info-fps" class="value mono">--</span>
             </div>
+            <div class="info-row" style="margin-top: 8px; border-top: 1px solid var(--glass-border); padding-top: 8px;">
+                <select id="select-fractal-mode" class="glass-panel" style="width: 100%; background: rgba(0,0,0,0.2); color: var(--text); border: 1px solid var(--glass-border); padding: 6px; border-radius: 4px; font-size: 11px; cursor: pointer; outline: none;">
+                    <option value="0">Mandelbrot (z² + c)</option>
+                    <option value="1">Julia-Menge</option>
+                    <option value="2">Burning Ship</option>
+                    <option value="3">Tricorn (Mandelbar)</option>
+                    <option value="4">Mandelbrot z³</option>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -153,10 +162,12 @@
         <div class="info-section">
             <h3>Andere Welten 🌌</h3>
             <ul>
-                <li><strong>Burning Ship:</strong> Du nimmst die gleiche Formel, aber du verwendest vor dem Quadrieren immer den Absolutwert (den Betrag) von Real- und Imaginärteil. Das schaut dann echt aus wie ein brennendes Schiff, das am Kopf steht.</li>
-                <li><strong>Buddhabrot:</strong> Das ist eine spezielle Art, die Mandelbrot-Menge zu rendern. Man zeichnet nicht die Punkte, die stabil bleiben, sondern man "belichtet" die Pfade von den Punkten, die abhauen. Das schaut dann aus wie ein meditierender Buddha.</li>
-                <li><strong>Mandelbox & Mandelbulb:</strong> Das sind die 3D-Versionen. Weil die komplexe Ebene nur 2D ist, haben sich Leute Formeln ausgedacht, die in drei Dimensionen funktionieren. Das schaut dann aus wie alienartige Kathedralen oder organische Schwämme.</li>
-                <li><strong>Newton-Fraktale:</strong> Die entstehen, wenn du versuchst, die Nullstellen von einer Gleichung (wie z³ - 1 = 0) mit dem Newton-Verfahren zu finden. Je nachdem, zu welcher Nullstelle dein Startwert "fällt", bekommt der Pixel eine andere Farbe.</li>
+                <li><strong>Burning Ship:</strong> Ein brennendes Schiff am Horizont.</li>
+                <li><strong>Tricorn (Dreispitz):</strong> Ein Fraktal mit drei "Ecken", das entsteht, wenn man die Zahlen bei jedem Schritt spiegelt.</li>
+                <li><strong>Mandelbrot z³:</strong> Das Mandelbrot-Männchen, aber mit vier statt zwei Armen.</li>
+                <li><strong>Buddhabrot:</strong> Ein Fraktal, das wie ein meditierender Buddha aussieht.</li>
+                <li><strong>Mandelbulb:</strong> Die 3D-Version des Mandelbrot-Männchens.</li>
+                <li><strong>Newton-Fraktale:</strong> Zeigen, wie man mathematische Nullstellen findet.</li>
             </ul>
         </div>
 
