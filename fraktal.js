@@ -57,8 +57,8 @@ function initProgram() {
 
 function resize() {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = window.innerHeight * dpr;
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
     gl.viewport(0, 0, canvas.width, canvas.height);
     if (cpuOverlay) {
         cpuOverlay.width = canvas.width;
@@ -150,12 +150,18 @@ function onWorkerMessage(e) {
             tile: next,
             canvasW: canvas.width,
             canvasH: canvas.height,
+            viewW: 3.0 * (canvas.width / canvas.height) / state.zoom,
+            viewH: 3.0 / state.zoom,
             baseDcx, baseDcy,
             refOrbit: workerRefOrbit,
             refLen: state.refOrbitLen,
+            cx: state.cx.toNumber(),
+            cy: state.cy.toNumber(),
+            refCx: state.refCx.toNumber(),
+            refCy: state.refCy.toNumber(),
             zoom: state.zoom,
             maxIter: state.maxIter,
-            palette: state.palette,
+            paletteIdx: state.palette,
             colorCycle: state.colorCycle,
             fractalMode: state.fractalMode,
             version: state.cpuRenderVersion
@@ -902,6 +908,7 @@ function setFractalMode(mode) {
         state.targetZoom = 1.0; state.targetCx = new Decimal(0); state.targetCy = new Decimal(0);
     } else if (state.fractalMode === 7) {
         // Buddhabrot init
+        state.targetZoom = 1.0; state.targetCx = new Decimal('-0.5'); state.targetCy = new Decimal('0.0');
         state.buddhabrotHistogram = new Uint32Array(canvas.width * canvas.height);
         state.buddhabrotMax = 0;
         state.buddhabrotActive = true;
