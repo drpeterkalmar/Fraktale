@@ -413,13 +413,13 @@ function updateUI() {
     const isJulia = state.fractalMode === 1;
     const titleEl = document.getElementById('info-title');
     if (titleEl) {
-        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³', 'NEWTON'];
+        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³', 'NEWTON', 'MANDELBULB 3D'];
         titleEl.textContent = titles[state.fractalMode] || 'FRAKTAL';
     }
 
     const modeIcon = document.getElementById('mode-icon');
     if (modeIcon) {
-        const icons = ['M', 'J', 'B', 'T', '3', 'N'];
+        const icons = ['M', 'J', 'B', 'T', '3', 'N', '3D'];
         modeIcon.textContent = icons[state.fractalMode] || 'F';
     }
 
@@ -447,14 +447,15 @@ function updateUI() {
     
     const formulaBase = document.getElementById('formula-base');
     if (formulaBase) {
-        if (state.fractalMode === 5) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub> - (z<sub>n</sub><sup>3</sup> - 1) / (3z<sub>n</sub><sup>2</sup>)';
+        if (state.fractalMode === 6) formulaBase.innerHTML = 'Mandelbulb 3D (Raymarching)';
+        else if (state.fractalMode === 5) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub> - (z<sub>n</sub><sup>3</sup> - 1) / (3z<sub>n</sub><sup>2</sup>)';
         else if (state.fractalMode === 4) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>3</sup> + ';
         else if (state.fractalMode === 3) formulaBase.innerHTML = 'z<sub>n+1</sub> = conj(z<sub>n</sub>)<sup>2</sup> + ';
         else if (state.fractalMode === 2) formulaBase.innerHTML = 'z<sub>n+1</sub> = (|Re(z)| + i|Im(z)|)<sup>2</sup> + ';
         else formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + ';
     }
     
-    if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode === 5);
+    if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode >= 5);
     
     // Only hide minimap if UI is hidden
     if (minimap) minimap.classList.toggle('hidden', !state.showUI);
@@ -557,6 +558,8 @@ function renderMinimapBase() {
                     if ((nzx-1)**2 + nzy**2 < 0.01) { iter = i + 1; break; }
                     if ((nzx+0.5)**2 + (nzy-0.866)**2 < 0.01) { iter = i + 1000; break; }
                     if ((nzx+0.5)**2 + (nzy+0.866)**2 < 0.01) { iter = i + 2000; break; }
+                } else if (state.fractalMode === 6) { // Mandelbulb (Static preview)
+                    iter = 32; break; 
                 } else { // Mandelbrot
                     nzx = zx*zx - zy*zy + cx;
                     nzy = 2*zx*zy + cy;
@@ -733,7 +736,7 @@ function stepDigit(part, idx, delta) {
 }
 
 function toggleFractalMode() {
-    setFractalMode((state.fractalMode + 1) % 6);
+    setFractalMode((state.fractalMode + 1) % 7);
 }
 
 function setFractalMode(mode) {

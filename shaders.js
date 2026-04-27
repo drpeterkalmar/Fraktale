@@ -349,6 +349,56 @@ float mandelbrot_perturbation(vec2 pixel) {
 // ============================================================
 
 void main() {
+    if (u_fractalMode == 6) {
+        // --- Mandelbulb 3D Rendering (Raymarching) ---
+        vec2 uv = (vUv - 0.5) * u_resolution / min(u_resolution.x, u_resolution.y);
+        vec3 ro = vec3(0.0, 0.0, -2.5); // Camera position
+        vec3 rd = normalize(vec3(uv, 1.2)); // Ray direction
+        
+        // Rotation for a better view
+        float ang = u_time * 0.2;
+        mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+        ro.xz *= rot; rd.xz *= rot;
+        ro.yz *= rot; rd.yz *= rot;
+
+        float t = 0.0;
+        float d = 0.0;
+        int i;
+        for (i = 0; i < 128; i++) {
+            vec3 p = ro + rd * t;
+            // Mandelbulb SDF (simplified)
+            vec3 w = p;
+            float m = dot(w,w);
+            float dz = 1.0;
+            for(int j=0; j<8; j++) {
+                dz = 8.0*pow(m,3.5)*dz + 1.0;
+                float r = length(w);
+                float b = 8.0*acos(w.y/r);
+                float a = 8.0*atan(w.x, w.z);
+                w = p + pow(r,8.0) * vec3(sin(b)*sin(a), cos(b), sin(b)*cos(a));
+                m = dot(w,w);
+                if (m > 256.0) break;
+            }
+            d = 0.25*log(m)*sqrt(m)/dz;
+            if (d < 0.001 || t > 4.0) break;
+            t += d;
+        }
+
+        if (t < 4.0) {
+            // Hit! Shading based on normal and iterations
+            float occ = clamp(float(i)/64.0, 0.0, 1.0);
+            vec3 col = getColor(occ * 4.0, u_palette);
+            // Basic lighting
+            vec3 normal = vec3(0,1,0); // Placeholder normal
+            col *= (0.5 + 0.5 * occ); 
+            fragColor = vec4(col, 1.0);
+        } else {
+            // Background for 3D
+            fragColor = vec4(0.01, 0.01, 0.02, 1.0);
+        }
+        return;
+    }
+
     float smoothIter;
     if (u_mode == 1 && u_fractalMode < 2) {
         smoothIter = mandelbrot_perturbation(vUv);
@@ -386,10 +436,23 @@ void main() {
         
         fragColor = vec4(bgCol, 1.0);
     } else {
-        // Balanced color mapping: sqrt-log hybrid for rich detail
-        float t = sqrt(smoothIter / float(u_maxIter)) * 8.0;
-        // Add time-based color cycling (u_colorCycle is already added in getColor via fract)
-        vec3 col = getColor(t, u_palette);
+        vec3 col;
+        if (u_fractalMode == 5) {
+            // Newton coloring
+            int rootIdx = int(smoothIter / 1000.0);
+            float iter = mod(smoothIter, 1000.0);
+            float t = sqrt(iter / float(u_maxIter)) * 4.0;
+            vec3 rootCol;
+            if (rootIdx == 0) rootCol = vec3(1.0, 0.4, 0.4); // Reddish
+            else if (rootIdx == 1) rootCol = vec3(0.4, 1.0, 0.4); // Greenish
+            else rootCol = vec3(0.4, 0.6, 1.0); // Bluish
+            col = getColor(t, u_palette) * rootCol * 1.5;
+        } else {
+            // Balanced color mapping: sqrt-log hybrid for rich detail
+            float t = sqrt(smoothIter / float(u_maxIter)) * 8.0;
+            col = getColor(t, u_palette);
+        }
+        
         // Boost saturation slightly
         float lum = dot(col, vec3(0.299, 0.587, 0.114));
         col = mix(vec3(lum), col, 1.2);
