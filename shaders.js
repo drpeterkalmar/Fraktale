@@ -431,12 +431,13 @@ void main() {
             float iter = mod(smoothIter, 1000.0);
             float t = sqrt(iter / float(u_maxIter)) * 3.0;
             vec3 rootCol = vec3(0.0);
-            if (rootIdx == 0) rootCol = vec3(1.0, 0.3, 0.3);
-            else if (rootIdx == 1) rootCol = vec3(0.3, 1.0, 0.3);
-            else if (rootIdx == 2) rootCol = vec3(0.4, 0.5, 1.0);
+            if (rootIdx == 0) rootCol = vec3(0.9, 0.2, 0.2);
+            else if (rootIdx == 1) rootCol = vec3(0.2, 0.9, 0.2);
+            else if (rootIdx == 2) rootCol = vec3(0.3, 0.4, 0.9);
             col = getColor(t, u_palette);
-            col = mix(rootCol, col, 0.5) * 1.5;
-            col = clamp(col, 0.0, 1.0);
+            // Invert colors to reduce brightness
+            col = vec3(1.0) - mix(rootCol, col, 0.6);
+            col = clamp(col * 0.9, 0.0, 1.0);
         } else {
             // Balanced color mapping: sqrt-log hybrid for rich detail
             float t = sqrt(smoothIter / float(u_maxIter)) * 8.0;

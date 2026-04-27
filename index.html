@@ -110,7 +110,7 @@
     <!-- Formula Bar (bottom-center) -->
     <div id="formula-bar" class="glass-panel">
         <div class="formula-container">
-            <span class="formula-label">Formel</span>
+            <span id="formula-label-text" class="formula-label">Formel</span>
             <span id="formula-base" class="formula-text mono">z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + </span>
             
             <div id="mandel-c-text" class="formula-text mono">c</div>
@@ -130,6 +130,7 @@
     <div id="info-box" class="glass-panel">
         <button id="info-box-close" title="Schließen">&times;</button>
         <h2 id="help-title">Was ist ein Fraktal? 🌀</h2>
+        <div id="info-box-scroll">
         <p id="help-desc">Ein Fraktal ist ein mathematisches Wunderwerk. Stell dir ein Bild vor, in das du immer weiter hineinzoomen kannst, und es tauchen immer wieder neue, wunderschöne Muster auf, die dem Ganzen ähneln.</p>
         
         <div class="info-section">
@@ -139,7 +140,7 @@
 
         <div class="info-section">
             <h3 id="black-title">Warum ist das "Männchen" schwarz? 🌑</h3>
-            <p>Das ist eine tolle Frage! Wenn du die Zauberformel immer wieder anwendest, gibt es zwei Möglichkeiten:</p>
+            <p id="black-desc">Das ist eine tolle Frage! Wenn du die Zauberformel immer wieder anwendest, gibt es zwei Möglichkeiten:</p>
             <ul>
                 <li><strong id="trapped-label">Gefangen:</strong> <span id="trapped-desc">Die Zahl bleibt klein und "kreist" immer weiter herum. Diese Punkte gehören zum Fraktal und wir malen sie schwarz an.</span></li>
                 <li><strong id="escape-label">Flucht:</strong> <span id="escape-desc">Die Zahl wird riesig und schießt wie eine Rakete ins Unendliche ab!</span></li>
@@ -148,7 +149,7 @@
 
         <div class="info-section">
             <h3 id="color-title">Woher kommen die bunten Farben? 🌈</h3>
-            <p id="color-desc">Die Farben zeigen uns, wie schnell eine Zahl "geflüchtet" ist. Eine Zahl, die schon nach 3 Schritten riesig wird, bekommt eine andere Farbe als eine, die 100 Schritte gebraucht hat. So entstehen diese wunderschönen, leuchtenden Ränder!</p>
+            <p id="color-desc">Die Farben zeigen uns, wie schnell eine Zahl "geflüchtet" ist. Eine Zahl, die schon nach 3 Schritten riesig wird, bekommt eine andere Farbe als eine, die 100 Schritte gebraucht hat.</p>
         </div>
 
         <div class="info-section">
@@ -161,27 +162,23 @@
             </ul>
         </div>
 
-        <div class="info-section">
-            <h3>Andere Welten 🌌</h3>
-            <ul>
-                <li><strong>Burning Ship:</strong> Ein brennendes Schiff am Horizont.</li>
-                <li><strong>Tricorn (Dreispitz):</strong> Ein Fraktal mit drei "Ecken", das entsteht, wenn man die Zahlen bei jedem Schritt spiegelt.</li>
-                <li><strong>Mandelbrot z³:</strong> Das Mandelbrot-Männchen, aber mit vier statt zwei Armen.</li>
-                <li><strong>Buddhabrot:</strong> Ein Fraktal, das wie ein meditierender Buddha aussieht.</li>
-                <li><strong>Mandelbulb:</strong> Die 3D-Version des Mandelbrot-Männchens.</li>
-                <li><strong>Newton-Fraktale:</strong> Zeigen, wie man mathematische Nullstellen findet.</li>
-            </ul>
-        </div>
-
-        <div class="info-section">
-            <h3>Die Julia-Menge 🎨</h3>
-            <p>Hier ist die Zahl <strong>c</strong> für das ganze Bild fest eingestellt. Du kannst sie mit den <strong>+</strong> und <strong>−</strong> Buttons in der Formel-Leiste verändern oder mit <strong>Shift+Klick</strong> direkt im Bild setzen. Jedes <strong>c</strong> erschafft eine völlig neue Welt!</p>
+        <div class="info-section fractal-cards-title">
+            <h3 id="help-fractals-title">Die 8 Welten 🌌</h3>
+            <div id="help-mandelbrot" class="fractal-card"></div>
+            <div id="help-julia" class="fractal-card"></div>
+            <div id="help-burning-ship" class="fractal-card"></div>
+            <div id="help-tricorn" class="fractal-card"></div>
+            <div id="help-mandel-z3" class="fractal-card"></div>
+            <div id="help-newton" class="fractal-card"></div>
+            <div id="help-mandelbulb" class="fractal-card"></div>
+            <div id="help-buddhabrot" class="fractal-card"></div>
         </div>
 
         <div class="info-footer">
-            <strong>Dein Auftrag:</strong> Halte <strong>Shift</strong> gedrückt und klicke irgendwo hin, um deine eigene Julia-Welt zu erschaffen!
+            <p id="help-footer-tip">Halte Shift gedrückt und klicke irgendwo hin, um deine eigene Julia-Welt zu erschaffen!</p>
         </div>
-    </div>
+        </div> <!-- End of info-box-scroll -->
+    </div> <!-- End of info-box -->
 
     <!-- Minimap -->
     <div id="minimap" class="glass-panel">
@@ -191,8 +188,8 @@
 
     <!-- Inside-Set Toast -->
     <div id="inside-toast" class="glass-panel hidden">
-        ⚠ Du bist im Inneren der Menge — hier ist alles schwarz.<br>
-        Zoome heraus oder navigiere zum farbigen Rand für Detail.
+        <span id="inside-title">⚠ Du bist im Inneren der Menge — hier ist alles schwarz.</span><br>
+        <span id="inside-desc">Zoome heraus oder navigiere zum farbigen Rand für Detail.</span>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js"></script>

@@ -27,9 +27,9 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle, fractalMode) {
         const rootIdx = Math.floor(smoothIter / 1000);
         const iter = smoothIter % 1000;
         f = Math.sqrt(iter / maxIter) * 32.0 + colorCycle;
-        if (rootIdx === 0) rootCol = [1.0, 0.4, 0.4];
-        else if (rootIdx === 1) rootCol = [0.4, 1.0, 0.4];
-        else if (rootIdx === 2) rootCol = [0.5, 0.7, 1.0];
+        if (rootIdx === 0) rootCol = [0.4, 0.1, 0.1]; // Muted Red
+        else if (rootIdx === 1) rootCol = [0.1, 0.4, 0.1]; // Muted Green
+        else if (rootIdx === 2) rootCol = [0.1, 0.1, 0.4]; // Muted Blue
     } else {
         f = Math.sqrt(smoothIter / maxIter) * 64.0 + colorCycle;
     }
@@ -43,10 +43,28 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle, fractalMode) {
     const c1 = hexToRgb(colors[i1]);
     const c2 = hexToRgb(colors[i2]);
     
+    let col = [
+        (c1[0] + (c2[0] - c1[0]) * frac) / 255.0,
+        (c1[1] + (c2[1] - c1[1]) * frac) / 255.0,
+        (c1[2] + (c2[2] - c1[2]) * frac) / 255.0
+    ];
+
+    if (fractalMode === 5) {
+        // Deep atmosphere blending
+        col[0] = (rootCol[0] * 0.7 + col[0] * 0.3);
+        col[1] = (rootCol[1] * 0.7 + col[1] * 0.3);
+        col[2] = (rootCol[2] * 0.7 + col[2] * 0.3);
+        return [
+            Math.max(0, Math.min(255, col[0] * 255)),
+            Math.max(0, Math.min(255, col[1] * 255)),
+            Math.max(0, Math.min(255, col[2] * 255))
+        ];
+    }
+
     return [
-        (c1[0] + (c2[0] - c1[0]) * frac) * rootCol[0],
-        (c1[1] + (c2[1] - c1[1]) * frac) * rootCol[1],
-        (c1[2] + (c2[2] - c1[2]) * frac) * rootCol[2]
+        col[0] * 255,
+        col[1] * 255,
+        col[2] * 255
     ];
 }
 
@@ -84,7 +102,7 @@ self.onmessage = function (e) {
         return;
     }
 
-    const { tile, canvasW, canvasH, viewW, viewH, baseDcx, baseDcy, refOrbit, refLen, maxIter, paletteIdx, colorCycle, fractalMode, cx, cy, refCx, refCy } = e.data;
+    const { tile, canvasW, canvasH, viewW, viewH, baseDcx, baseDcy, refOrbit, refLen, maxIter, paletteIdx, colorCycle, fractalMode, cx, cy, refCx, refCy, juliaCx, juliaCy } = e.data;
     const tileW = tile.w, tileH = tile.h, tileX = tile.x, tileY = tile.y;
     const pixels = new Uint8ClampedArray(tileW * tileH * 4);
 
@@ -101,12 +119,13 @@ self.onmessage = function (e) {
             } else if (fractalMode === 0) { // Mandelbrot Perturbation
                 dzx = 0; dzy = 0; final_dcx = dcx; final_dcy = dcy;
             } else { // Others (Absolute Mode)
-                dzx = 0; dzy = 0;
                 final_dcx = cx + (mx * viewW);
                 final_dcy = cy - (my * viewH);
+                dzx = final_dcx; dzy = final_dcy;
             }
 
             let iter = 0, finalIter = -1;
+            let zx_abs = 0, zy_abs = 0;
             while (iter < maxIter) {
                 if (fractalMode === 2) { // Burning Ship
                     const nx = dzx * dzx - dzy * dzy + final_dcx;
@@ -137,12 +156,27 @@ self.onmessage = function (e) {
                     if ((dzx+0.5)**2 + (dzy-0.866)**2 < 0.0001) { finalIter = iter + 1001; break; }
                     if ((dzx+0.5)**2 + (dzy+0.866)**2 < 0.0001) { finalIter = iter + 2001; break; }
                 } else { // Mandelbrot / Julia Perturbation
-                    let zx_ref = 0, zy_ref = 0;
-                    if (iter < refLen) { zx_ref = refOrbit[iter * 2]; zy_ref = refOrbit[iter * 2 + 1]; }
-                    const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
-                    const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
-                    dzx = next_dzx; dzy = next_dzy;
-                    if ((zx_ref + dzx)**2 + (zy_ref + dzy)**2 > 4.0) { finalIter = iter; break; }
+                    if (iter === 0) {
+                        // Initialize abs tracking just in case refLen is 0
+                        zx_abs = (fractalMode === 1) ? (cx + mx * viewW) : 0;
+                        zy_abs = (fractalMode === 1) ? (cy - my * viewH) : 0;
+                    }
+                    if (iter < refLen) { 
+                        let zx_ref = refOrbit[iter * 2], zy_ref = refOrbit[iter * 2 + 1];
+                        const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
+                        const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
+                        dzx = next_dzx; dzy = next_dzy;
+                        zx_abs = zx_ref + dzx;
+                        zy_abs = zy_ref + dzy;
+                        if (zx_abs*zx_abs + zy_abs*zy_abs > 4.0) { finalIter = iter; break; }
+                    } else {
+                        let cx_abs = fractalMode === 1 ? juliaCx : (cx + mx * viewW);
+                        let cy_abs = fractalMode === 1 ? juliaCy : (cy - my * viewH);
+                        const nx = zx_abs * zx_abs - zy_abs * zy_abs + cx_abs;
+                        const ny = 2.0 * zx_abs * zy_abs + cy_abs;
+                        zx_abs = nx; zy_abs = ny;
+                        if (zx_abs*zx_abs + zy_abs*zy_abs > 4.0) { finalIter = iter; break; }
+                    }
                 }
                 iter++;
             }

@@ -160,6 +160,8 @@ function onWorkerMessage(e) {
             cy: state.cy.toNumber(),
             refCx: state.refCx.toNumber(),
             refCy: state.refCy.toNumber(),
+            juliaCx: state.juliaC.x.toNumber(),
+            juliaCy: state.juliaC.y.toNumber(),
             zoom: state.zoom,
             maxIter: state.maxIter,
             paletteIdx: state.palette,
@@ -342,6 +344,15 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle) {
 let cpuDebounceTimer = null;
 function renderBuddhabrot() {
     if (!state.buddhabrotActive) return;
+    
+    if (state.lastBuddhaZoom !== state.zoom || state.lastBuddhaCx !== state.cx || state.lastBuddhaCy !== state.cy) {
+        if (state.buddhabrotHistogram) state.buddhabrotHistogram.fill(0);
+        state.buddhabrotMax = 0;
+        state.cpuRenderVersion++;
+        state.lastBuddhaZoom = state.zoom;
+        state.lastBuddhaCx = state.cx;
+        state.lastBuddhaCy = state.cy;
+    }
     
     // Request new chunks from workers
     workers.forEach(w => {
@@ -553,16 +564,38 @@ function updateUI() {
     const helpMap = {
         'help-title': t.what_is_fractal, 'help-desc': t.fractal_desc,
         'magic-title': t.magic_formula, 'magic-desc': t.magic_desc,
-        'black-title': t.why_black, 'trapped-label': t.trapped, 'trapped-desc': t.trapped_desc,
+        'black-title': t.why_black, 'black-desc': t.black_desc,
+        'trapped-label': t.trapped, 'trapped-desc': t.trapped_desc,
         'escape-label': t.escape, 'escape-desc': t.escape_desc,
         'color-title': t.color_origin, 'color-desc': t.color_desc,
         'ctrl-title': t.controls, 'ctrl-scroll': t.ctrl_scroll,
-        'ctrl-drag': t.ctrl_drag, 'ctrl-shift': t.ctrl_shift, 'ctrl-keys': t.ctrl_keys
+        'ctrl-drag': t.ctrl_drag, 'ctrl-shift': t.ctrl_shift, 'ctrl-keys': t.ctrl_keys,
+        'help-fractals-title': t.help_fractals_title,
+        'help-footer-tip': t.help_footer_tip,
+        'inside-title': t.inside_title, 'inside-desc': t.inside_desc
     };
     for (const [id, val] of Object.entries(helpMap)) {
         const el = document.getElementById(id);
         if (el) el.innerHTML = val;
     }
+
+    // Populate Fractal Cards specifically
+    const fractalCards = [
+        { id: 'help-mandelbrot', title: t.mandelbrot, desc: t.help_mandelbrot },
+        { id: 'help-julia', title: t.julia, desc: t.help_julia },
+        { id: 'help-burning-ship', title: t.burning_ship, desc: t.help_burning_ship },
+        { id: 'help-tricorn', title: t.tricorn, desc: t.help_tricorn },
+        { id: 'help-mandel-z3', title: t.mandel_z3, desc: t.help_mandel_z3 },
+        { id: 'help-newton', title: t.newton, desc: t.help_newton },
+        { id: 'help-mandelbulb', title: t.mandelbulb, desc: t.help_mandelbulb },
+        { id: 'help-buddhabrot', title: t.buddhabrot, desc: t.help_buddhabrot }
+    ];
+    fractalCards.forEach(card => {
+        const el = document.getElementById(card.id);
+        if (el) {
+            el.innerHTML = `<div class="fractal-card-header">${card.title}</div><p>${card.desc}</p>`;
+        }
+    });
 
     // Tooltips
     const tooltipMap = {
@@ -902,6 +935,7 @@ function setFractalMode(mode) {
     state.fractalMode = mode;
     state.refOrbitData = null;
     markOrbitDirty();
+    state.fastFlight = true;
     
     // Reset view for specific modes if needed
     if (state.fractalMode === 1) {
@@ -1145,8 +1179,13 @@ function animationLoop(now) {
     state.animTime += dt;
     state.colorCycle += dt * 0.08; 
     // Separate lerp for position (faster) and zoom (smooth)
-    const zoomLerp = 1 - Math.pow(0.4, dt); 
-    const panLerp = 1 - Math.pow(0.1, dt); // Much faster pan
+    let zoomLerp = 1 - Math.pow(0.4, dt); 
+    let panLerp = 1 - Math.pow(0.1, dt); // Much faster pan
+    
+    if (state.fastFlight) {
+        zoomLerp = 1 - Math.pow(0.00001, dt); // Super fast zoom
+        panLerp = 1 - Math.pow(0.0000001, dt); // Near instant pan
+    }
     
     let moved = false;
     const zoomDiff = Math.abs(state.targetZoom - state.zoom) / state.zoom;
@@ -1170,11 +1209,10 @@ function animationLoop(now) {
         state.cy = state.targetCy;
     }
     
-    if (moved && state.fractalMode === 7 && state.buddhabrotHistogram) {
-        state.buddhabrotHistogram.fill(0);
-        state.buddhabrotMax = 0;
-        state.cpuRenderVersion++;
+    if (state.fastFlight && !moved) {
+        state.fastFlight = false;
     }
+    
     if (state.fractalMode === 7) renderBuddhabrot();
     render();
     updateFPS();
@@ -1213,6 +1251,7 @@ function wireButtons() {
 function init() {
     Decimal.set({ precision: 40 });
     resize(); initProgram(); initPalettePicker(); initBookmarks(); initSteppers(); wireButtons();
+    updateUI();
     renderMinimapBase(); initWorkers(); requestAnimationFrame(animationLoop);
 }
 init();
