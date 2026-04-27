@@ -471,28 +471,32 @@ function formatZoom(z) {
 
 
 function updateUI() {
-    const isJulia = state.fractalMode === 1;
-    const titleEl = document.getElementById('info-title');
-    if (titleEl) {
-        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³', 'NEWTON', 'MANDELBULB 3D', 'BUDDHABROT'];
-        titleEl.textContent = titles[state.fractalMode] || 'FRAKTAL';
-    }
-
-    const modeIcon = document.getElementById('mode-icon');
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
     if (versionEl) versionEl.textContent = 'v1.12';
 
-    // Localize simple labels
+    const titleEl = document.getElementById('info-title');
+    const modeIcon = document.getElementById('mode-icon');
+    const modeTitles = [t.mandelbrot, t.julia, t.burning_ship, t.tricorn, t.mandel_z3, t.newton, t.mandelbulb, t.buddhabrot];
+    if (titleEl) titleEl.textContent = modeTitles[state.fractalMode] || '???';
+    
+    if (modeIcon) {
+        const icons = ['M', 'J', 'B', 'T', '3', 'N', '3D', 'ॐ'];
+        modeIcon.textContent = icons[state.fractalMode] || 'F';
+    }
+
+    // Update Core Data
+    document.getElementById('info-re').textContent = state.cx.toFixed(10);
+    document.getElementById('info-im').textContent = state.cy.toFixed(10);
+    document.getElementById('info-zoom').textContent = formatZoom(state.zoom);
+    document.getElementById('info-iter').textContent = state.maxIter;
+    document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
+
+    // Localize Labels
     const labelMap = {
-        'info-re-label': t.re,
-        'info-im-label': t.im,
-        'info-zoom-label': t.zoom,
-        'info-iter-label': t.iterations,
-        'info-mode-label': t.mode,
-        'info-fps-label': t.fps,
-        'info-version-label': t.version,
-        'formula-label-text': t.formula
+        'info-re-label': t.re, 'info-im-label': t.im, 'info-zoom-label': t.zoom,
+        'info-iter-label': t.iterations, 'info-mode-label': t.mode,
+        'info-fps-label': t.fps, 'info-version-label': t.version, 'formula-label-text': t.formula
     };
     for (const [id, val] of Object.entries(labelMap)) {
         const el = document.getElementById(id);
@@ -501,42 +505,24 @@ function updateUI() {
 
     // Help Box Localization
     const helpMap = {
-        'help-title': t.what_is_fractal,
-        'help-desc': t.fractal_desc,
-        'magic-title': t.magic_formula,
-        'magic-desc': t.magic_desc,
-        'black-title': t.why_black,
-        'trapped-label': t.trapped,
-        'trapped-desc': t.trapped_desc,
-        'escape-label': t.escape,
-        'escape-desc': t.escape_desc,
-        'color-title': t.color_origin,
-        'color-desc': t.color_desc,
-        'ctrl-title': t.controls,
-        'ctrl-scroll': t.ctrl_scroll,
-        'ctrl-drag': t.ctrl_drag,
-        'ctrl-shift': t.ctrl_shift,
-        'ctrl-keys': t.ctrl_keys
+        'help-title': t.what_is_fractal, 'help-desc': t.fractal_desc,
+        'magic-title': t.magic_formula, 'magic-desc': t.magic_desc,
+        'black-title': t.why_black, 'trapped-label': t.trapped, 'trapped-desc': t.trapped_desc,
+        'escape-label': t.escape, 'escape-desc': t.escape_desc,
+        'color-title': t.color_origin, 'color-desc': t.color_desc,
+        'ctrl-title': t.controls, 'ctrl-scroll': t.ctrl_scroll,
+        'ctrl-drag': t.ctrl_drag, 'ctrl-shift': t.ctrl_shift, 'ctrl-keys': t.ctrl_keys
     };
     for (const [id, val] of Object.entries(helpMap)) {
         const el = document.getElementById(id);
         if (el) el.innerHTML = val;
     }
 
-    // Mode Titles
-    const modeTitles = [t.mandelbrot, t.julia, t.burning_ship, t.tricorn, t.mandel_z3, t.newton, t.mandelbulb, t.buddhabrot];
-    if (infoTitle) infoTitle.textContent = modeTitles[state.fractalMode] || '???';
-
     // Tooltips
     const tooltipMap = {
-        'btn-reset': t.reset_view,
-        'btn-screenshot': t.screenshot,
-        'btn-fullscreen': t.fullscreen,
-        'btn-zoom-mode': t.zoom_mode,
-        'btn-mode-toggle': t.change_mode,
-        'btn-help-toggle': t.help,
-        'btn-info-toggle': t.toggle_info,
-        'btn-lang-toggle': t.change_lang
+        'btn-reset': t.reset_view, 'btn-screenshot': t.screenshot, 'btn-fullscreen': t.fullscreen,
+        'btn-zoom-mode': t.zoom_mode, 'btn-mode-toggle': t.change_mode,
+        'btn-help-toggle': t.help, 'btn-info-toggle': t.toggle_info, 'btn-lang-toggle': t.change_lang
     };
     for (const [id, val] of Object.entries(tooltipMap)) {
         const el = document.getElementById(id);
@@ -547,6 +533,9 @@ function updateUI() {
     if (langIcon) langIcon.textContent = state.lang.toUpperCase();
 
     const formulaBase = document.getElementById('formula-base');
+    const juliaInputs = document.getElementById('julia-c-inputs');
+    const mandelText = document.getElementById('mandel-c-text');
+
     if (formulaBase) {
         if (state.fractalMode === 7) formulaBase.innerHTML = t.buddhabrot + ' (Accumulation)';
         else if (state.fractalMode === 6) formulaBase.innerHTML = t.mandelbulb + ' (Raymarching)';
@@ -557,14 +546,25 @@ function updateUI() {
         else formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + ';
     }
     
-    if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode >= 5);
+    if (isJulia) {
+        if (juliaInputs && mandelText) {
+            juliaInputs.classList.toggle('hidden', false);
+            mandelText.classList.toggle('hidden', true);
+            updateSteppers();
+        }
+    } else {
+        if (juliaInputs && mandelText) {
+            juliaInputs.classList.toggle('hidden', true);
+            mandelText.classList.toggle('hidden', false);
+        }
+    }
     
-    // Only hide minimap if UI is hidden
+    if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode >= 5);
     if (minimap) minimap.classList.toggle('hidden', !state.showUI || state.fractalMode === 7);
-    // Only show Mandelbrot-specific bookmarks if in Mandelbrot mode
     if (bookmarks) bookmarks.classList.toggle('hidden', state.fractalMode !== 0 || !state.showUI);
     
     updateMinimap();
+}
 }
 
 // === Palette Picker ===
