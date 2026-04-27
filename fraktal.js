@@ -761,6 +761,11 @@ function updateFPS() {
 function screenshot() {
     const useCPU = state.zoom > ZOOM_THRESHOLD;
     
+    const modeNames = ['Mandelbrot', 'Julia', 'BurningShip', 'Tricorn', 'MandelZ3', 'Newton', 'Mandelbulb', 'Buddhabrot'];
+    const modeName = modeNames[state.fractalMode] || 'Fractal';
+    const zoomStr = state.zoom < 10000 ? Math.round(state.zoom) + 'x' : new Decimal(state.zoom).toExponential(2).replace('+','') + 'x';
+    const baseFilename = `${modeName}_${zoomStr}_${Date.now()}`;
+    
     if (useCPU) {
         // In CPU mode, we capture the current state to avoid re-rendering (which takes time)
         // and precision artifacts from the high-res trick.
@@ -775,7 +780,7 @@ function screenshot() {
         }
 
         const link = document.createElement('a');
-        link.download = `fractal_deep_${Date.now()}.png`;
+        link.download = `${baseFilename}_deep.png`;
         link.href = tempCanvas.toDataURL('image/png');
         link.click();
         return;
@@ -799,7 +804,7 @@ function screenshot() {
     tempCtx.drawImage(canvas, 0, 0);
     
     const link = document.createElement('a');
-    link.download = `fractal_hi_res_${Date.now()}.png`;
+    link.download = `${baseFilename}_hires.png`;
     link.href = tempCanvas.toDataURL('image/png');
     link.click();
 
