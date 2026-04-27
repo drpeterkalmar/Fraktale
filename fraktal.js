@@ -222,10 +222,11 @@ function startCpuRender() {
 
 // === Reference Orbit Calculation (for Perturbation) ===
 function computeReferenceOrbit() {
-    // Dynamically increase maxIter at deep zooms
+    // More aggressive iteration scaling for deep zoom contrast
     const zoomLog = Math.log10(state.zoom + 1);
-    const targetIter = Math.floor(500 + zoomLog * 150);
-    state.maxIter = Math.min(10000, targetIter);
+    const targetIter = Math.floor(800 + zoomLog * 250);
+    // Allow manual override if user has changed it, but keep a sensible floor
+    state.maxIter = Math.max(state.maxIter, Math.min(15000, targetIter));
 
     const prec = Math.max(40, Math.ceil(zoomLog * 2) + 40);
     Decimal.set({ precision: prec });
@@ -933,7 +934,16 @@ canvas.addEventListener('touchend', () => {
 });
 
 window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') { state.maxIter = Math.floor(state.maxIter * 1.2); markOrbitDirty(); updateUI(); scheduleRender(); }
+    if (e.key === 'ArrowDown') { state.maxIter = Math.max(100, Math.floor(state.maxIter / 1.2)); markOrbitDirty(); updateUI(); scheduleRender(); }
+
     switch (e.key.toLowerCase()) {
+        case 'm': setFractalMode(0); break;
+        case 'j': setFractalMode(1); break;
+        case 'b': setFractalMode(2); break;
+        case 't': setFractalMode(3); break;
+        case '3': setFractalMode(4); break;
+        case 'n': setFractalMode(5); break;
         case 'p': state.palette = (state.palette + 1) % PALETTES.length; updatePalettePicker(); break;
         case 'r': goToBookmark(BOOKMARKS[0]); break;
         case 's': screenshot(); break;
@@ -941,9 +951,6 @@ window.addEventListener('keydown', (e) => {
         case 'f': toggleFullscreen(); break;
         case 'i': state.showUI = !state.showUI; toggleUIVisibility(); break;
         case 'h': toggleInfoBox(); break;
-        case 'j':
-        case 'm':
-        case 'b': toggleFractalMode(); break;
     }
 });
 
@@ -985,8 +992,9 @@ function wireButtons() {
         'btn-mode-toggle': () => toggleFractalMode(),
         'btn-help-toggle': () => toggleInfoBox(),
         'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); },
-        'info-box-close': () => toggleInfoBox(),
-        'info-box-backdrop': () => toggleInfoBox()
+        'info-box-backdrop': () => toggleInfoBox(),
+        'btn-iter-up': () => { state.maxIter = Math.floor(state.maxIter * 1.2); markOrbitDirty(); updateUI(); scheduleRender(); },
+        'btn-iter-down': () => { state.maxIter = Math.max(100, Math.floor(state.maxIter / 1.2)); markOrbitDirty(); updateUI(); scheduleRender(); }
     };
     for (const [id, fn] of Object.entries(actions)) {
         const btn = document.getElementById(id);
