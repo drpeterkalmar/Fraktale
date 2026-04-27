@@ -1,4 +1,4 @@
-// Mandelbrot Explorer – Main Engine
+// Mandelbrot Explorer - Main Engine
 (function () {
 'use strict';
 
@@ -336,8 +336,10 @@ function renderBuddhabrot() {
 }
 
 function render() {
-    if (state.fractalMode === 7) return; // Buddhabrot mode handles its own rendering
+    if (state.fractalMode === 7) return; 
+    
     const useCPU = state.zoom > ZOOM_THRESHOLD;
+    const usePerturbation = state.zoom > 1000 && (state.fractalMode === 0 || state.fractalMode === 1);
 
     // GPU Shader setup
     gl.useProgram(program);
@@ -355,12 +357,7 @@ function render() {
     const juliaCx = state.juliaC.x.toNumber(), juliaCy = state.juliaC.y.toNumber();
     gl.uniform4f(uLocs.u_juliaC, Math.fround(juliaCx), juliaCx - Math.fround(juliaCx), Math.fround(juliaCy), juliaCy - Math.fround(juliaCy));
 
-    if (state.fractalMode === 7) {
-        renderBuddhabrot();
-        return;
-    }
-
-    const useCPU = state.zoom > ZOOM_THRESHOLD;
+    if (useCPU) {
         // CPU High-Precision Mode
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
@@ -369,14 +366,12 @@ function render() {
         const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
                          state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
-        // Make renderKey less sensitive to avoid jitter-induced restarts
         const prec = Math.max(2, Math.floor(Math.log10(state.zoom)) + 2);
         const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
         
         if (!isMoving) {
             if (state.lastRenderKey !== renderKey) {
                 state.lastRenderKey = renderKey;
-                console.log("[CPU Mode] View stable, scheduling render...");
                 clearTimeout(cpuDebounceTimer);
                 cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
             }
@@ -392,25 +387,20 @@ function render() {
         gl.uniform1f(uLocs.u_scale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else if (usePerturbation) {
-        // GPU Perturbation (Speed of GPU + Precision of CPU)
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
             state.refOrbitDirty = false;
         }
         if (cpuOverlay) cpuOverlay.style.display = 'none';
-        
         gl.uniform1i(uLocs.u_mode, 1);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, refOrbitTex);
         gl.uniform1i(uLocs.u_refOrbit, 0);
         gl.uniform1i(uLocs.u_refLen, state.refOrbitLen);
-        
-        // Since we compute ref orbit for the current center, offset is 0
         gl.uniform2f(uLocs.u_refOffset, 0, 0);
         gl.uniform1f(uLocs.u_pixelScale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else {
-        // GPU Standard
         if (cpuOverlay) cpuOverlay.style.display = 'none';
         gl.uniform1i(uLocs.u_mode, 0);
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
@@ -564,7 +554,6 @@ function updateUI() {
     if (bookmarks) bookmarks.classList.toggle('hidden', state.fractalMode !== 0 || !state.showUI);
     
     updateMinimap();
-}
 }
 
 // === Palette Picker ===
