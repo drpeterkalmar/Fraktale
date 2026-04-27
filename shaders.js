@@ -60,6 +60,9 @@ vec2 ds_add(vec2 a, vec2 b) {
     return vec2(r, e - (r - s));
 }
 
+vec2 ds_neg(vec2 a) { return -a; }
+vec2 ds_abs(vec2 a) { return (a.x < 0.0) ? -a : a; }
+
 vec2 ds_sub(vec2 a, vec2 b) {
     return ds_add(a, vec2(-b.x, -b.y));
 }
@@ -195,9 +198,7 @@ float mandelbrot_standard(vec2 pixel) {
         vec2 new_zy;
         if (u_fractalMode == 2) {
             // Burning Ship: Im(z) = 2 * abs(Re(z) * Im(z)) + Im(c)
-            // Using ds_mul for double-single precision
-            vec2 zx_zy = ds_mul(zx, zy);
-            new_zy = ds_add(ds_mul(ds(2.0), vec2(abs(zx_zy.x), zx_zy.y)), cy); // Simplified abs for ds
+            new_zy = ds_add(ds_abs(ds_mul(ds(2.0), ds_mul(zx, zy))), cy);
         } else {
             new_zy = ds_add(ds_mul(ds(2.0), ds_mul(zx, zy)), cy);
         }
@@ -291,7 +292,7 @@ float mandelbrot_perturbation(vec2 pixel) {
 
 void main() {
     float smoothIter;
-    if (u_mode == 1) {
+    if (u_mode == 1 && u_fractalMode != 2) {
         smoothIter = mandelbrot_perturbation(vUv);
     } else {
         smoothIter = mandelbrot_standard(vUv);
