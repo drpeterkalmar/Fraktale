@@ -352,49 +352,51 @@ void main() {
     if (u_fractalMode == 6) {
         // --- Mandelbulb 3D Rendering (Raymarching) ---
         vec2 uv = (vUv - 0.5) * u_resolution / min(u_resolution.x, u_resolution.y);
-        vec3 ro = vec3(0.0, 0.0, -2.5); // Camera position
+        
+        // Camera controlled by zoom and pan
+        float dist = 3.0 / u_scale;
+        float rotX = u_center.x * 2.0;
+        float rotY = u_center.y * 2.0;
+        
+        vec3 ro = vec3(0.0, 0.0, -dist); // Camera origin
         vec3 rd = normalize(vec3(uv, 1.2)); // Ray direction
         
-        // Rotation for a better view
-        float ang = u_time * 0.2;
-        mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-        ro.xz *= rot; rd.xz *= rot;
-        ro.yz *= rot; rd.yz *= rot;
+        // Apply rotations from Pan coordinates
+        mat2 rx = mat2(cos(rotX), -sin(rotX), sin(rotX), cos(rotX));
+        mat2 ry = mat2(cos(rotY), -sin(rotY), sin(rotY), cos(rotY));
+        ro.xz *= rx; rd.xz *= rx;
+        ro.yz *= ry; rd.yz *= ry;
 
         float t = 0.0;
         float d = 0.0;
         int i;
         for (i = 0; i < 128; i++) {
             vec3 p = ro + rd * t;
-            // Mandelbulb SDF (simplified)
+            // Mandelbulb SDF
             vec3 w = p;
             float m = dot(w,w);
             float dz = 1.0;
             for(int j=0; j<8; j++) {
                 dz = 8.0*pow(m,3.5)*dz + 1.0;
                 float r = length(w);
-                float b = 8.0*acos(w.y/r);
+                float b = 8.0*acos(clamp(w.y/r, -1.0, 1.0));
                 float a = 8.0*atan(w.x, w.z);
                 w = p + pow(r,8.0) * vec3(sin(b)*sin(a), cos(b), sin(b)*cos(a));
                 m = dot(w,w);
                 if (m > 256.0) break;
             }
             d = 0.25*log(m)*sqrt(m)/dz;
-            if (d < 0.001 || t > 4.0) break;
+            if (d < 0.001 || t > 8.0) break;
             t += d;
         }
 
-        if (t < 4.0) {
-            // Hit! Shading based on normal and iterations
-            float occ = clamp(float(i)/64.0, 0.0, 1.0);
-            vec3 col = getColor(occ * 4.0, u_palette);
-            // Basic lighting
-            vec3 normal = vec3(0,1,0); // Placeholder normal
-            col *= (0.5 + 0.5 * occ); 
+        if (t < 8.0) {
+            float occ = clamp(float(i)/80.0, 0.0, 1.0);
+            vec3 col = getColor(occ * 5.0, u_palette);
+            col *= (0.3 + 0.7 * occ); // AO-like shading
             fragColor = vec4(col, 1.0);
         } else {
-            // Background for 3D
-            fragColor = vec4(0.01, 0.01, 0.02, 1.0);
+            fragColor = vec4(0.005, 0.005, 0.01, 1.0);
         }
         return;
     }
@@ -438,15 +440,16 @@ void main() {
     } else {
         vec3 col;
         if (u_fractalMode == 5) {
-            // Newton coloring
+            // Newton coloring: Bright and distinct
             int rootIdx = int(smoothIter / 1000.0);
             float iter = mod(smoothIter, 1000.0);
-            float t = sqrt(iter / float(u_maxIter)) * 4.0;
+            float t = sqrt(iter / float(u_maxIter)) * 3.0;
             vec3 rootCol;
-            if (rootIdx == 0) rootCol = vec3(1.0, 0.4, 0.4); // Reddish
-            else if (rootIdx == 1) rootCol = vec3(0.4, 1.0, 0.4); // Greenish
-            else rootCol = vec3(0.4, 0.6, 1.0); // Bluish
-            col = getColor(t, u_palette) * rootCol * 1.5;
+            if (rootIdx == 0) rootCol = vec3(1.0, 0.4, 0.4); // Red
+            else if (rootIdx == 1) rootCol = vec3(0.4, 1.0, 0.4); // Green
+            else rootCol = vec3(0.5, 0.7, 1.0); // Blue
+            col = getColor(t, u_palette) * rootCol * 2.0;
+            col = clamp(col, 0.0, 1.0);
         } else {
             // Balanced color mapping: sqrt-log hybrid for rich detail
             float t = sqrt(smoothIter / float(u_maxIter)) * 8.0;
