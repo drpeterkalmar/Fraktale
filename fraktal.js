@@ -60,6 +60,10 @@ function resize() {
     canvas.width = window.innerWidth * dpr;
     canvas.height = window.innerHeight * dpr;
     gl.viewport(0, 0, canvas.width, canvas.height);
+    if (cpuOverlay) {
+        cpuOverlay.width = canvas.width;
+        cpuOverlay.height = canvas.height;
+    }
     if (state.fractalMode === 7) {
         state.buddhabrotHistogram = new Uint32Array(canvas.width * canvas.height);
         state.buddhabrotMax = 0;
@@ -596,7 +600,7 @@ function updateUI() {
     
     if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode >= 5);
     if (minimap) minimap.classList.toggle('hidden', !state.showUI);
-    if (bookmarks) bookmarks.classList.toggle('hidden', !state.showUI);
+    if (bookmarks) bookmarks.classList.toggle('hidden', !state.showUI || state.fractalMode !== 0);
     
     updateMinimap();
 }
@@ -646,6 +650,7 @@ function goToBookmark(b) {
 const minimapCanvas = document.getElementById('minimap-canvas');
 const ctxMinimap = minimapCanvas.getContext('2d');
 let minimapBaseImg = null;
+let minimapBaseMode = -1;
 
 function renderMinimapBase() {
     const w = minimapCanvas.width, h = minimapCanvas.height;
@@ -714,7 +719,12 @@ function renderMinimapBase() {
 }
 
 function updateMinimap() {
-    ctxMinimap.putImageData(minimapBaseImg, 0, 0);
+    if (!state.showUI || state.fractalMode === 7) return;
+    if (!minimapBaseImg || typeof minimapBaseMode === 'undefined' || minimapBaseMode !== state.fractalMode) {
+        renderMinimapBase();
+        minimapBaseMode = state.fractalMode;
+    }
+    if (minimapBaseImg) ctxMinimap.putImageData(minimapBaseImg, 0, 0);
     const w = minimapCanvas.width, h = minimapCanvas.height;
     const viewWidth = 3.0 / state.zoom;
     const viewHeight = (viewWidth * canvas.height) / canvas.width;
