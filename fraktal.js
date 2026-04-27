@@ -481,7 +481,7 @@ function updateUI() {
     const modeIcon = document.getElementById('mode-icon');
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = 'v1.11';
+    if (versionEl) versionEl.textContent = 'v1.12';
 
     // Localize simple labels
     const labelMap = {
@@ -872,7 +872,7 @@ function setFractalMode(mode) {
 }
 
 function toggleLanguage() {
-    const langs = ['de', 'en', 'hu'];
+    const langs = ['de', 'en', 'hu', 'es', 'fr', 'pt', 'zh', 'ja', 'ko'];
     state.lang = langs[(langs.indexOf(state.lang) + 1) % langs.length];
     updateUI();
 }
