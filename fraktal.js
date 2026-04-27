@@ -83,6 +83,9 @@ const state = {
     showUI: true,
     lastRenderKey: '',
     selectionMode: false,
+    buddhabrotHistogram: null,
+    buddhabrotMax: 0,
+    buddhabrotActive: false
 };
 
 // df64 works well up to ~1e11 zoom. Beyond that, CPU workers take over.
@@ -105,6 +108,18 @@ function initWorkers() {
 }
 
 function onWorkerMessage(e) {
+    if (e.data.type === 'buddhabrotChunk') {
+        if (state.fractalMode !== 7) return;
+        const chunk = e.data.histogram;
+        const hist = state.buddhabrotHistogram;
+        if (!hist) return;
+        for (let j = 0; j < chunk.length; j++) {
+            hist[j] += chunk[j];
+            if (hist[j] > state.buddhabrotMax) state.buddhabrotMax = hist[j];
+        }
+        return;
+    }
+
     const { tile, pixels, version } = e.data;
     if (version !== state.cpuRenderVersion) return;
 
@@ -278,6 +293,47 @@ function markOrbitDirty() { state.refOrbitDirty = true; }
 
 // === Render Loop ===
 let cpuDebounceTimer = null;
+function renderBuddhabrot() {
+    if (!state.buddhabrotActive) return;
+    
+    // Request new chunks from workers
+    workers.forEach(w => {
+        w.postMessage({
+            type: 'buddhabrot',
+            w: canvas.width,
+            h: canvas.height,
+            maxIter: 200,
+            minIter: 20,
+            samples: 5000
+        });
+    });
+
+    // Draw current histogram
+    const w = canvas.width, h = canvas.height;
+    const imgData = ctxCpu.createImageData(w, h);
+    const data = imgData.data;
+    const hist = state.buddhabrotHistogram;
+    const max = state.buddhabrotMax || 1;
+    
+    for (let i = 0; i < w * h; i++) {
+        const val = hist[i];
+        if (val > 0) {
+            // Logarithmic scaling for better contrast
+            const norm = Math.log(val + 1) / Math.log(max + 1);
+            const col = getColor(norm * 32, 100, state.palette, state.colorCycle);
+            const idx = i * 4;
+            data[idx] = col[0];
+            data[idx+1] = col[1];
+            data[idx+2] = col[2];
+            data[idx+3] = 255;
+        } else {
+            const idx = i * 4;
+            data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 255;
+        }
+    }
+    ctxCpu.putImageData(imgData, 0, 0);
+}
+
 function render() {
     const useCPU = state.zoom > ZOOM_THRESHOLD;
 
@@ -297,9 +353,12 @@ function render() {
     const juliaCx = state.juliaC.x.toNumber(), juliaCy = state.juliaC.y.toNumber();
     gl.uniform4f(uLocs.u_juliaC, Math.fround(juliaCx), juliaCx - Math.fround(juliaCx), Math.fround(juliaCy), juliaCy - Math.fround(juliaCy));
 
-    const usePerturbation = state.zoom >= 100000.0 && !useCPU && state.fractalMode < 2;
+    if (state.fractalMode === 7) {
+        renderBuddhabrot();
+        return;
+    }
 
-    if (useCPU) {
+    const useCPU = state.zoom > ZOOM_THRESHOLD;
         // CPU High-Precision Mode
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
@@ -413,13 +472,13 @@ function updateUI() {
     const isJulia = state.fractalMode === 1;
     const titleEl = document.getElementById('info-title');
     if (titleEl) {
-        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³', 'NEWTON', 'MANDELBULB 3D'];
+        const titles = ['MANDELBROT', 'JULIA-MENGE', 'BURNING SHIP', 'TRICORN', 'MANDELBROT z³', 'NEWTON', 'MANDELBULB 3D', 'BUDDHABROT'];
         titleEl.textContent = titles[state.fractalMode] || 'FRAKTAL';
     }
 
     const modeIcon = document.getElementById('mode-icon');
     if (modeIcon) {
-        const icons = ['M', 'J', 'B', 'T', '3', 'N', '3D'];
+        const icons = ['M', 'J', 'B', 'T', '3', 'N', '3D', 'ॐ'];
         modeIcon.textContent = icons[state.fractalMode] || 'F';
     }
 
@@ -447,7 +506,8 @@ function updateUI() {
     
     const formulaBase = document.getElementById('formula-base');
     if (formulaBase) {
-        if (state.fractalMode === 6) formulaBase.innerHTML = 'Mandelbulb 3D (Raymarching)';
+        if (state.fractalMode === 7) formulaBase.innerHTML = 'Buddhabrot (Accumulation Mode)';
+        else if (state.fractalMode === 6) formulaBase.innerHTML = 'Mandelbulb 3D (Raymarching)';
         else if (state.fractalMode === 5) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub> - (z<sub>n</sub><sup>3</sup> - 1) / (3z<sub>n</sub><sup>2</sup>)';
         else if (state.fractalMode === 4) formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>3</sup> + ';
         else if (state.fractalMode === 3) formulaBase.innerHTML = 'z<sub>n+1</sub> = conj(z<sub>n</sub>)<sup>2</sup> + ';
@@ -458,7 +518,7 @@ function updateUI() {
     if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode >= 5);
     
     // Only hide minimap if UI is hidden
-    if (minimap) minimap.classList.toggle('hidden', !state.showUI);
+    if (minimap) minimap.classList.toggle('hidden', !state.showUI || state.fractalMode === 7);
     // Only show Mandelbrot-specific bookmarks if in Mandelbrot mode
     if (bookmarks) bookmarks.classList.toggle('hidden', state.fractalMode !== 0 || !state.showUI);
     
@@ -736,7 +796,7 @@ function stepDigit(part, idx, delta) {
 }
 
 function toggleFractalMode() {
-    setFractalMode((state.fractalMode + 1) % 7);
+    setFractalMode((state.fractalMode + 1) % 8);
 }
 
 function setFractalMode(mode) {
@@ -751,11 +811,17 @@ function setFractalMode(mode) {
     } else if (state.fractalMode === 2) {
         // Burning Ship
         state.targetZoom = 1.0; state.targetCx = new Decimal('-0.5'); state.targetCy = new Decimal('-0.5');
-    } else if (state.fractalMode === 5) {
-        // Newton
+    } else if (state.fractalMode === 5 || state.fractalMode === 6) {
+        // Newton or Mandelbulb
         state.targetZoom = 1.0; state.targetCx = new Decimal(0); state.targetCy = new Decimal(0);
+    } else if (state.fractalMode === 7) {
+        // Buddhabrot init
+        state.buddhabrotHistogram = new Uint32Array(canvas.width * canvas.height);
+        state.buddhabrotMax = 0;
+        state.buddhabrotActive = true;
     } else {
         // Others: default view
+        state.buddhabrotActive = false;
         goToBookmark(BOOKMARKS[0]);
     }
     
@@ -982,6 +1048,7 @@ function animationLoop(now) {
         state.cx = state.cx.plus(new Decimal(cxDiff * panLerp));
         state.cy = state.cy.plus(new Decimal(cyDiff * panLerp));
     }
+    if (state.fractalMode === 7) renderBuddhabrot();
     render();
     updateFPS();
 }

@@ -227,7 +227,7 @@ float mandelbrot_standard(vec2 pixel) {
         } else if (u_fractalMode == 5) {
             // Newton Fractal: Use standard floats for stability
             vec2 z = vec2(zx.x, zy.x);
-            for (int j = 0; j < 64; j++) {
+            for (int j = 0; j < 80; j++) {
                 vec2 z2 = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y);
                 vec2 z3 = vec2(z.x*z2.x - z.y*z2.y, z.x*z2.y + z.y*z2.x);
                 vec2 num = 2.0 * z3 + vec2(1.0, 0.0);
@@ -235,9 +235,9 @@ float mandelbrot_standard(vec2 pixel) {
                 float d2 = dot(den, den);
                 if (d2 < 1e-15) break;
                 z = vec2(dot(num, den), num.y*den.x - num.x*den.y) / d2;
-                if (length(z - vec2(1.0, 0.0)) < 0.001) return float(i) + 1.0;
-                if (length(z - vec2(-0.5, 0.866)) < 0.001) return float(i) + 1001.0;
-                if (length(z - vec2(-0.5, -0.866)) < 0.001) return float(i) + 2001.0;
+                if (length(z - vec2(1.0, 0.0)) < 0.001) return float(j) + 1.0;
+                if (length(z - vec2(-0.5, 0.866)) < 0.001) return float(j) + 1001.0;
+                if (length(z - vec2(-0.5, -0.866)) < 0.001) return float(j) + 2001.0;
             }
             return -1.0;
         } else {
