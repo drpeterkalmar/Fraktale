@@ -110,6 +110,7 @@ function initWorkers() {
 
 function onWorkerMessage(e) {
     if (e.data.type === 'buddhabrotChunk') {
+        e.target.buddhabrotBusy = false;
         if (state.fractalMode !== 7) return;
         const chunk = e.data.histogram;
         const hist = state.buddhabrotHistogram;
@@ -323,14 +324,17 @@ function renderBuddhabrot() {
     
     // Request new chunks from workers
     workers.forEach(w => {
-        w.postMessage({
-            type: 'buddhabrot',
-            w: canvas.width,
-            h: canvas.height,
-            maxIter: 200,
-            minIter: 20,
-            samples: 5000
-        });
+        if (!w.buddhabrotBusy) {
+            w.buddhabrotBusy = true;
+            w.postMessage({
+                type: 'buddhabrot',
+                w: canvas.width,
+                h: canvas.height,
+                maxIter: 200,
+                minIter: 20,
+                samples: 5000
+            });
+        }
     });
 
     // Draw current histogram
@@ -563,6 +567,7 @@ function updateUI() {
         else formulaBase.innerHTML = 'z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + ';
     }
     
+    const isJulia = state.fractalMode === 1;
     if (isJulia) {
         if (juliaInputs && mandelText) {
             juliaInputs.classList.toggle('hidden', false);
@@ -577,8 +582,8 @@ function updateUI() {
     }
     
     if (mandelText) mandelText.classList.toggle('hidden', state.fractalMode >= 5);
-    if (minimap) minimap.classList.toggle('hidden', !state.showUI || state.fractalMode === 7);
-    if (bookmarks) bookmarks.classList.toggle('hidden', state.fractalMode !== 0 || !state.showUI);
+    if (minimap) minimap.classList.toggle('hidden', !state.showUI);
+    if (bookmarks) bookmarks.classList.toggle('hidden', !state.showUI);
     
     updateMinimap();
 }

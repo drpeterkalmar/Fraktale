@@ -343,13 +343,14 @@ void main() {
         vec3 ro = vec3(0.0, 0.0, -dist); 
         vec3 rd = normalize(vec3(uv, 1.0));
         
-        // Manual rotation logic
-        float rx_a = u_center.x * 3.0;
-        float ry_a = u_center.y * 3.0;
-        mat2 rotX = mat2(cos(rx_a), -sin(rx_a), sin(rx_a), cos(rx_a));
-        mat2 rotY = mat2(cos(ry_a), -sin(ry_a), sin(ry_a), cos(ry_a));
-        ro.xz *= rotX; rd.xz *= rotX;
-        ro.yz *= rotY; rd.yz *= rotY;
+        // Manual rotation logic (Intuitive)
+        float rot_y = -u_center.x * 3.0;
+        float rot_x = u_center.y * 3.0;
+        mat2 matY = mat2(cos(rot_y), -sin(rot_y), sin(rot_y), cos(rot_y));
+        mat2 matX = mat2(cos(rot_x), -sin(rot_x), sin(rot_x), cos(rot_x));
+        
+        ro.yz *= matX; rd.yz *= matX;
+        ro.xz *= matY; rd.xz *= matY;
 
         float t = 0.0;
         int i;
@@ -368,6 +369,10 @@ void main() {
                 if (m > 4.0) break;
             }
             float d = 0.25*log(m)*sqrt(m)/dz;
+            
+            // Halbiere das Mandelbulb (schneide die vordere Hälfte ab)
+            d = max(d, p.z);
+            
             if (d < 0.002 || t > 12.0) break;
             t += d;
         }
