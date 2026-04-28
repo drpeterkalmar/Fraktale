@@ -503,8 +503,8 @@ function render() {    if (state.fractalMode === 7) {
         const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.005 ||
                          state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.005;
         
-        const prec = Math.max(2, Math.floor(Math.log10(state.zoom)) + 2);
-        const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
+        const prec = Math.max(2, Math.floor(Math.log10(state.targetZoom)) + 2);
+        const targetKey = `${state.targetCx.toFixed(prec)}|${state.targetCy.toFixed(prec)}|${state.targetZoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
         
         ctxCpu.clearRect(0, 0, cpuOverlay.width, cpuOverlay.height);
         
@@ -526,17 +526,15 @@ function render() {    if (state.fractalMode === 7) {
             }
         }
 
-        if (!isMoving) {
-            if (state.lastRenderKey !== renderKey && !state.isFading) {
-                state.lastRenderKey = renderKey;
+        // Trigger CPU Render for target endpoint if interaction stopped
+        if (!state.isInteracting && !state.isFading) {
+            if (state.lastRenderKey !== targetKey) {
+                state.lastRenderKey = targetKey;
                 clearTimeout(cpuDebounceTimer);
                 cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
             }
-        } else {
+        } else if (state.isInteracting) {
             clearTimeout(cpuDebounceTimer);
-            if (!state.proxyCanvas && state.cpuTilesDone === 0) {
-                captureProxy();
-            }
         }
 
         gl.uniform1i(uLocs.u_mode, 0); 
@@ -1066,6 +1064,7 @@ let lastTouchDist = 0;
 let lastTouchX = 0, lastTouchY = 0;
 
 canvas.addEventListener('mousedown', (e) => {
+    state.isInteracting = true;
     if (e.shiftKey || state.selectionMode) {
         isSelecting = true;
         selectStartX = e.clientX;
@@ -1142,6 +1141,7 @@ function finishSelection(clientX, clientY) {
 }
 
 window.addEventListener('mouseup', (e) => {
+    state.isInteracting = false;
     if (isSelecting) {
         finishSelection(e.clientX, e.clientY);
     } else if (isDragging) {
@@ -1159,8 +1159,11 @@ window.addEventListener('mouseup', (e) => {
 });
 
 canvas.addEventListener('wheel', (e) => {
+    state.isInteracting = true;
     e.preventDefault();
-    state.targetZoom *= Math.exp(-e.deltaY * 0.0005); // Reduced sensitivity
+    state.targetZoom *= Math.exp(-e.deltaY * 0.0005);
+    clearTimeout(state.interactionTimer);
+    state.interactionTimer = setTimeout(() => { state.isInteracting = false; }, 200);
 }, { passive: false });
 
 canvas.addEventListener('touchstart', (e) => {
