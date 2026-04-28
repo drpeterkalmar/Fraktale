@@ -183,7 +183,15 @@ self.onmessage = function (e) {
 
             const idx = (py * tileW + px) * 4;
             if (finalIter >= 0) {
-                const col = getColor(finalIter, maxIter, paletteIdx, colorCycle, fractalMode);
+                let smoothIter = finalIter;
+                // Add log-log smoothing for Mandelbrot/Julia/Ship/Tricorn/Z3
+                if (fractalMode !== 5 && fractalMode !== 6 && fractalMode !== 7) {
+                    const mag = Math.sqrt(zx_abs * zx_abs + zy_abs * zy_abs);
+                    if (mag > 2.0) {
+                        smoothIter = finalIter + 1 - Math.log2(Math.log(mag) / Math.log(2));
+                    }
+                }
+                const col = getColor(smoothIter, maxIter, paletteIdx, colorCycle, fractalMode);
                 pixels[idx] = col[0]; pixels[idx+1] = col[1]; pixels[idx+2] = col[2]; pixels[idx+3] = 255;
             } else {
                 pixels[idx] = 0; pixels[idx+1] = 0; pixels[idx+2] = 0; pixels[idx+3] = 255;

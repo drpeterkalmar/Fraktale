@@ -88,14 +88,22 @@ const state = {
     cpuRenderVersion: 0,
     cpuTilesTotal: 0,
     cpuTilesDone: 0,
-    showUI: true,
     lang: 'de',
     lastRenderKey: '',
     selectionMode: false,
     buddhabrotHistogram: null,
     buddhabrotMax: 0,
-    buddhabrotActive: false
+    buddhabrotActive: false,
+    // Proxy for seamless CPU zoom
+    proxyCanvas: null,
+    proxyState: { cx: null, cy: null, zoom: 1, width: 0, height: 0 },
+    // Work canvas for background rendering
+    workCanvas: null,
+    workState: { cx: null, cy: null, zoom: 1, width: 0, height: 0 },
+    fadeStartTime: 0,
+    isFading: false
 };
+
 
 // df64 works well up to ~1e11 zoom. Beyond that, CPU workers take over.
 const ZOOM_THRESHOLD = 1e5;
@@ -137,15 +145,17 @@ function onWorkerMessage(e) {
     drawTile(tile, pixels);
     state.cpuTilesDone++;
     updateProgress();
-    
+
+    if (state.cpuTilesDone === state.cpuTilesTotal) {
+        state.isFading = true;
+        state.fadeStartTime = performance.now();
+        document.getElementById('progress-container').classList.add('hidden');
+    }
+
     if (pendingTiles.length > 0) {
         const next = pendingTiles.pop();
-        
-        // High-precision delta calculation in main thread
         const baseDcx = state.cx.minus(state.refCx).toNumber();
         const baseDcy = state.cy.minus(state.refCy).toNumber();
-
-        const workerRefOrbit = state.workerRefOrbit;
 
         e.target.postMessage({
             tile: next,
@@ -154,7 +164,7 @@ function onWorkerMessage(e) {
             viewW: 3.0 * (canvas.width / canvas.height) / state.zoom,
             viewH: 3.0 / state.zoom,
             baseDcx, baseDcy,
-            refOrbit: workerRefOrbit,
+            refOrbit: state.workerRefOrbit,
             refLen: state.refOrbitLen,
             cx: state.cx.toNumber(),
             cy: state.cy.toNumber(),
@@ -168,20 +178,67 @@ function onWorkerMessage(e) {
             colorCycle: state.colorCycle,
             fractalMode: state.fractalMode,
             version: state.cpuRenderVersion
-        }); // Removed transfer of buffer because it's shared across workers now
-    } else {
-        if (state.cpuTilesDone >= state.cpuTilesTotal) {
-            document.getElementById('progress-container').classList.add('hidden');
-            state.cpuTilesTotal = 0;
-            state.cpuTilesDone = 0;
+        });
+    }
+}
+
+function renderBuddhabrot() {
+    if (!state.buddhabrotActive) return;
+    
+    if (state.lastBuddhaZoom !== state.zoom || state.lastBuddhaCx !== state.cx || state.lastBuddhaCy !== state.cy) {
+        if (state.buddhabrotHistogram) state.buddhabrotHistogram.fill(0);
+        state.buddhabrotMax = 0;
+        state.cpuRenderVersion++;
+        state.lastBuddhaZoom = state.zoom;
+        state.lastBuddhaCx = state.cx;
+        state.lastBuddhaCy = state.cy;
+    }
+    
+    workers.forEach(w => {
+        if (!w.buddhabrotBusy) {
+            w.buddhabrotBusy = true;
+            w.postMessage({
+                type: 'buddhabrot',
+                w: canvas.width,
+                h: canvas.height,
+                cx: state.cx.toNumber(),
+                cy: state.cy.toNumber(),
+                zoom: state.zoom,
+                maxIter: 200,
+                minIter: 20,
+                samples: 5000,
+                version: state.cpuRenderVersion
+            });
+        }
+    });
+
+    const w = canvas.width, h = canvas.height;
+    const imgData = ctxCpu.createImageData(w, h);
+    const data = imgData.data;
+    const hist = state.buddhabrotHistogram;
+    const max = state.buddhabrotMax || 1;
+    
+    for (let i = 0; i < w * h; i++) {
+        const val = hist[i];
+        if (val > 0) {
+            const norm = Math.log(val + 1) / Math.log(max + 1);
+            const col = getColor(norm * 32, 100, state.palette, state.colorCycle);
+            const idx = i * 4;
+            data[idx] = col[0]; data[idx+1] = col[1]; data[idx+2] = col[2]; data[idx+3] = 255;
+        } else {
+            const idx = i * 4;
+            data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 255;
         }
     }
+    ctxCpu.putImageData(imgData, 0, 0);
 }
 
 function updateProgress() {
     const container = document.getElementById('progress-container');
     const bar = document.getElementById('progress-bar');
     const label = document.getElementById('progress-label');
+    if (!container || !bar || !label) return;
+    
     if (state.cpuTilesTotal > 0) {
         const p = Math.min(100, (state.cpuTilesDone / state.cpuTilesTotal) * 100);
         bar.style.width = p + '%';
@@ -192,19 +249,85 @@ function updateProgress() {
     }
 }
 
+function captureProxy() {
+    if (!state.proxyCanvas) state.proxyCanvas = document.createElement('canvas');
+    state.proxyCanvas.width = canvas.width;
+    state.proxyCanvas.height = canvas.height;
+    const ctx = state.proxyCanvas.getContext('2d');
+    ctx.drawImage(canvas, 0, 0);
+    if (cpuOverlay.style.display !== 'none' && !state.isFading) {
+        ctx.drawImage(cpuOverlay, 0, 0);
+    }
+    state.proxyState = {
+        cx: state.cx,
+        cy: state.cy,
+        zoom: state.zoom,
+        width: canvas.width,
+        height: canvas.height
+    };
+}
+
+function drawCanvasScaled(sourceCanvas, sourceState, alpha = 1.0) {
+    if (!sourceCanvas || !sourceState.cx) return;
+    
+    const ps = sourceState;
+    const currentZoom = state.zoom;
+    const scale = currentZoom / ps.zoom;
+    
+    const sw = 3.0 * (ps.width / ps.height);
+    const sh = 3.0;
+    
+    const dx = ps.cx.minus(state.cx).toNumber();
+    const dy = ps.cy.minus(state.cy).toNumber();
+    
+    const offsetX = dx * (ps.width / sw) * currentZoom;
+    const offsetY = -dy * (ps.height / sh) * currentZoom;
+    
+    ctxCpu.save();
+    ctxCpu.globalAlpha = alpha;
+    ctxCpu.translate(cpuOverlay.width / 2 + offsetX, cpuOverlay.height / 2 + offsetY);
+    ctxCpu.scale(scale, scale);
+    ctxCpu.drawImage(sourceCanvas, -ps.width / 2, -ps.height / 2);
+    ctxCpu.restore();
+}
+
 function drawTile(tile, pixels) {
+    if (!state.workCanvas) return;
     const { x, y, w, h } = tile;
     const imgData = new ImageData(new Uint8ClampedArray(pixels), w, h);
-    ctxCpu.putImageData(imgData, x, y);
+    state.workCanvas.getContext('2d').putImageData(imgData, x, y);
 }
 
 function startCpuRender() {
-    console.log("Starting CPU High-Precision Render (Perturbation)...");
+    console.log("Starting CPU High-Precision Render...");
     state.cpuRenderVersion++;
+    
+    if (!state.workCanvas) {
+        state.workCanvas = document.createElement('canvas');
+    }
+    state.workCanvas.width = canvas.width;
+    state.workCanvas.height = canvas.height;
+    state.workCanvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    
+    state.workState = {
+        cx: state.cx,
+        cy: state.cy,
+        zoom: state.zoom,
+        width: canvas.width,
+        height: canvas.height
+    };
+    
+    state.isFading = false;
     cpuOverlay.width = canvas.width;
     cpuOverlay.height = canvas.height;
     cpuOverlay.style.display = 'block';
-    ctxCpu.clearRect(0, 0, cpuOverlay.width, cpuOverlay.height);
+    
+    if (state.proxyCanvas) {
+        ctxCpu.clearRect(0, 0, cpuOverlay.width, cpuOverlay.height);
+        drawCanvasScaled(state.proxyCanvas, state.proxyState);
+    } else {
+        ctxCpu.clearRect(0, 0, cpuOverlay.width, cpuOverlay.height);
+    }
     
     const tileSize = 128;
     pendingTiles = [];
@@ -227,12 +350,9 @@ function startCpuRender() {
         return;
     }
 
-    const workerRefOrbit = state.workerRefOrbit;
-
     workers.forEach(w => {
         if (pendingTiles.length > 0) {
             const next = pendingTiles.pop();
-            
             const baseDcx = state.cx.minus(state.refCx).toNumber();
             const baseDcy = state.cy.minus(state.refCy).toNumber();
 
@@ -243,12 +363,14 @@ function startCpuRender() {
                 viewW: 3.0 * (canvas.width / canvas.height) / state.zoom,
                 viewH: 3.0 / state.zoom,
                 baseDcx, baseDcy,
-                refOrbit: workerRefOrbit,
+                refOrbit: state.workerRefOrbit,
                 refLen: state.refOrbitLen,
                 cx: state.cx.toNumber(),
                 cy: state.cy.toNumber(),
                 refCx: state.refCx.toNumber(),
                 refCy: state.refCy.toNumber(),
+                juliaCx: state.juliaC.x.toNumber(),
+                juliaCy: state.juliaC.y.toNumber(),
                 zoom: state.zoom,
                 maxIter: state.maxIter,
                 paletteIdx: state.palette,
@@ -314,7 +436,13 @@ function computeReferenceOrbit() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, state.maxIter, 1, 0, gl.RGBA, gl.FLOAT, data);
 }
 
-function markOrbitDirty() { state.refOrbitDirty = true; }
+function markOrbitDirty() { 
+    state.refOrbitDirty = true; 
+    state.proxyCanvas = null;
+    state.cpuTilesTotal = 0;
+    state.cpuTilesDone = 0;
+    state.isFading = false;
+}
 
 // === Palette Functions for JS ===
 function hexToRgb(hex) {
@@ -342,71 +470,14 @@ function getColor(smoothIter, maxIter, paletteIdx, colorCycle) {
 
 // === Render Loop ===
 let cpuDebounceTimer = null;
-function renderBuddhabrot() {
-    if (!state.buddhabrotActive) return;
-    
-    if (state.lastBuddhaZoom !== state.zoom || state.lastBuddhaCx !== state.cx || state.lastBuddhaCy !== state.cy) {
-        if (state.buddhabrotHistogram) state.buddhabrotHistogram.fill(0);
-        state.buddhabrotMax = 0;
-        state.cpuRenderVersion++;
-        state.lastBuddhaZoom = state.zoom;
-        state.lastBuddhaCx = state.cx;
-        state.lastBuddhaCy = state.cy;
-    }
-    
-    // Request new chunks from workers
-    workers.forEach(w => {
-        if (!w.buddhabrotBusy) {
-            w.buddhabrotBusy = true;
-            w.postMessage({
-                type: 'buddhabrot',
-                w: canvas.width,
-                h: canvas.height,
-                cx: state.cx.toNumber(),
-                cy: state.cy.toNumber(),
-                zoom: state.zoom,
-                maxIter: 200,
-                minIter: 20,
-                samples: 5000,
-                version: state.cpuRenderVersion
-            });
-        }
-    });
 
-    // Draw current histogram
-    const w = canvas.width, h = canvas.height;
-    const imgData = ctxCpu.createImageData(w, h);
-    const data = imgData.data;
-    const hist = state.buddhabrotHistogram;
-    const max = state.buddhabrotMax || 1;
-    
-    for (let i = 0; i < w * h; i++) {
-        const val = hist[i];
-        if (val > 0) {
-            // Logarithmic scaling for better contrast
-            const norm = Math.log(val + 1) / Math.log(max + 1);
-            const col = getColor(norm * 32, 100, state.palette, state.colorCycle);
-            const idx = i * 4;
-            data[idx] = col[0];
-            data[idx+1] = col[1];
-            data[idx+2] = col[2];
-            data[idx+3] = 255;
-        } else {
-            const idx = i * 4;
-            data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 255;
-        }
-    }
-    ctxCpu.putImageData(imgData, 0, 0);
-}
 
-function render() {
-    if (state.fractalMode === 7) {
+function render() {    if (state.fractalMode === 7) {
         updateUI();
         return; 
     }
-    
+
     const useCPU = state.zoom > ZOOM_THRESHOLD;
-    const usePerturbation = false; // Disabled, using stable df64 instead
 
     // GPU Shader setup
     gl.useProgram(program);
@@ -417,7 +488,6 @@ function render() {
     gl.uniform1f(uLocs.u_time, state.animTime);
     gl.uniform1i(uLocs.u_fractalMode, state.fractalMode);
 
-    // Coordinate math
     const cxf = state.cx.toNumber(), cyf = state.cy.toNumber();
     const pixelScale = 3.0 / (state.zoom * canvas.height);
 
@@ -425,26 +495,48 @@ function render() {
     gl.uniform4f(uLocs.u_juliaC, Math.fround(juliaCx), juliaCx - Math.fround(juliaCx), Math.fround(juliaCy), juliaCy - Math.fround(juliaCy));
 
     if (useCPU) {
-        // CPU High-Precision Mode
         if (!state.refOrbitData || state.refOrbitDirty) {
             computeReferenceOrbit();
             state.refOrbitDirty = false;
         }
-        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
-                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
+        
+        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.005 ||
+                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.005;
         
         const prec = Math.max(2, Math.floor(Math.log10(state.zoom)) + 2);
         const renderKey = `${state.cx.toFixed(prec)}|${state.cy.toFixed(prec)}|${state.zoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
         
+        ctxCpu.clearRect(0, 0, cpuOverlay.width, cpuOverlay.height);
+        
+        if (state.proxyCanvas) {
+            drawCanvasScaled(state.proxyCanvas, state.proxyState, 1.0);
+        }
+
+        if (state.isFading) {
+            const fadeTime = performance.now() - state.fadeStartTime;
+            const alpha = Math.min(1, fadeTime / 400); 
+            drawCanvasScaled(state.workCanvas, state.workState, alpha);
+            
+            if (alpha >= 1) {
+                state.isFading = false;
+                captureProxy();
+                state.cpuTilesTotal = 0;
+                state.cpuTilesDone = 0;
+                updateProgress(); 
+            }
+        }
+
         if (!isMoving) {
-            if (state.lastRenderKey !== renderKey) {
+            if (state.lastRenderKey !== renderKey && !state.isFading) {
                 state.lastRenderKey = renderKey;
                 clearTimeout(cpuDebounceTimer);
                 cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
             }
         } else {
             clearTimeout(cpuDebounceTimer);
-            if (state.cpuTilesDone === 0) cpuOverlay.style.display = 'none';
+            if (!state.proxyCanvas && state.cpuTilesDone === 0) {
+                captureProxy();
+            }
         }
 
         gl.uniform1i(uLocs.u_mode, 0); 
@@ -452,20 +544,6 @@ function render() {
         const cy_hi = Math.fround(cyf), cy_lo = cyf - cy_hi;
         gl.uniform4f(uLocs.u_center, cx_hi, cx_lo, cy_hi, cy_lo);
         gl.uniform1f(uLocs.u_scale, pixelScale);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-    } else if (usePerturbation) {
-        if (!state.refOrbitData || state.refOrbitDirty) {
-            computeReferenceOrbit();
-            state.refOrbitDirty = false;
-        }
-        if (cpuOverlay) cpuOverlay.style.display = 'none';
-        gl.uniform1i(uLocs.u_mode, 1);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, refOrbitTex);
-        gl.uniform1i(uLocs.u_refOrbit, 0);
-        gl.uniform1i(uLocs.u_refLen, state.refOrbitLen);
-        gl.uniform2f(uLocs.u_refOffset, 0, 0);
-        gl.uniform1f(uLocs.u_pixelScale, pixelScale);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     } else {
         if (cpuOverlay) cpuOverlay.style.display = 'none';
@@ -477,9 +555,9 @@ function render() {
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    detectInsideSet();
     updateUI();
 }
+
 
 function detectInsideSet() {
     const isDeep = state.zoom > 1000;
@@ -530,7 +608,7 @@ function formatZoom(z) {
 function updateUI() {
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = 'v2.0';
+    if (versionEl) versionEl.textContent = 'v2.3';
 
     const titleEl = document.getElementById('info-title');
     const modeIcon = document.getElementById('mode-icon');
