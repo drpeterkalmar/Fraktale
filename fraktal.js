@@ -32,6 +32,7 @@ gl.getExtension('OES_texture_float_linear');
 
 let program, uLocs = {};
 let refOrbitTex = null;
+let cpuIterTex = null;
 
 function compileShader(src, type) {
     const s = gl.createShader(type);
@@ -50,7 +51,7 @@ function initProgram() {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(program)); return; }
     gl.useProgram(program);
     ['u_resolution','u_maxIter','u_palette','u_colorCycle','u_center','u_scale',
-     'u_mode','u_refOrbit','u_refLen','u_pixelScale','u_refOffset','u_refCenter','u_time',
+     'u_mode','u_refOrbit','u_cpuIters','u_refLen','u_pixelScale','u_refOffset','u_refCenter','u_time',
      'u_fractalMode', 'u_juliaC'].forEach(n => { uLocs[n] = gl.getUniformLocation(program, n); });
     gl.bindVertexArray(gl.createVertexArray());
 }
@@ -67,6 +68,10 @@ function resize() {
     if (state.fractalMode === 7) {
         state.buddhabrotHistogram = new Uint32Array(canvas.width * canvas.height);
         state.buddhabrotMax = 0;
+    }
+    if (cpuIterTex) {
+        gl.deleteTexture(cpuIterTex);
+        cpuIterTex = null;
     }
 }
 
@@ -139,10 +144,10 @@ function onWorkerMessage(e) {
         return;
     }
 
-    const { tile, pixels, version } = e.data;
+    const { tile, iters, version } = e.data;
     if (version !== state.cpuRenderVersion) return;
 
-    drawTile(tile, pixels);
+    drawTile(tile, iters);
     state.cpuTilesDone++;
     updateProgress();
 
@@ -291,11 +296,20 @@ function drawCanvasScaled(sourceCanvas, sourceState, alpha = 1.0) {
     ctxCpu.restore();
 }
 
-function drawTile(tile, pixels) {
+function drawTile(tile, iters) {
     if (!state.workCanvas) return;
     const { x, y, w, h } = tile;
-    const imgData = new ImageData(new Uint8ClampedArray(pixels), w, h);
-    state.workCanvas.getContext('2d').putImageData(imgData, x, y);
+    
+    // 1. Upload to WebGL texture for real-time coloring
+    if (!cpuIterTex) {
+        cpuIterTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, canvas.width, canvas.height, 0, gl.RED, gl.FLOAT, null);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED, gl.FLOAT, new Float32Array(iters));
 }
 
 function startCpuRender() {
@@ -308,6 +322,13 @@ function startCpuRender() {
     state.workCanvas.width = canvas.width;
     state.workCanvas.height = canvas.height;
     state.workCanvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Clear WebGL iteration texture
+    if (cpuIterTex) {
+        gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
+        const clearData = new Float32Array(canvas.width * canvas.height).fill(-1.0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, canvas.width, canvas.height, 0, gl.RED, gl.FLOAT, clearData);
+    }
     
     state.workState = {
         cx: state.cx,
@@ -537,7 +558,13 @@ function render() {    if (state.fractalMode === 7) {
             clearTimeout(cpuDebounceTimer);
         }
 
-        gl.uniform1i(uLocs.u_mode, 0); 
+        gl.uniform1i(uLocs.u_mode, cpuIterTex ? 2 : 0);
+        if (cpuIterTex) {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
+            gl.uniform1i(uLocs.u_cpuIters, 1);
+        }
+        
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
         const cy_hi = Math.fround(cyf), cy_lo = cyf - cy_hi;
         gl.uniform4f(uLocs.u_center, cx_hi, cx_lo, cy_hi, cy_lo);

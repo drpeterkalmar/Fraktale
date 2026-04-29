@@ -35,6 +35,7 @@ uniform float u_scale;   // complex units per pixel
 // Perturbation mode
 uniform int u_mode;           // 0=standard, 1=perturbation
 uniform sampler2D u_refOrbit; // reference orbit as 1D float texture
+uniform sampler2D u_cpuIters; // CPU iteration data texture
 uniform int u_refLen;         // reference orbit length
 uniform float u_pixelScale;   // complex units per pixel (perturbation)
 uniform vec2 u_refOffset;     // offset from ref orbit center to current center
@@ -388,7 +389,9 @@ void main() {
     }
 
     float smoothIter;
-    if (u_mode == 1 && u_fractalMode < 2) {
+    if (u_mode == 2) {
+        smoothIter = texture(u_cpuIters, vUv).r;
+    } else if (u_mode == 1 && u_fractalMode < 2) {
         smoothIter = mandelbrot_perturbation(vUv);
     } else {
         smoothIter = mandelbrot_standard(vUv);
@@ -439,8 +442,8 @@ void main() {
             col = vec3(1.0) - mix(rootCol, col, 0.6);
             col = clamp(col * 0.9, 0.0, 1.0);
         } else {
-            // Balanced color mapping: sqrt-log hybrid for rich detail
-            float t = sqrt(smoothIter / float(u_maxIter)) * 8.0;
+            // Balanced color mapping: 1.0 factor for "entire palette" per render
+            float t = sqrt(smoothIter / float(u_maxIter)) * 1.0; 
             col = getColor(t, u_palette);
         }
         
