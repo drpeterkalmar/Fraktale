@@ -442,8 +442,8 @@ void main() {
             col = vec3(1.0) - mix(rootCol, col, 0.6);
             col = clamp(col * 0.9, 0.0, 1.0);
         } else {
-            // Balanced color mapping: 1.0 factor for "entire palette" per render
-            float t = sqrt(smoothIter / float(u_maxIter)) * 1.0; 
+            // Logarithmic scaling for infinite color density at deep zooms
+            float t = log2(smoothIter + 1.0) * 1.2; 
             col = getColor(t, u_palette);
         }
         

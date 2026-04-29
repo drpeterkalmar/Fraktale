@@ -316,19 +316,10 @@ function startCpuRender() {
     console.log("Starting CPU High-Precision Render...");
     state.cpuRenderVersion++;
     
-    if (!state.workCanvas) {
-        state.workCanvas = document.createElement('canvas');
-    }
+    if (!state.workCanvas) state.workCanvas = document.createElement('canvas');
     state.workCanvas.width = canvas.width;
     state.workCanvas.height = canvas.height;
     state.workCanvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Clear WebGL iteration texture
-    if (cpuIterTex) {
-        gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
-        const clearData = new Float32Array(canvas.width * canvas.height).fill(-1.0);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, canvas.width, canvas.height, 0, gl.RED, gl.FLOAT, clearData);
-    }
     
     state.workState = {
         cx: state.cx,
@@ -1285,7 +1276,7 @@ function animationLoop(now) {
     lastFrameTime = now;
     if (dt > 0.2) return;
     state.animTime += dt;
-    state.colorCycle += dt * 0.08; 
+    state.colorCycle += dt * 0.15; 
     // Separate lerp for position (faster) and zoom (smooth)
     let zoomLerp = 1 - Math.pow(0.4, dt); 
     let panLerp = 1 - Math.pow(0.1, dt); // Much faster pan
