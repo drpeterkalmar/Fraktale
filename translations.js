@@ -1,6 +1,6 @@
 const TRANSLATIONS = {
     de: {
-        title: "Fraktal-Explorer", re: "Re", im: "Im", zoom: "Zoom", iterations: "Iterationen", mode: "Modus", fps: "FPS", version: "Version",
+        title: "Fraktal-Explorer", re: "Re", im: "Im", zoom: "Zoom", iterations: "Iterationen", mode: "Modus", fps: "FPS", version: "",
         reset_view: "Ansicht zurücksetzen (R)", screenshot: "Screenshot (S)", fullscreen: "Vollbild (F)", zoom_mode: "Zoom-Modus (Z)", change_mode: "Modus wechseln (M)", help: "Was ist ein Fraktal? (?)", toggle_info: "Info ein/aus (I)", change_lang: "Sprache wechseln (L)", formula: "Formel",
         mandelbrot: "MANDELBROT", julia: "JULIA-MENGE", burning_ship: "BURNING SHIP", tricorn: "TRICORN", mandel_z3: "MANDELBROT z³", newton: "NEWTON", mandelbulb: "MANDELBULB 3D", buddhabrot: "BUDDHABROT",
         what_is_fractal: "Was ist ein Fraktal? 🌀", fractal_desc: "Ein Fraktal ist ein mathematisches Wunderwerk. Stell dir ein Bild vor, in das du immer weiter hineinzoomen kannst, und es tauchen immer wieder neue, wunderschöne Muster auf, die dem Ganzen ähneln.",
@@ -23,7 +23,7 @@ const TRANSLATIONS = {
         inside_desc: "Zoome heraus oder navigiere zum farbigen Rand für Details."
     },
     en: {
-        title: "Fractal Explorer", re: "Re", im: "Im", zoom: "Zoom", iterations: "Iterations", mode: "Mode", fps: "FPS", version: "Version",
+        title: "Fractal Explorer", re: "Re", im: "Im", zoom: "Zoom", iterations: "Iterations", mode: "Mode", fps: "FPS", version: "",
         reset_view: "Reset View (R)", screenshot: "Screenshot (S)", fullscreen: "Fullscreen (F)", zoom_mode: "Zoom Mode (Z)", change_mode: "Change Mode (M)", help: "What is a Fractal? (?)", toggle_info: "Toggle Info (I)", change_lang: "Change Language (L)", formula: "Formula",
         mandelbrot: "MANDELBROT", julia: "JULIA SET", burning_ship: "BURNING SHIP", tricorn: "TRICORN", mandel_z3: "MANDELBROT z³", newton: "NEWTON", mandelbulb: "MANDELBULB 3D", buddhabrot: "BUDDHABROT",
         what_is_fractal: "What is a Fractal? 🌀", fractal_desc: "A fractal is a mathematical wonder. Imagine an image that you can zoom into infinitely, and new, beautiful patterns keep appearing that resemble the whole.",
