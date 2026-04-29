@@ -398,9 +398,9 @@ function startCpuRender() {
 function computeReferenceOrbit() {
     // More aggressive iteration scaling for deep zoom contrast
     const zoomLog = Math.log10(state.zoom + 1);
-    const targetIter = Math.floor(800 + zoomLog * 250);
+    const targetIter = Math.floor(1000 + zoomLog * zoomLog * 50); // Aggressive scaling
     // Allow manual override if user has changed it, but keep a sensible floor
-    state.maxIter = Math.max(state.maxIter, Math.min(15000, targetIter));
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, targetIter));
 
     const prec = Math.max(40, Math.ceil(zoomLog * 2) + 40);
     Decimal.set({ precision: prec });
@@ -624,7 +624,7 @@ function formatZoom(z) {
 function updateUI() {
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = '4.0';
+    if (versionEl) versionEl.textContent = '4.1';
 
     const titleEl = document.getElementById('info-title');
     const modeIcon = document.getElementById('mode-icon');

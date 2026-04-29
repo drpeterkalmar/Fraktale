@@ -194,7 +194,7 @@ float mandelbrot_standard(vec2 pixel) {
     }
 
     float iter = 0.0;
-    for (int i = 0; i < 16384; i++) {
+    for (int i = 0; i < 65536; i++) {
         if (i >= u_maxIter) break;
 
         vec2 zx2 = ds_mul(zx, zx);
@@ -442,8 +442,8 @@ void main() {
             col = vec3(1.0) - mix(rootCol, col, 0.6);
             col = clamp(col * 0.9, 0.0, 1.0);
         } else {
-            // Logarithmic scaling for infinite color density at deep zooms
-            float t = log2(smoothIter + 1.0) * 1.2; 
+            // High-frequency coloring for deep zooms — ensures vibrancy
+            float t = smoothIter * 0.08; 
             col = getColor(t, u_palette);
         }
         
