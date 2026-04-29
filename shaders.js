@@ -40,6 +40,8 @@ uniform int u_refLen;         // reference orbit length
 uniform float u_pixelScale;   // complex units per pixel (perturbation)
 uniform vec2 u_refOffset;     // offset from ref orbit center to current center
 uniform vec2 u_refCenter;     // float32 approx of reference center (for glitch fallback)
+uniform vec4 u_cpuCenter;    // xHi, xLo, yHi, yLo of the CPU texture center
+uniform float u_cpuScale;    // complex units per pixel of the CPU texture
 uniform float u_time;         // animation time in seconds
 
 uniform int u_fractalMode;    // 0=Mandelbrot, 1=Julia
@@ -390,7 +392,13 @@ void main() {
 
     float smoothIter;
     if (u_mode == 2) {
-        smoothIter = texture(u_cpuIters, vUv).r;
+        vec2 p = vec2(gl_FragCoord.x - u_resolution.x*0.5, gl_FragCoord.y - u_resolution.y*0.5);
+        vec2 dC = vec2(u_center.x - u_cpuCenter.x, u_center.z - u_cpuCenter.z) + vec2(u_center.y - u_cpuCenter.y, u_center.w - u_cpuCenter.w);
+        vec2 worldOffset = p * u_scale + dC;
+        vec2 texUv = vec2(0.5 + worldOffset.x / (u_cpuScale * u_resolution.x), 
+                          0.5 - worldOffset.y / (u_cpuScale * u_resolution.y));
+        if (texUv.x < 0.0 || texUv.x > 1.0 || texUv.y < 0.0 || texUv.y > 1.0) smoothIter = -2.0;
+        else smoothIter = texture(u_cpuIters, texUv).r;
     } else if (u_mode == 1 && u_fractalMode < 2) {
         smoothIter = mandelbrot_perturbation(vUv);
     } else {

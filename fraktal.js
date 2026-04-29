@@ -51,7 +51,7 @@ function initProgram() {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(program)); return; }
     gl.useProgram(program);
     ['u_resolution','u_maxIter','u_palette','u_colorCycle','u_center','u_scale',
-     'u_mode','u_refOrbit','u_cpuIters','u_refLen','u_pixelScale','u_refOffset','u_refCenter','u_time',
+     'u_mode','u_refOrbit','u_cpuIters','u_cpuCenter','u_cpuScale','u_refLen','u_pixelScale','u_refOffset','u_refCenter','u_time',
      'u_fractalMode', 'u_juliaC'].forEach(n => { uLocs[n] = gl.getUniformLocation(program, n); });
     gl.bindVertexArray(gl.createVertexArray());
 }
@@ -544,14 +544,14 @@ function render() {    if (state.fractalMode === 7) {
             }
         }
 
-        // Trigger CPU Render for target endpoint if interaction stopped
-        if (!state.isInteracting && !state.isFading) {
+        // Trigger CPU Render for target endpoint if interaction stopped and view settled
+        if (!state.isInteracting && !state.isFading && !isMoving) {
             if (state.lastRenderKey !== targetKey) {
                 state.lastRenderKey = targetKey;
                 clearTimeout(cpuDebounceTimer);
-                cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 50);
+                cpuDebounceTimer = setTimeout(() => { startCpuRender(); }, 100);
             }
-        } else if (state.isInteracting) {
+        } else if (state.isInteracting || isMoving) {
             clearTimeout(cpuDebounceTimer);
         }
 
@@ -560,6 +560,18 @@ function render() {    if (state.fractalMode === 7) {
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
             gl.uniform1i(uLocs.u_cpuIters, 1);
+            
+            // Pass the coordinates for which the CPU texture was rendered with HIGH precision
+            const cS = state.workState;
+            const ctx_hi = Math.fround(cS.cx.toNumber());
+            const ctx_lo = cS.cx.minus(new Decimal(ctx_hi)).toNumber();
+            const cty_hi = Math.fround(cS.cy.toNumber());
+            const cty_lo = cS.cy.minus(new Decimal(cty_hi)).toNumber();
+            gl.uniform4f(uLocs.u_cpuCenter, ctx_hi, ctx_lo, cty_hi, cty_lo);
+            
+            // The texture contains iterations for pixels of size (3.0 / (zoom * canvas.height))
+            const texPixelScale = 3.0 / (cS.zoom * canvas.height);
+            gl.uniform1f(uLocs.u_cpuScale, texPixelScale);
         }
         
         const cx_hi = Math.fround(cxf), cx_lo = cxf - cx_hi;
@@ -630,7 +642,7 @@ function formatZoom(z) {
 function updateUI() {
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = '4.3';
+    if (versionEl) versionEl.textContent = '4.4';
 
     const titleEl = document.getElementById('info-title');
     const modeIcon = document.getElementById('mode-icon');
@@ -1033,8 +1045,12 @@ function toggleFractalMode() {
 
 function setFractalMode(mode) {
     state.fractalMode = mode;
-    state.refOrbitData = null;
-    markOrbitDirty();
+    state.refOrbitDirty = true;
+    state.lastRenderKey = ""; // Invalidate CPU render
+    if (cpuIterTex) {
+        gl.deleteTexture(cpuIterTex);
+        cpuIterTex = null;
+    }
     state.fastFlight = true;
     
     // Reset view for specific modes if needed
@@ -1187,7 +1203,10 @@ canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     state.targetZoom *= Math.exp(-e.deltaY * 0.0005);
     clearTimeout(state.interactionTimer);
-    state.interactionTimer = setTimeout(() => { state.isInteracting = false; }, 200);
+    state.interactionTimer = setTimeout(() => { 
+        state.isInteracting = false; 
+        scheduleRender(); 
+    }, 100);
 }, { passive: false });
 
 canvas.addEventListener('touchstart', (e) => {
