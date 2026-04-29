@@ -406,11 +406,17 @@ function computeReferenceOrbit() {
     Decimal.set({ precision: prec });
     
     const data = new Float32Array(state.maxIter * 4);
-    let zx = new Decimal(0), zy = new Decimal(0);
-    let cx = state.cx, cy = state.cy;
+    let zx, zy, cx, cy;
+    if (state.fractalMode === 1) { // Julia
+        zx = state.cx; zy = state.cy;
+        cx = state.juliaC.x; cy = state.juliaC.y;
+    } else { // Mandelbrot (and others that use perturbation)
+        zx = new Decimal(0); zy = new Decimal(0);
+        cx = state.cx; cy = state.cy;
+    }
     
-    state.refCx = cx;
-    state.refCy = cy;
+    state.refCx = state.cx;
+    state.refCy = state.cy;
     
     let i = 0;
     for (i = 0; i < state.maxIter; i++) {
@@ -624,7 +630,7 @@ function formatZoom(z) {
 function updateUI() {
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = '4.1';
+    if (versionEl) versionEl.textContent = '4.3';
 
     const titleEl = document.getElementById('info-title');
     const modeIcon = document.getElementById('mode-icon');
