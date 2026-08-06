@@ -46,5 +46,12 @@ Du brauchst nichts zu installieren!
 2. Doppelklicke auf `start_fractal.bat`.
 3. Dein Browser öffnet sich und die Reise beginnt!
 
+## 📜 Änderungen
+
+**Version 4.4**
+- Fix: CPU-Rendering-Verschiebung (kein verschobenes Bild mehr beim Zoomen).
+- Fix: Präzisionsprobleme bei sehr tiefem Zoom.
+- Fix: Interaktion friert beim Rendern nicht mehr ein.
+
 ---
 *Entwickelt mit ❤️ für kleine und große Entdecker.*
