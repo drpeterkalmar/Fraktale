@@ -265,8 +265,9 @@ function captureProxy() {
         ctx.drawImage(cpuOverlay, 0, 0);
     }
     state.proxyState = {
-        cx: state.workState.cx ? state.workState.cx.clone() : state.cx.clone(),
-        cy: state.workState.cy ? state.workState.cy.clone() : state.cy.clone(),
+        // Achtung: decimal.js-Instanzen haben KEIN .clone() — Kopie via Konstruktor.
+        cx: new Decimal(state.workState.cx ? state.workState.cx : state.cx),
+        cy: new Decimal(state.workState.cy ? state.workState.cy : state.cy),
         zoom: state.workState.zoom || state.zoom,
         width: canvas.width,
         height: canvas.height
@@ -321,19 +322,22 @@ function gpuColor(t, pid, cycle) {
 function drawTile(tile, iters) {
     if (!state.workCanvas) return;
     const { x, y, w, h } = tile;
+    // Worker liefert einen TRANSFERRED ArrayBuffer — erst als Float32Array viewen!
+    const it = (iters instanceof Float32Array) ? iters : new Float32Array(iters);
     const ctx = state.workCanvas.getContext('2d');
     const img = ctx.createImageData(w, h);
     const d = img.data;
     const cw = canvas.width, ch = canvas.height;
     const invMax = 1.0 / state.maxIter;
-    for (let i = 0; i < iters.length; i++) {
+    for (let i = 0; i < it.length; i++) {
         const o = i * 4;
         const gx = x + (i % w), gy = y + ((i / w) | 0);
-        if (iters[i] < 0) {
+        if (it[i] < 0) {
             d[o] = 0; d[o + 1] = 0; d[o + 2] = 4; d[o + 3] = 255;
         } else {
-            // gleiche Farb-Formel wie der GPU-Shader (sqrt-Normierung)
-            const t = Math.sqrt(iters[i] * invMax) * 3.0;
+            // exakt die GPU-Shader-Formel: t = smoothIter * 0.08 (LINEAR, keine
+            // sqrt-Normierung — die staucht die Palette bei hohen Iterationen flach)
+            const t = it[i] * 0.08;
             const c = gpuColor(t, state.palette, state.renderColorCycle ?? state.colorCycle);
             // Vignette wie im Shader
             const vx = gx / cw - 0.5, vy = gy / ch - 0.5;
@@ -362,9 +366,9 @@ function startCpuRender() {
     state.workCanvas.height = canvas.height;
     state.workCanvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
 
-    // SNAPSHOTS: Decimal-Objekte kopieren + Orbit fixieren (nicht live-lerpende state-Werte!)
+    // SNAPSHOTS: Decimal-Objekte kopieren (kein .clone() in decimal.js!) + Orbit fixieren
     state.workState = {
-        cx: state.cx.clone(), cy: state.cy.clone(),
+        cx: new Decimal(state.cx), cy: new Decimal(state.cy),
         zoom: state.zoom,
         width: canvas.width,
         height: canvas.height
@@ -707,7 +711,7 @@ function formatZoom(z) {
 function updateUI() {
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = '4.4';
+    if (versionEl) versionEl.textContent = '4.5';
 
     const titleEl = document.getElementById('info-title');
     const modeIcon = document.getElementById('mode-icon');
