@@ -159,20 +159,21 @@ function onWorkerMessage(e) {
 
     if (pendingTiles.length > 0) {
         const next = pendingTiles.pop();
-        const baseDcx = state.cx.minus(state.refCx).toNumber();
-        const baseDcy = state.cy.minus(state.refCy).toNumber();
+        const ws = state.workState;                 // SNAPSHOT: nicht live-lerpende Werte
+        const baseDcx = ws.cx.minus(state.refCx).toNumber();
+        const baseDcy = ws.cy.minus(state.refCy).toNumber();
 
         e.target.postMessage({
             tile: next,
-            canvasW: canvas.width,
-            canvasH: canvas.height,
-            viewW: 3.0 * (canvas.width / canvas.height) / state.zoom,
-            viewH: 3.0 / state.zoom,
+            canvasW: ws.width,
+            canvasH: ws.height,
+            viewW: 3.0 * (ws.width / ws.height) / ws.zoom,
+            viewH: 3.0 / ws.zoom,
             baseDcx, baseDcy,
             refOrbit: state.workerRefOrbit,
             refLen: state.refOrbitLen,
-            cx: state.cx.toNumber(),
-            cy: state.cy.toNumber(),
+            cx: ws.cx.toNumber(),
+            cy: ws.cy.toNumber(),
             refCx: state.refCx.toNumber(),
             refCy: state.refCy.toNumber(),
             juliaCx: state.juliaC.x.toNumber(),
@@ -264,9 +265,9 @@ function captureProxy() {
         ctx.drawImage(cpuOverlay, 0, 0);
     }
     state.proxyState = {
-        cx: state.cx,
-        cy: state.cy,
-        zoom: state.zoom,
+        cx: state.workState.cx ? state.workState.cx.clone() : state.cx.clone(),
+        cy: state.workState.cy ? state.workState.cy.clone() : state.cy.clone(),
+        zoom: state.workState.zoom || state.zoom,
         width: canvas.width,
         height: canvas.height
     };
@@ -284,7 +285,6 @@ function drawCanvasScaled(sourceCanvas, sourceState, alpha = 1.0) {
     
     const dx = ps.cx.minus(state.cx).toNumber();
     const dy = ps.cy.minus(state.cy).toNumber();
-    
     const offsetX = dx * (ps.width / sw) * currentZoom;
     const offsetY = -dy * (ps.height / sh) * currentZoom;
     
@@ -296,39 +296,97 @@ function drawCanvasScaled(sourceCanvas, sourceState, alpha = 1.0) {
     ctxCpu.restore();
 }
 
+// === GPU-kompatible Palette ( JS-Spiegel von shaders.js ) ===
+const PAL_COS = [
+    [[0.5,0.5,0.5],[0.5,0.5,0.5],[1.0,1.0,1.0],[0.00,0.10,0.20]],   // Neon
+    [[0.5,0.5,0.5],[0.5,0.5,0.5],[1.0,1.0,0.5],[0.80,0.90,0.30]],   // Ocean
+    [[0.5,0.5,0.5],[0.5,0.5,0.5],[1.0,0.7,0.4],[0.00,0.15,0.20]],   // Inferno
+    [[0.5,0.5,0.5],[0.5,0.5,0.5],[2.0,1.0,0.0],[0.50,0.20,0.25]],   // Electric
+    [[0.5,0.5,0.5],[0.5,0.5,0.5],[1.0,1.0,1.0],[0.30,0.20,0.20]],   // Cosmic
+    [[0.5,0.5,0.5],[0.5,0.5,0.5],[1.0,1.0,0.5],[0.00,0.33,0.67]]    // Aurora
+];
+
+// 1:1-Nachbau der GPU-Faerbung (ohne Vignette/Gamma — passieren in drawTile)
+function gpuColor(t, pid, cycle) {
+    let u = (t + cycle) % 1.0;
+    if (u < 0) u += 1.0;
+    const P = PAL_COS[pid] || PAL_COS[0];
+    const a = P[0], b = P[1], c = P[2], dv = P[3];
+    const col = [0, 1, 2].map(k => a[k] + b[k] * Math.cos(6.28318 * (c[k] * u + dv[k])));
+    const lum = 0.299 * col[0] + 0.587 * col[1] + 0.114 * col[2];
+    for (let k = 0; k < 3; k++) col[k] = lum + (col[k] - lum) * 1.2;
+    return col;
+}
+
 function drawTile(tile, iters) {
     if (!state.workCanvas) return;
     const { x, y, w, h } = tile;
-    
-    // 1. Upload to WebGL texture for real-time coloring
-    if (!cpuIterTex) {
-        cpuIterTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, canvas.width, canvas.height, 0, gl.RED, gl.FLOAT, null);
+    const ctx = state.workCanvas.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    const d = img.data;
+    const cw = canvas.width, ch = canvas.height;
+    const invMax = 1.0 / state.maxIter;
+    for (let i = 0; i < iters.length; i++) {
+        const o = i * 4;
+        const gx = x + (i % w), gy = y + ((i / w) | 0);
+        if (iters[i] < 0) {
+            d[o] = 0; d[o + 1] = 0; d[o + 2] = 4; d[o + 3] = 255;
+        } else {
+            // gleiche Farb-Formel wie der GPU-Shader (sqrt-Normierung)
+            const t = Math.sqrt(iters[i] * invMax) * 3.0;
+            const c = gpuColor(t, state.palette, state.renderColorCycle ?? state.colorCycle);
+            // Vignette wie im Shader
+            const vx = gx / cw - 0.5, vy = gy / ch - 0.5;
+            const vig = 1.0 - (vx * vx + vy * vy) * 0.25;
+            d[o]     = Math.min(255, Math.pow(Math.max(0, c[0] * vig), 0.92) * 255);
+            d[o + 1] = Math.min(255, Math.pow(Math.max(0, c[1] * vig), 0.92) * 255);
+            d[o + 2] = Math.min(255, Math.pow(Math.max(0, c[2] * vig), 0.92) * 255);
+            d[o + 3] = 255;
+        }
     }
-    gl.bindTexture(gl.TEXTURE_2D, cpuIterTex);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED, gl.FLOAT, new Float32Array(iters));
+    ctx.putImageData(img, x, y);
+    // GPU-Kopie (unsichtbar hinter Overlay) nicht mehr noetig: cpuIterTex
+    // wird beim naechsten startCpuRender sauber entfernt.
+    if (cpuIterTex) { gl.deleteTexture(cpuIterTex); cpuIterTex = null; }
 }
 
 function startCpuRender() {
     console.log("Starting CPU High-Precision Render...");
     state.cpuRenderVersion++;
-    
+
+    // ALTER Textur-Bestand wegwerfen: nie alte Kacheln in neue Views mischen
+    if (cpuIterTex) { gl.deleteTexture(cpuIterTex); cpuIterTex = null; }
+
     if (!state.workCanvas) state.workCanvas = document.createElement('canvas');
     state.workCanvas.width = canvas.width;
     state.workCanvas.height = canvas.height;
     state.workCanvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-    
+
+    // SNAPSHOTS: Decimal-Objekte kopieren + Orbit fixieren (nicht live-lerpende state-Werte!)
     state.workState = {
-        cx: state.cx,
-        cy: state.cy,
+        cx: state.cx.clone(), cy: state.cy.clone(),
         zoom: state.zoom,
         width: canvas.width,
         height: canvas.height
     };
-    
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + Math.pow(Math.log10(state.zoom + 1), 2) * 50)));
+
+    // Referenz-Orbit GENAU für diesen Snapshot (fixiert die workerRefOrbit)
+    computeReferenceOrbit();
+
+    // Farbzyklus EINFRIEREN: Kacheln werden eingebrannt, ein laufender colorCycle
+    // wuerde erste vs. letzte Kachel verschieden faerben (Kachel-Artefakte).
+    state.renderColorCycle = state.colorCycle;
+
+    // Zentrum im AEUSSEREN (Orbit flieht praktisch sofort): CPU-Perturbation
+    // liefert dort nur eine Flachfarbe -> keine neuen Kacheln starten. Aber:
+    // Overlay + Proxy BEHALTEN (nicht verstecken!), sonst blitzt GPU-Muell durch.
+    if (state.refOrbitLen < 40) {
+        state.cpuTilesTotal = 0; state.cpuTilesDone = 0;
+        updateProgress();
+        return;
+    }
+
     state.isFading = false;
     cpuOverlay.width = canvas.width;
     cpuOverlay.height = canvas.height;
@@ -365,20 +423,21 @@ function startCpuRender() {
     workers.forEach(w => {
         if (pendingTiles.length > 0) {
             const next = pendingTiles.pop();
-            const baseDcx = state.cx.minus(state.refCx).toNumber();
-            const baseDcy = state.cy.minus(state.refCy).toNumber();
+            const ws = state.workState;             // SNAPSHOT der Render-Ansicht
+            const baseDcx = ws.cx.minus(state.refCx).toNumber();
+            const baseDcy = ws.cy.minus(state.refCy).toNumber();
 
             w.postMessage({
                 tile: next,
-                canvasW: canvas.width,
-                canvasH: canvas.height,
-                viewW: 3.0 * (canvas.width / canvas.height) / state.zoom,
-                viewH: 3.0 / state.zoom,
+                canvasW: ws.width,
+                canvasH: ws.height,
+                viewW: 3.0 * (ws.width / ws.height) / ws.zoom,
+                viewH: 3.0 / ws.zoom,
                 baseDcx, baseDcy,
                 refOrbit: state.workerRefOrbit,
                 refLen: state.refOrbitLen,
-                cx: state.cx.toNumber(),
-                cy: state.cy.toNumber(),
+                cx: ws.cx.toNumber(),
+                cy: ws.cy.toNumber(),
                 refCx: state.refCx.toNumber(),
                 refCy: state.refCy.toNumber(),
                 juliaCx: state.juliaC.x.toNumber(),
@@ -425,7 +484,7 @@ function computeReferenceOrbit() {
         data[i*4+2] = Math.fround(fy); data[i*4+3] = fy - data[i*4+2];
         
         const zx2 = zx.mul(zx), zy2 = zy.mul(zy);
-        if (zx2.plus(zy2).gt(1000000)) break; 
+        if (zx2.plus(zy2).gt(1e12)) break;  // Orbit-Abbruch erst sehr spaet (Rebasing macht kurze Orbits ungedlich)
         
         const nzy = zx.mul(zy).mul(2).plus(cy);
         zx = zx2.minus(zy2).plus(cx);
@@ -456,7 +515,8 @@ function computeReferenceOrbit() {
 
 function markOrbitDirty() { 
     state.refOrbitDirty = true; 
-    state.proxyCanvas = null;
+    // Proxy BEHALTEN: er dient als weiches Unterlay beim_naechsten Zoom/Pan.
+    // (frueher null -> beim Panen blitzte der GPU-Muell im Deep-Zoom durch)
     state.cpuTilesTotal = 0;
     state.cpuTilesDone = 0;
     state.isFading = false;
@@ -496,6 +556,11 @@ function render() {    if (state.fractalMode === 7) {
     }
 
     const useCPU = state.zoom > ZOOM_THRESHOLD;
+
+    // Iterations-Floor: Tiefe Zooms brauchen mehr Iterationen SCHON im GPU-Bereich,
+    // sonst kippen feine Filamente in Flachfarben (Orange-Flaeche bei ~18k).
+    const zoomLogG = Math.log10(state.zoom + 1);
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + zoomLogG * zoomLogG * 50)));
 
     // GPU Shader setup
     gl.useProgram(program);
@@ -1377,6 +1442,28 @@ function init() {
     resize(); initProgram(); initPalettePicker(); initBookmarks(); initSteppers(); wireButtons();
     updateUI();
     renderMinimapBase(); initWorkers(); requestAnimationFrame(animationLoop);
+    // Debug-Hook fuer E2E-Tests (Playwright): State + Canvases von aussen lesbar
+    window.__fraktal = {
+        state,
+        canvases: () => ({ main: canvas, overlay: cpuOverlay, work: state.workCanvas, proxy: state.proxyCanvas }),
+        probeWork: () => {
+            const wc = state.workCanvas;
+            if (!wc) return { err: 'no workCanvas' };
+            const ctx = wc.getContext('2d');
+            const d = ctx.getImageData(0, 0, wc.width, wc.height).data;
+            let opaque = 0, colored = 0, n = 0;
+            const buckets = new Set();
+            for (let i = 0; i < d.length; i += 40 * 4) {
+                n++;
+                if (d[i + 3] > 200) {
+                    opaque++;
+                    if (Math.abs(d[i] - d[i + 1]) + Math.abs(d[i + 1] - d[i + 2]) > 30) colored++;
+                    buckets.add((d[i] >> 5) + ',' + (d[i + 1] >> 5) + ',' + (d[i + 2] >> 5));
+                }
+            }
+            return { opaquePct: Math.round(100 * opaque / n), coloredPct: Math.round(100 * colored / n), colors: buckets.size };
+        }
+    };
 }
 init();
 })();

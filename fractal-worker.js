@@ -168,6 +168,12 @@ self.onmessage = function (e) {
                         dzx = next_dzx; dzy = next_dzy;
                         zx_abs = zx_ref + dzx;
                         zy_abs = zy_ref + dzy;
+                        // ZHUORAN-REBASING: wenn volles z naeher an 0 als das delta,
+                        // wird z selbst das neue delta. Eliminiert Glitch-Patches und
+                        // macht kurze/fliehende Referenz-Orbits harmlos.
+                        if (zx_abs*zx_abs + zy_abs*zy_abs < dzx*dzx + dzy*dzy) {
+                            dzx = zx_abs; dzy = zy_abs;
+                        }
                         if (zx_abs*zx_abs + zy_abs*zy_abs > 4.0) { finalIter = iter; break; }
                     } else {
                         let cx_abs = fractalMode === 1 ? juliaCx : (cx + mx * viewW);
@@ -184,11 +190,9 @@ self.onmessage = function (e) {
             const idx = (py * tileW + px);
             if (finalIter >= 0) {
                 let smoothIter = finalIter;
-                if (fractalMode !== 5 && fractalMode !== 6 && fractalMode !== 7) {
-                    const mag = Math.sqrt(zx_abs * zx_abs + zy_abs * zy_abs);
-                    if (mag > 2.0) {
-                        smoothIter = finalIter + 1 - Math.log2(Math.log(mag) / Math.log(2));
-                    }
+                const mag = Math.sqrt(zx_abs * zx_abs + zy_abs * zy_abs);
+                if (mag > 2.0) {
+                    smoothIter = finalIter + 1 - Math.log2(Math.log(mag) / Math.log(2));
                 }
                 iters[idx] = smoothIter;
             } else {
