@@ -2,6 +2,8 @@
 (function () {
 'use strict';
 
+const APP_VERSION = '4.7.2';
+
 const PALETTES = [
     { name: 'Neon Spectral', colors: ['#6366f1','#a78bfa','#f472b6','#fb923c','#facc15','#34d399'] },
     { name: 'Ocean Deep',    colors: ['#0c4a6e','#0284c7','#22d3ee','#a3e635','#fbbf24','#0c4a6e'] },
@@ -123,7 +125,7 @@ let pendingTiles = [];
 function initWorkers() {
     const numWorkers = navigator.hardwareConcurrency || 4;
     for (let i = 0; i < numWorkers; i++) {
-        const w = new Worker('fractal-worker.js?v=1.14');
+        const w = new Worker('fractal-worker.js?v=1.15');
         w.onmessage = onWorkerMessage;
         workers.push(w);
     }
@@ -713,7 +715,7 @@ function formatZoom(z) {
 function updateUI() {
     const t = TRANSLATIONS[state.lang];
     const versionEl = document.getElementById('info-version');
-    if (versionEl) versionEl.textContent = '4.5';
+    if (versionEl) versionEl.textContent = APP_VERSION;
 
     const titleEl = document.getElementById('info-title');
     const modeIcon = document.getElementById('mode-icon');
