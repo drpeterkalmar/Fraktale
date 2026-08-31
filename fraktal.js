@@ -123,7 +123,7 @@ let pendingTiles = [];
 function initWorkers() {
     const numWorkers = navigator.hardwareConcurrency || 4;
     for (let i = 0; i < numWorkers; i++) {
-        const w = new Worker('fractal-worker.js?v=1.13');
+        const w = new Worker('fractal-worker.js?v=1.14');
         w.onmessage = onWorkerMessage;
         workers.push(w);
     }
@@ -1374,17 +1374,16 @@ function animationLoop(now) {
     if (dt > 0.2) return;
     state.animTime += dt;
     state.colorCycle += dt * 0.15; 
-    // ZEITGEKAPPETE Annaeherung: k = max(sanft, Restdistanz/1.2s) — kleine
-    // Bewegungen gleiten weich, grosse Spruenge (Deep-Zoom-Pinches) erreichen
-    // den Renderstart in ~0.6-0.8s statt nach exponentiellem Lange-Zielern.
+    // BREMSPROFIL (statt fixer Lerp-Raten): Rate = Original-Gefuehl + proportional
+    // zur Restdistanz. Kleine Gesten: exakt das alte weiche Gleiten (k≈0.92/2.3).
+    // Grosse Deep-Zoom-Spruenge: starten schnell (~2.6s bis Renderstart statt 8.8s
+    // im Original), laufen dann weich aus — kein Ruckeln, kein Snap.
     const Lz = Math.abs(Math.log(state.targetZoom / state.zoom));
-    const kZoom = Math.max(12.0, Lz / 1.2);
-    let zoomLerp = 1 - Math.exp(-kZoom * dt);
+    let zoomLerp = 1 - Math.exp(-(0.916 + Lz) * dt);      // 0.916 ≡ Original 0.4^dt
     const dCxv = state.targetCx.minus(state.cx).toNumber();
     const dCyv = state.targetCy.minus(state.cy).toNumber();
     const Lpan = Math.hypot(dCxv, dCyv) / (3.0 / state.zoom); // Distanz in Viewbreiten
-    const kPan = Math.max(12.0, Lpan / 1.2);
-    let panLerp = 1 - Math.exp(-kPan * dt);
+    let panLerp = 1 - Math.exp(-(2.303 + Lpan) * dt);     // 2.303 ≡ Original 0.1^dt
     
     if (state.fastFlight) {
         zoomLerp = 1 - Math.pow(0.00001, dt); // Super fast zoom
