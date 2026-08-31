@@ -373,7 +373,7 @@ function startCpuRender() {
         width: canvas.width,
         height: canvas.height
     };
-    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + Math.pow(Math.log10(state.zoom + 1), 2) * 50)));
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + Math.pow(Math.log10(state.zoom + 1), 2) * 50) * (state.iterManual ? 0 : 1)));
 
     // Referenz-Orbit GENAU für diesen Snapshot (fixiert die workerRefOrbit)
     computeReferenceOrbit();
@@ -463,7 +463,7 @@ function computeReferenceOrbit() {
     const zoomLog = Math.log10(state.zoom + 1);
     const targetIter = Math.floor(1000 + zoomLog * zoomLog * 50); // Aggressive scaling
     // Allow manual override if user has changed it, but keep a sensible floor
-    state.maxIter = Math.max(state.maxIter, Math.min(30000, targetIter));
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, state.iterManual ? 100 : targetIter));
 
     const prec = Math.max(40, Math.ceil(zoomLog * 2) + 40);
     Decimal.set({ precision: prec });
@@ -564,7 +564,7 @@ function render() {    if (state.fractalMode === 7) {
     // Iterations-Floor: Tiefe Zooms brauchen mehr Iterationen SCHON im GPU-Bereich,
     // sonst kippen feine Filamente in Flachfarben (Orange-Flaeche bei ~18k).
     const zoomLogG = Math.log10(state.zoom + 1);
-    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + zoomLogG * zoomLogG * 50)));
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + zoomLogG * zoomLogG * 50) * (state.iterManual ? 0 : 1)));
 
     // GPU Shader setup
     gl.useProgram(program);
@@ -593,7 +593,7 @@ function render() {    if (state.fractalMode === 7) {
                          state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
         const prec = Math.max(2, Math.floor(Math.log10(state.targetZoom)) + 2);
-        const targetKey = `${state.targetCx.toFixed(prec)}|${state.targetCy.toFixed(prec)}|${state.targetZoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
+        const targetKey = `${state.targetCx.toFixed(prec)}|${state.targetCy.toFixed(prec)}|${state.targetZoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}|${state.maxIter}`;
         
         ctxCpu.clearRect(0, 0, cpuOverlay.width, cpuOverlay.height);
         
@@ -866,6 +866,7 @@ function goToBookmark(b) {
     state.targetCx = new Decimal(b.cx);
     state.targetCy = new Decimal(b.cy);
     state.targetZoom = b.zoom;
+    state.iterManual = false;   // Bookmark: adaptive Iterationen wieder aktiv
     markOrbitDirty();
     updateSteppers();
 }
@@ -1432,8 +1433,8 @@ function wireButtons() {
         'btn-info-toggle': () => { state.showUI = !state.showUI; toggleUIVisibility(); },
         'btn-lang-toggle': () => toggleLanguage(),
         'info-box-backdrop': () => toggleInfoBox(),
-        'btn-iter-up': () => { state.maxIter = Math.floor(state.maxIter * 1.2); markOrbitDirty(); updateUI(); scheduleRender(); },
-        'btn-iter-down': () => { state.maxIter = Math.max(100, Math.floor(state.maxIter / 1.2)); markOrbitDirty(); updateUI(); scheduleRender(); }
+        'btn-iter-up': () => { state.maxIter = Math.floor(state.maxIter * 1.2); state.iterManual = true; markOrbitDirty(); updateUI(); scheduleRender(); },
+        'btn-iter-down': () => { state.maxIter = Math.max(100, Math.floor(state.maxIter / 1.2)); state.iterManual = true; markOrbitDirty(); updateUI(); scheduleRender(); }
     };
     for (const [id, fn] of Object.entries(actions)) {
         const btn = document.getElementById(id);
