@@ -123,7 +123,7 @@ let pendingTiles = [];
 function initWorkers() {
     const numWorkers = navigator.hardwareConcurrency || 4;
     for (let i = 0; i < numWorkers; i++) {
-        const w = new Worker('fractal-worker.js');
+        const w = new Worker('fractal-worker.js?v=1.13');
         w.onmessage = onWorkerMessage;
         workers.push(w);
     }
@@ -1460,6 +1460,7 @@ function init() {
     // Debug-Hook fuer E2E-Tests (Playwright): State + Canvases von aussen lesbar
     window.__fraktal = {
         state,
+        render: () => render(),   // rAF-Debug-Zugriff: Headless-fps koennen unter dem dt-Guard liegen
         canvases: () => ({ main: canvas, overlay: cpuOverlay, work: state.workCanvas, proxy: state.proxyCanvas }),
         probeWork: () => {
             const wc = state.workCanvas;

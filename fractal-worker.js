@@ -102,7 +102,7 @@ self.onmessage = function (e) {
         return;
     }
 
-    const { tile, canvasW, canvasH, viewW, viewH, baseDcx, baseDcy, refOrbit, refLen, maxIter, paletteIdx, colorCycle, fractalMode, cx, cy, refCx, refCy, juliaCx, juliaCy } = e.data;
+    const { tile, canvasW, canvasH, viewW, viewH, baseDcx, baseDcy, refOrbit, refLen, maxIter, paletteIdx, colorCycle, fractalMode, cx, cy, refCx, refCy, juliaCx, juliaCy, zoom } = e.data;
     const tileW = tile.w, tileH = tile.h, tileX = tile.x, tileY = tile.y;
     const iters = new Float32Array(tileW * tileH);
 
@@ -160,8 +160,22 @@ self.onmessage = function (e) {
                     if ((dzx-1)**2 + dzy**2 < 0.0001) { finalIter = iter + 1; break; }
                     if ((dzx+0.5)**2 + (dzy-0.866)**2 < 0.0001) { finalIter = iter + 1001; break; }
                     if ((dzx+0.5)**2 + (dzy+0.866)**2 < 0.0001) { finalIter = iter + 2001; break; }
-                } else { // Mandelbrot / Julia Perturbation
-                    if (orbIdx < refLen) {
+                } else if (fractalMode === 0 || fractalMode === 1) {
+                    // HYBRID (wie Mandelbrot z^3 / Newton): bis Zoom 1e12 DIREKT auf
+                    // f64 — exakt genug (1e-16 Abweichung bei Pixelgroesse 1e-12) und
+                    // unanfaellig gegen Orbit-/Rebase-Fehler. Danach Perturbation.
+                    const useDirectf64 = zoom <= 1e12;
+                    if (useDirectf64) {
+                        const cx_abs = fractalMode === 1 ? juliaCx : (cx + mx * viewW);
+                        const cy_abs = fractalMode === 1 ? juliaCy : (cy - my * viewH);
+                        if (iter === 0 && fractalMode === 1) {
+                            zx_abs = cx + mx * viewW; zy_abs = cy - my * viewH;
+                        }
+                        const nx = zx_abs * zx_abs - zy_abs * zy_abs + cx_abs;
+                        const ny = 2.0 * zx_abs * zy_abs + cy_abs;
+                        zx_abs = nx; zy_abs = ny;
+                        if (zx_abs*zx_abs + zy_abs*zy_abs > 4.0) { finalIter = iter; break; }
+                    } else if (orbIdx < refLen) {
                         const zrX = refOrbit[orbIdx * 2], zrY = refOrbit[orbIdx * 2 + 1];
                         // dz_{j+1} = 2*O_j*dz + dz^2 + dc   (relativ zu O_{j+1})
                         const n_dzx = 2.0 * (zrX * dzx - zrY * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;

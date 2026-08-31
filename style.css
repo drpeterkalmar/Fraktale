@@ -454,8 +454,8 @@ body {
         font-size: 18px;
         border-radius: 14px;
     }
-    #formula-bar { 
-        display: none; 
+    #formula-bar {
+        /* in End-of-File Media-Query verschoben (Kaskade: Basis-Regel bei 650 ueberschrieb dies) */
     }
     #help-toast { display: none; }
     #info-box {
@@ -801,3 +801,8 @@ body {
 body.dragging #crosshair { opacity: 0.1; }
 
 body.dragging { cursor: grabbing !important; }
+
+/* ===== MOBILE: Formel-Bar aus (muss NACH der Basis-Regel stehen, sonst Kaskaden-Bug) ===== */
+@media (max-width: 768px) {
+    #formula-bar { display: none !important; }
+}
