@@ -124,6 +124,11 @@ self.onmessage = function (e) {
                 dzx = final_dcx; dzy = final_dcy;
             }
 
+            // ORBIT-INDEX pro Pixel (nicht globaler Iterationszaehler!):
+            // dz_j = z - O_j. Nach einem Rebase gehoert dz zum Orbitab-0, der
+            // Index faengt also wieder bei 0 an. Der Fluchttest wertet das VOLL-E
+            // z = O_{j+1} + dz_{j+1} aus — nie einen veralteten Orbitwert.
+            let orbIdx = 0;
             let iter = 0, finalIter = -1;
             let zx_abs = 0, zy_abs = 0;
             while (iter < maxIter) {
@@ -156,26 +161,28 @@ self.onmessage = function (e) {
                     if ((dzx+0.5)**2 + (dzy-0.866)**2 < 0.0001) { finalIter = iter + 1001; break; }
                     if ((dzx+0.5)**2 + (dzy+0.866)**2 < 0.0001) { finalIter = iter + 2001; break; }
                 } else { // Mandelbrot / Julia Perturbation
-                    if (iter === 0) {
-                        // Initialize abs tracking just in case refLen is 0
-                        zx_abs = (fractalMode === 1) ? (cx + mx * viewW) : 0;
-                        zy_abs = (fractalMode === 1) ? (cy - my * viewH) : 0;
-                    }
-                    if (iter < refLen) { 
-                        let zx_ref = refOrbit[iter * 2], zy_ref = refOrbit[iter * 2 + 1];
-                        const next_dzx = 2.0 * (zx_ref * dzx - zy_ref * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
-                        const next_dzy = 2.0 * (zx_ref * dzy + zy_ref * dzx) + (2.0 * dzx * dzy) + final_dcy;
-                        dzx = next_dzx; dzy = next_dzy;
-                        zx_abs = zx_ref + dzx;
-                        zy_abs = zy_ref + dzy;
-                        // ZHUORAN-REBASING: wenn volles z naeher an 0 als das delta,
-                        // wird z selbst das neue delta. Eliminiert Glitch-Patches und
-                        // macht kurze/fliehende Referenz-Orbits harmlos.
-                        if (zx_abs*zx_abs + zy_abs*zy_abs < dzx*dzx + dzy*dzy) {
-                            dzx = zx_abs; dzy = zy_abs;
+                    if (orbIdx < refLen) {
+                        const zrX = refOrbit[orbIdx * 2], zrY = refOrbit[orbIdx * 2 + 1];
+                        // dz_{j+1} = 2*O_j*dz + dz^2 + dc   (relativ zu O_{j+1})
+                        const n_dzx = 2.0 * (zrX * dzx - zrY * dzy) + (dzx * dzx - dzy * dzy) + final_dcx;
+                        const n_dzy = 2.0 * (zrX * dzy + zrY * dzx) + (2.0 * dzx * dzy) + final_dcy;
+                        const jX = zrX + n_dzx, jY = zrY + n_dzy;   // volles z' = O_{j+1} + dz'
+                        if (orbIdx + 1 >= refLen) {
+                            // Referenz-Orbit zuende: z' ist jetzt das neue Delta, Orbit neu starten
+                            dzx = jX; dzy = jY; orbIdx = 0;
+                        } else if (jX*jX + jY*jY < n_dzx*n_dzx + n_dzy*n_dzy) {
+                            // ZHUORAN-REBASING: volles z' ist kleiner als das delta ->
+                            // dz' := z' und Orbit-Index auf 0 zuruecksetzen (dz_0 = z - O_0 = z).
+                            // Ohne Reset waere dz zu O_{j+2} falsch zugeordnet (Doppelzaehlung).
+                            dzx = jX; dzy = jY; orbIdx = 0;
+                        } else {
+                            dzx = n_dzx; dzy = n_dzy; orbIdx = orbIdx + 1;
                         }
+                        // Fluchttest am VOLL-EN z' (konsistent zum dz-Index)
+                        zx_abs = jX; zy_abs = jY;
                         if (zx_abs*zx_abs + zy_abs*zy_abs > 4.0) { finalIter = iter; break; }
                     } else {
+                        // sollte dank orbIdx-Reset nie erreicht werden — Absolut-Fallback
                         let cx_abs = fractalMode === 1 ? juliaCx : (cx + mx * viewW);
                         let cy_abs = fractalMode === 1 ? juliaCy : (cy - my * viewH);
                         const nx = zx_abs * zx_abs - zy_abs * zy_abs + cx_abs;

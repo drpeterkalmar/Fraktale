@@ -587,8 +587,10 @@ function render() {    if (state.fractalMode === 7) {
             state.refOrbitDirty = false;
         }
         
-        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.005 ||
-                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.005;
+        // 0.02: frueher Renderstart — Rest-Lerp laeuft unter dem Render weiter,
+        // drawCanvasScaled skaliert Overlay/Proxy live auf die aktuelle View.
+        const isMoving = Math.abs(state.targetZoom - state.zoom) / state.zoom > 0.02 ||
+                         state.targetCx.minus(state.cx).abs().div(3.0 / state.zoom).toNumber() > 0.02;
         
         const prec = Math.max(2, Math.floor(Math.log10(state.targetZoom)) + 2);
         const targetKey = `${state.targetCx.toFixed(prec)}|${state.targetCy.toFixed(prec)}|${state.targetZoom.toExponential(2)}|${state.palette}|${state.fractalMode}|${state.juliaC.x}|${state.juliaC.y}`;
@@ -1371,9 +1373,17 @@ function animationLoop(now) {
     if (dt > 0.2) return;
     state.animTime += dt;
     state.colorCycle += dt * 0.15; 
-    // Separate lerp for position (faster) and zoom (smooth)
-    let zoomLerp = 1 - Math.pow(0.4, dt); 
-    let panLerp = 1 - Math.pow(0.1, dt); // Much faster pan
+    // ZEITGEKAPPETE Annaeherung: k = max(sanft, Restdistanz/1.2s) — kleine
+    // Bewegungen gleiten weich, grosse Spruenge (Deep-Zoom-Pinches) erreichen
+    // den Renderstart in ~0.6-0.8s statt nach exponentiellem Lange-Zielern.
+    const Lz = Math.abs(Math.log(state.targetZoom / state.zoom));
+    const kZoom = Math.max(12.0, Lz / 1.2);
+    let zoomLerp = 1 - Math.exp(-kZoom * dt);
+    const dCxv = state.targetCx.minus(state.cx).toNumber();
+    const dCyv = state.targetCy.minus(state.cy).toNumber();
+    const Lpan = Math.hypot(dCxv, dCyv) / (3.0 / state.zoom); // Distanz in Viewbreiten
+    const kPan = Math.max(12.0, Lpan / 1.2);
+    let panLerp = 1 - Math.exp(-kPan * dt);
     
     if (state.fastFlight) {
         zoomLerp = 1 - Math.pow(0.00001, dt); // Super fast zoom
