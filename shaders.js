@@ -27,6 +27,12 @@ uniform vec2 u_resolution;
 uniform int u_maxIter;
 uniform int u_palette;
 uniform float u_colorCycle;  // palette animation offset
+uniform vec3 u_customA;  // Custom palette control points (0..1 RGB)
+uniform vec3 u_customB;
+uniform vec3 u_customC;
+uniform vec3 u_customD;
+uniform vec3 u_customE;
+uniform vec3 u_customF;
 
 // Standard mode: df64 center + float scale
 uniform vec4 u_center;  // (cx_hi, cx_lo, cy_hi, cy_lo)
@@ -150,6 +156,21 @@ vec3 palette_aurora(float t) {
         vec3(0.00, 0.33, 0.67));
 }
 
+vec3 palette_custom(float t) {
+    // 6 Color-Picker-Stopps, zirkulaer (F -> A schliesst den Ring wie im CPU-Pfad)
+    t = fract(t) * 6.0;
+    int seg = int(t);
+    float f = t - float(seg);
+    vec3 a = vec3(0.0), b = vec3(0.0);
+    if (seg == 0)      { a = u_customA; b = u_customB; }
+    else if (seg == 1) { a = u_customB; b = u_customC; }
+    else if (seg == 2) { a = u_customC; b = u_customD; }
+    else if (seg == 3) { a = u_customD; b = u_customE; }
+    else if (seg == 4) { a = u_customE; b = u_customF; }
+    else               { a = u_customF; b = u_customA; }
+    return mix(a, b, f);
+}
+
 vec3 getColor(float t, int pid) {
     t = fract(t + u_colorCycle);
     if (pid == 0) return palette_neon(t);
@@ -157,6 +178,7 @@ vec3 getColor(float t, int pid) {
     if (pid == 2) return palette_inferno(t);
     if (pid == 3) return palette_electric(t);
     if (pid == 4) return palette_cosmic(t);
+    if (pid == 6) return palette_custom(t);
     return palette_aurora(t);
 }
 

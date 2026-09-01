@@ -2,7 +2,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '4.7.4';
+const APP_VERSION = '4.8.0';
 
 const PALETTES = [
     { name: 'Neon Spectral', colors: ['#6366f1','#a78bfa','#f472b6','#fb923c','#facc15','#34d399'] },
@@ -10,7 +10,8 @@ const PALETTES = [
     { name: 'Inferno',       colors: ['#1a0533','#6b21a8','#dc2626','#f97316','#fde047','#fefce8'] },
     { name: 'Electric',      colors: ['#020617','#7c3aed','#06b6d4','#10b981','#eab308','#020617'] },
     { name: 'Cosmic',        colors: ['#0f0326','#581c87','#be185d','#f43f5e','#fca5a5','#fdf2f8'] },
-    { name: 'Aurora',        colors: ['#022c22','#059669','#2dd4bf','#a78bfa','#f0abfc','#022c22'] }
+    { name: 'Aurora',        colors: ['#022c22','#059669','#2dd4bf','#a78bfa','#f0abfc','#022c22'] },
+    { name: 'Custom',        colors: ['#7c3aed','#22d3ee','#f472b6','#facc15','#34d399','#ffffff'] }
 ];
 
 const BOOKMARKS = [
@@ -54,6 +55,7 @@ function initProgram() {
     gl.useProgram(program);
     ['u_resolution','u_maxIter','u_palette','u_colorCycle','u_center','u_scale',
      'u_mode','u_refOrbit','u_cpuIters','u_cpuCenter','u_cpuScale','u_refLen','u_pixelScale','u_refOffset','u_refCenter','u_time',
+     'u_customA','u_customB','u_customC','u_customD','u_customE','u_customF',
      'u_fractalMode', 'u_juliaC'].forEach(n => { uLocs[n] = gl.getUniformLocation(program, n); });
     gl.bindVertexArray(gl.createVertexArray());
 }
@@ -112,7 +114,8 @@ const state = {
 };
 
 
-// df64 works well up to ~1e11 zoom. Beyond that, CPU workers take over.
+// Ab 100.000x uebernehmen die CPU-Worker (direkt f64 bis 1e12, darueber Perturbation).
+// Spielfluss: GPU rendert die kleinen Gesten fluessig, CPU die tiefen Ansichten verlustfrei.
 const ZOOM_THRESHOLD = 1e5;
 
 // === CPU Worker Pool ===
@@ -575,6 +578,13 @@ function render() {    if (state.fractalMode === 7) {
     gl.uniform1i(uLocs.u_palette, state.palette);
     gl.uniform1f(uLocs.u_colorCycle, state.colorCycle);
     gl.uniform1f(uLocs.u_time, state.animTime);
+    const cc = state.customColors.map(hexToRgb);
+    gl.uniform3f(uLocs.u_customA, cc[0][0]/255, cc[0][1]/255, cc[0][2]/255);
+    gl.uniform3f(uLocs.u_customB, cc[1][0]/255, cc[1][1]/255, cc[1][2]/255);
+    gl.uniform3f(uLocs.u_customC, cc[2][0]/255, cc[2][1]/255, cc[2][2]/255);
+    gl.uniform3f(uLocs.u_customD, cc[3][0]/255, cc[3][1]/255, cc[3][2]/255);
+    gl.uniform3f(uLocs.u_customE, cc[4][0]/255, cc[4][1]/255, cc[4][2]/255);
+    gl.uniform3f(uLocs.u_customF, cc[5][0]/255, cc[5][1]/255, cc[5][2]/255);
     gl.uniform1i(uLocs.u_fractalMode, state.fractalMode);
 
     const cxf = state.cx.toNumber(), cyf = state.cy.toNumber();
@@ -836,13 +846,46 @@ function initPalettePicker() {
     const container = document.getElementById('palette-options');
     PALETTES.forEach((p, i) => {
         const el = document.createElement('div');
-        el.className = 'palette-swatch' + (i === 0 ? ' active' : '');
+        el.className = 'palette-swatch' + (i === state.palette ? ' active' : '');
         el.dataset.idx = i;
         const grad = p.colors.map((c, j) => `${c} ${(j / (p.colors.length - 1) * 100).toFixed(0)}%`).join(',');
         el.innerHTML = `<div class="swatch-bar" style="background:linear-gradient(90deg,${grad})"></div><span class="swatch-label">${p.name}</span>`;
         el.addEventListener('click', () => { state.palette = i; updatePalettePicker(); scheduleRender(); });
         container.appendChild(el);
     });
+    updateCustomSwatch();
+}
+
+function updateCustomSwatch() {
+    const el = document.querySelector('.palette-swatch[data-idx="6"] .swatch-bar');
+    if (!el) return;
+    const colors = state.customColors;
+    const grad = colors.map((c, j) => `${c} ${(j / (colors.length - 1) * 100).toFixed(0)}%`).join(',');
+    el.style.background = `linear-gradient(90deg,${grad})`;
+}
+
+// === Custom Palette: 6 Color-Picker unter der Swatch-Liste ===
+function initCustomPaletteRow() {
+    const bar = document.getElementById('custom-bar');
+    if (!bar) return;
+    const inputs = [];
+    for (let i = 0; i < 6; i++) inputs.push(document.getElementById('custom-color-' + i));
+    const grad = () => state.customColors.map((c, j) => `${c} ${(j / (state.customColors.length - 1) * 100).toFixed(0)}%`).join(',');
+    const refresh = () => {
+        bar.style.background = `linear-gradient(90deg,${grad()})`;
+        updateCustomSwatch();
+        inputs.forEach((inp, i) => { inp.value = state.customColors[i]; });
+    };
+    inputs.forEach((inp, i) => {
+        const apply = () => {
+            if (!/^#[0-9a-fA-F]{6}$/.test(inp.value)) return;
+            state.customColors[i] = inp.value.toLowerCase();
+            refresh();
+        };
+        inp.addEventListener('input', () => { apply(); scheduleRender(); });           // live, ohne Speichern
+        inp.addEventListener('change', () => { apply(); saveCustomPalette(); scheduleRender(); }); // gespeichert
+    });
+    refresh();
 }
 
 function updatePalettePicker() {
@@ -1455,7 +1498,9 @@ function wireButtons() {
 
 function init() {
     Decimal.set({ precision: 40 });
-    resize(); initProgram(); initPalettePicker(); initBookmarks(); initSteppers(); wireButtons();
+    loadCustomPalette();
+    state.customColors = PALETTES[6].colors; // Live-Referenz: Mutation faerbt ALLE Pfade (GPU/CPU/Minimap)
+    resize(); initProgram(); initPalettePicker(); initCustomPaletteRow(); initBookmarks(); initSteppers(); wireButtons();
     updateUI();
     renderMinimapBase(); initWorkers(); requestAnimationFrame(animationLoop);
     // Debug-Hook fuer E2E-Tests (Playwright): State + Canvases von aussen lesbar
