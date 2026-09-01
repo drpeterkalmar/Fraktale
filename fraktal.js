@@ -2,7 +2,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '4.7.3';
+const APP_VERSION = '4.7.4';
 
 const PALETTES = [
     { name: 'Neon Spectral', colors: ['#6366f1','#a78bfa','#f472b6','#fb923c','#facc15','#34d399'] },
@@ -80,7 +80,7 @@ function resize() {
 // === State ===
 const state = {
     cx: new Decimal('-0.5'), cy: new Decimal('0.0'),
-    zoom: 1.0, maxIter: 500, palette: 0, colorCycle: 0,
+    zoom: 1.0, maxIter: 300, palette: 0, colorCycle: 0,
     zoomFormat: 'words',
     showUI: true, mode: 0, // 0=GPU, 1=CPU workers
     fractalMode: 0, // 0=Mandelbrot, 1=Julia
@@ -375,7 +375,7 @@ function startCpuRender() {
         width: canvas.width,
         height: canvas.height
     };
-    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + Math.pow(Math.log10(state.zoom + 1), 2) * 50) * (state.iterManual ? 0 : 1)));
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.max(300, Math.floor(Math.pow(Math.log10(state.zoom + 1), 2) * 50)) * (state.iterManual ? 0 : 1)));
 
     // Referenz-Orbit GENAU für diesen Snapshot (fixiert die workerRefOrbit)
     computeReferenceOrbit();
@@ -463,7 +463,7 @@ function startCpuRender() {
 function computeReferenceOrbit() {
     // More aggressive iteration scaling for deep zoom contrast
     const zoomLog = Math.log10(state.zoom + 1);
-    const targetIter = Math.floor(1000 + zoomLog * zoomLog * 50); // Aggressive scaling
+    const targetIter = Math.max(300, Math.floor(zoomLog * zoomLog * 50)); // Adaptiv ab Zoom ~280, sonst Default 300
     // Allow manual override if user has changed it, but keep a sensible floor
     state.maxIter = Math.max(state.maxIter, Math.min(30000, state.iterManual ? 100 : targetIter));
 
@@ -566,7 +566,7 @@ function render() {    if (state.fractalMode === 7) {
     // Iterations-Floor: Tiefe Zooms brauchen mehr Iterationen SCHON im GPU-Bereich,
     // sonst kippen feine Filamente in Flachfarben (Orange-Flaeche bei ~18k).
     const zoomLogG = Math.log10(state.zoom + 1);
-    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.floor(1000 + zoomLogG * zoomLogG * 50) * (state.iterManual ? 0 : 1)));
+    state.maxIter = Math.max(state.maxIter, Math.min(30000, Math.max(300, Math.floor(zoomLogG * zoomLogG * 50)) * (state.iterManual ? 0 : 1)));
 
     // GPU Shader setup
     gl.useProgram(program);
