@@ -841,6 +841,22 @@ function updateUI() {
     updateMinimap();
 }
 
+// === Custom Palette Persistenz ===
+function saveCustomPalette() {
+    try { localStorage.setItem('fraktal_custom_palette', JSON.stringify(PALETTES[6].colors)); } catch (e) {}
+}
+
+function loadCustomPalette() {
+    try {
+        const raw = localStorage.getItem('fraktal_custom_palette');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length === 6 && arr.every(c => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c))) {
+            PALETTES[6].colors = arr.map(c => c.toLowerCase());
+        }
+    } catch (e) {}
+}
+
 // === Palette Picker ===
 function initPalettePicker() {
     const container = document.getElementById('palette-options');
