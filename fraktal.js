@@ -2,7 +2,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '4.7.2';
+const APP_VERSION = '4.7.3';
 
 const PALETTES = [
     { name: 'Neon Spectral', colors: ['#6366f1','#a78bfa','#f472b6','#fb923c','#facc15','#34d399'] },
@@ -732,7 +732,7 @@ function updateUI() {
     document.getElementById('info-im').textContent = state.cy.toFixed(10);
     document.getElementById('info-zoom').textContent = formatZoom(state.zoom);
     document.getElementById('info-iter').textContent = state.maxIter;
-    document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU f64');
+    document.getElementById('info-mode').textContent = (state.zoom > ZOOM_THRESHOLD ? 'CPU ∞' : 'GPU');
 
     // Localize Labels
     const labelMap = {
