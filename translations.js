@@ -207,3 +207,87 @@ const TRANSLATIONS = {
         inside_desc: "상세 내용을 보려면 축소하거나 유색 경계로 이동하세요."
     }
 };
+
+// ================================================================
+// v5-UI-Texte (Deutsch + Englisch). Die übrigen Sprachen behalten ihre
+// bisherigen Hilfetexte; fehlende neue UI-Texte fallen auf Englisch zurück.
+// ================================================================
+const TRANSLATIONS_UI = {
+    de: {
+        lang_name: "Deutsch",
+        tab_worlds: "Welten", tab_colors: "Farben", tab_places: "Orte", tab_share: "Teilen", tab_more: "Mehr",
+        render_time: "Renderzeit", version: "Version",
+        julia_param: "Julia-Parameter c", cpad_hint: "Punkt im c-Pad ziehen – die Julia-Menge folgt live.",
+        longpress_hint: "Tipp: Im Mandelbrot lange auf eine Stelle drücken öffnet die Julia-Menge genau dort.",
+        custom_palette: "Eigene Palette", density: "Farbdichte", color_anim: "Farbanimation", anim_speed: "Tempo",
+        relief: "3D-Relief", relief_strength: "Relief-Stärke", smooth: "Weiche Übergänge", sparkle: "Funkeln im Inneren",
+        save_place: "Aktuelle Ansicht merken", presets: "Sehenswürdigkeiten", my_places: "Meine Orte",
+        tour: "Tour", delete: "Löschen", saved: "Gespeichert ✓", place_name: "Mein Ort",
+        quality: "Auflösung", q_eco: "Akku", q_balanced: "Ausgewogen", q_max: "Maximal",
+        renderer: "Rechenweg", minimap: "Übersichtskarte", rect_zoom: "Rechteck-Zoom (Ziehen)", language: "Sprache",
+        reset_view: "Zurücksetzen", fullscreen: "Vollbild", copy_link: "Link teilen", help_short: "Was ist ein Fraktal?",
+        gestures: "Gesten", install: "Installieren", share_image: "Bild teilen / speichern", share_link: "Link zu dieser Stelle",
+        link_copied: "Link kopiert ✓", image_saved: "Bild gespeichert ✓", share_failed: "Teilen nicht möglich",
+        julia_here: "Julia-Menge für diesen Punkt", max_depth: "Maximale Tiefe für diesen Modus erreicht",
+        rendering: "Rechne…", engine_gpu_direct: "GPU direkt", engine_gpu_perturb: "GPU Perturbation", engine_cpu: "CPU",
+        engine_bla: "+BLA", update_ready: "Neue Version geladen – beim nächsten Start aktiv.",
+        gestures_title: "Gesten 🖐",
+        g_pan: "<strong>Ein Finger ziehen:</strong> verschieben (mit Schwung)",
+        g_pinch: "<strong>Zwei Finger spreizen:</strong> zoomen – der Punkt unter den Fingern bleibt stehen",
+        g_dtap: "<strong>Doppeltipp:</strong> hineinzoomen (×3)",
+        g_2tap: "<strong>Zwei-Finger-Tipp:</strong> herauszoomen (×3)",
+        g_long: "<strong>Lange drücken:</strong> Julia-Menge an dieser Stelle",
+        g_tap: "<strong>Einmal tippen:</strong> Bedienelemente aus-/einblenden",
+        g_desk: "<strong>Maus:</strong> Rad = Zoom, Ziehen = verschieben, Shift+Ziehen = Rechteck. <strong>Tasten:</strong> M J B T 3 N Modi · P Palette · R Reset · S Bild · F Vollbild · I Oberfläche · +/− Iterationen · Pfeile verschieben · Bild↑/↓ Zoom",
+        deep_note: "Tiefe Zooms: GPU-Perturbation bis 10³⁰, darunter CPU bis 10²⁹⁰.",
+        inside_toast: "Du bist im Inneren der Menge – zoome heraus oder zum farbigen Rand.",
+        f_mandelbrot: "z² + c", f_julia: "z² + c, c fest", f_burning_ship: "(|Re z| + i|Im z|)² + c", f_tricorn: "z̄² + c",
+        f_mandel_z3: "z³ + c", f_newton: "z − (z³ − 1)/(3z²)", f_mandelbulb: "3D, Raymarching", f_buddhabrot: "Orbit-Dichte",
+        p_full: "Gesamtbild", p_seahorse: "Seepferdchental", p_elephant: "Elefantental", p_spiral: "Doppelspirale",
+        p_star: "Stern", p_antenna: "Antenne", p_lightning: "Blitz", p_peter: "Peters Spirale",
+        p_deep9: "Seepferdchen-Tiefe", p_deep15: "Filigran 10¹⁵", p_deep29: "Tiefsee 10²⁹", p_deep41: "Jenseits der GPU 10⁴¹",
+        words_thousand: "Tausend", zoom_words: "Wörter", zoom_sci: "10er-Potenz"
+    },
+    en: {
+        lang_name: "English",
+        tab_worlds: "Worlds", tab_colors: "Colors", tab_places: "Places", tab_share: "Share", tab_more: "More",
+        render_time: "Render time", version: "Version",
+        julia_param: "Julia parameter c", cpad_hint: "Drag the point in the c pad – the Julia set follows live.",
+        longpress_hint: "Tip: long-press a spot in the Mandelbrot set to open the Julia set for exactly that point.",
+        custom_palette: "Custom palette", density: "Color density", color_anim: "Color animation", anim_speed: "Speed",
+        relief: "3D relief", relief_strength: "Relief strength", smooth: "Smooth gradients", sparkle: "Sparkle inside",
+        save_place: "Remember this view", presets: "Sights", my_places: "My places",
+        tour: "Tour", delete: "Delete", saved: "Saved ✓", place_name: "My place",
+        quality: "Resolution", q_eco: "Battery", q_balanced: "Balanced", q_max: "Maximum",
+        renderer: "Engine", minimap: "Overview map", rect_zoom: "Rectangle zoom (drag)", language: "Language",
+        reset_view: "Reset", fullscreen: "Fullscreen", copy_link: "Share link", help_short: "What is a fractal?",
+        gestures: "Gestures", install: "Install", share_image: "Share / save image", share_link: "Link to this spot",
+        link_copied: "Link copied ✓", image_saved: "Image saved ✓", share_failed: "Sharing not possible",
+        julia_here: "Julia set for this point", max_depth: "Maximum depth for this mode reached",
+        rendering: "Rendering…", engine_gpu_direct: "GPU direct", engine_gpu_perturb: "GPU perturbation", engine_cpu: "CPU",
+        engine_bla: "+BLA", update_ready: "New version loaded – active on next start.",
+        gestures_title: "Gestures 🖐",
+        g_pan: "<strong>Drag one finger:</strong> pan (with momentum)",
+        g_pinch: "<strong>Pinch two fingers:</strong> zoom – the point under your fingers stays put",
+        g_dtap: "<strong>Double tap:</strong> zoom in (×3)",
+        g_2tap: "<strong>Two-finger tap:</strong> zoom out (×3)",
+        g_long: "<strong>Long press:</strong> Julia set at this spot",
+        g_tap: "<strong>Single tap:</strong> hide/show controls",
+        g_desk: "<strong>Mouse:</strong> wheel = zoom, drag = pan, Shift+drag = rectangle. <strong>Keys:</strong> M J B T 3 N modes · P palette · R reset · S image · F fullscreen · I interface · +/− iterations · arrows pan · PgUp/PgDn zoom",
+        deep_note: "Deep zooms: GPU perturbation to 10³⁰, CPU beyond to 10²⁹⁰.",
+        inside_toast: "You are inside the set – zoom out or move to the colored edge.",
+        f_mandelbrot: "z² + c", f_julia: "z² + c, fixed c", f_burning_ship: "(|Re z| + i|Im z|)² + c", f_tricorn: "z̄² + c",
+        f_mandel_z3: "z³ + c", f_newton: "z − (z³ − 1)/(3z²)", f_mandelbulb: "3D, ray marching", f_buddhabrot: "orbit density",
+        p_full: "Full set", p_seahorse: "Seahorse valley", p_elephant: "Elephant valley", p_spiral: "Double spiral",
+        p_star: "Star", p_antenna: "Antenna", p_lightning: "Lightning", p_peter: "Peter's spiral",
+        p_deep9: "Seahorse depths", p_deep15: "Filigree 10¹⁵", p_deep29: "Deep sea 10²⁹", p_deep41: "Beyond the GPU 10⁴¹",
+        words_thousand: "thousand", zoom_words: "words", zoom_sci: "power of ten"
+    },
+    hu: { lang_name: "Magyar" }, es: { lang_name: "Español" }, fr: { lang_name: "Français" }, pt: { lang_name: "Português" },
+    zh: { lang_name: "中文" }, ja: { lang_name: "日本語" }, ko: { lang_name: "한국어" }
+};
+(function () {
+    for (const lang of Object.keys(TRANSLATIONS)) {
+        TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS_UI.en, TRANSLATIONS[lang], TRANSLATIONS_UI[lang] || {});
+    }
+})();

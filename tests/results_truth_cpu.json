@@ -1,0 +1,282 @@
+[
+ {
+  "view": "seahorse_1e7",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 1,
+   "method": "center",
+   "period": 0,
+   "len": 3366,
+   "ms": 12
+  },
+  "size": "824x1678",
+  "maxIter": 2450,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 8,
+  "maxDiff": 0.009,
+  "n": 400,
+  "interior": 236,
+  "truthRange": [
+   674.0,
+   2354.7
+  ],
+  "renderS": 11.39,
+  "lastFullMs": 10983,
+  "truthS": 0.7,
+  "pass": true
+ },
+ {
+  "view": "walk_1e9",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 2,
+   "method": "nucleus",
+   "period": 150,
+   "len": 151,
+   "ms": 2
+  },
+  "size": "824x1678",
+  "maxIter": 4050,
+  "okPct": 99.5,
+  "okCondPct": 100.0,
+  "illCond": 14,
+  "maxDiff": 121.232,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   308.9,
+   1273.7
+  ],
+  "renderS": 3.29,
+  "lastFullMs": 2933.2000000000007,
+  "truthS": 0.3,
+  "pass": true
+ },
+ {
+  "view": "peter_17M",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 3,
+   "method": "grid",
+   "period": 0,
+   "len": 130,
+   "ms": 2
+  },
+  "size": "824x1678",
+  "maxIter": 2614,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 0,
+  "maxDiff": 0.0,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   49.0,
+   119.6
+  ],
+  "renderS": 0.93,
+  "lastFullMs": 548,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "seahorse_1e14",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 4,
+   "method": "center",
+   "period": 0,
+   "len": 11559,
+   "ms": 13
+  },
+  "size": "824x1678",
+  "maxIter": 9800,
+  "okPct": 99.5,
+  "okCondPct": 100.0,
+  "illCond": 15,
+  "maxDiff": 27.205,
+  "n": 400,
+  "interior": 1,
+  "truthRange": [
+   3030.3,
+   8961.4
+  ],
+  "renderS": 19.67,
+  "lastFullMs": 19149.399999999998,
+  "truthS": 1.4,
+  "pass": true
+ },
+ {
+  "view": "walk_1e15",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 5,
+   "method": "grid",
+   "period": 0,
+   "len": 1570,
+   "ms": 6
+  },
+  "size": "824x1678",
+  "maxIter": 11250,
+  "okPct": 99.75,
+  "okCondPct": 100.0,
+  "illCond": 8,
+  "maxDiff": 99.517,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   1005.4,
+   1712.9
+  ],
+  "renderS": 6.24,
+  "lastFullMs": 5799.799999999996,
+  "truthS": 0.5,
+  "pass": true
+ },
+ {
+  "view": "walk_1e29",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 6,
+   "method": "nucleus",
+   "period": 1939,
+   "len": 1940,
+   "ms": 3
+  },
+  "size": "824x1678",
+  "maxIter": 30000,
+  "okPct": 98.75,
+  "okCondPct": 100.0,
+  "illCond": 15,
+  "maxDiff": 343.844,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   2318.6,
+   3093.2
+  ],
+  "renderS": 8.61,
+  "lastFullMs": 8099.699999999997,
+  "truthS": 1.2,
+  "pass": false
+ },
+ {
+  "view": "julia_1e6",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 8,
+   "method": "center",
+   "period": 0,
+   "len": 113,
+   "ms": 1
+  },
+  "size": "824x1678",
+  "maxIter": 1800,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 0,
+  "maxDiff": 0.0,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   109.7,
+   110.6
+  ],
+  "renderS": 1.49,
+  "lastFullMs": 964.7000000000044,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "transition_999",
+  "engine": "cpu/direct",
+  "bla": null,
+  "ref": {
+   "id": 8,
+   "method": "center",
+   "period": 0,
+   "len": 113,
+   "ms": 1
+  },
+  "size": "824x1678",
+  "maxIter": 450,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 7,
+  "maxDiff": 0.001,
+  "n": 400,
+  "interior": 19,
+  "truthRange": [
+   40.1,
+   447.2
+  ],
+  "renderS": 0.74,
+  "lastFullMs": 398.09999999999854,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "transition_1001",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 9,
+   "method": "nucleus",
+   "period": 25,
+   "len": 26,
+   "ms": 0
+  },
+  "size": "824x1678",
+  "maxIter": 450,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 4,
+  "maxDiff": 0.002,
+  "n": 400,
+  "interior": 13,
+  "truthRange": [
+   40.1,
+   427.7
+  ],
+  "renderS": 1.51,
+  "lastFullMs": 1033.4000000000015,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "walk_1e41",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 10,
+   "method": "center",
+   "period": 0,
+   "len": 3980,
+   "ms": 13
+  },
+  "size": "824x1678",
+  "maxIter": 30000,
+  "okPct": 99.75,
+  "okCondPct": 100.0,
+  "illCond": 10,
+  "maxDiff": 24.532,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   3276.4,
+   3803.4
+  ],
+  "renderS": 7.07,
+  "lastFullMs": 6699.800000000003,
+  "truthS": 1.6,
+  "pass": true
+ }
+]

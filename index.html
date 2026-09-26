@@ -2,207 +2,183 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Fraktal-Explorer – Infinite Zoom</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="GPU-accelerated Mandelbrot set explorer with infinite zoom depth, smooth coloring, and cinematic design">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <title>Fraktal-Explorer – Deep Zoom</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=overlays-content">
+    <meta name="description" content="Mandelbrot- und Fraktal-Explorer mit GPU-Perturbation: flüssiger Deep Zoom bis 10³⁰ und tiefer, Android-optimiert, offline nutzbar.">
+    <meta name="theme-color" content="#05060f">
+    <meta name="color-scheme" content="dark">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.webmanifest?v=5.0.0">
+    <link rel="icon" href="assets/icons/icon-192.png?v=5.0.0" type="image/png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-180.png?v=5.0.0">
+    <link rel="stylesheet" href="style.css?v=5.0.0">
 </head>
 <body>
-    <canvas id="fractal-canvas"></canvas>
-    <canvas id="cpu-overlay"></canvas>
-    <div id="selection-box"></div>
+    <canvas id="gl"></canvas>
+    <div id="selection-box" hidden></div>
 
-    <!-- Progress Bar for CPU rendering -->
-    <div id="progress-container" class="glass-panel hidden">
-        <span id="progress-label"></span>
-        <div id="progress-track">
-            <div id="progress-bar"></div>
+    <!-- HUD: schlanke Pille oben -->
+    <header id="hud" class="chrome">
+        <button id="hud-pill" class="glass" aria-expanded="false" aria-controls="hud-details">
+            <span id="hud-icon" class="hud-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/><circle cx="12" cy="12" r="3"/></svg></span>
+            <span id="hud-mode" class="hud-mode">Mandelbrot</span>
+            <span class="hud-sep" aria-hidden="true">·</span>
+            <span id="hud-zoom" class="hud-zoom mono">1×</span>
+            <span id="hud-progress" class="hud-progress" aria-hidden="true"></span>
+        </button>
+        <div id="hud-details" class="glass" hidden>
+            <div class="row"><span class="k" data-i18n="re">Re</span><span id="d-re" class="v mono">−0.5</span></div>
+            <div class="row"><span class="k" data-i18n="im">Im</span><span id="d-im" class="v mono">0</span></div>
+            <div class="row"><span class="k" data-i18n="zoom">Zoom</span><button id="d-zoom" class="v mono linkish">1×</button></div>
+            <div class="row"><span class="k" data-i18n="iterations">Iterationen</span>
+                <span class="v iter-ctrl"><button id="d-iter-down" class="mini" aria-label="−">−</button><span id="d-iter" class="mono">300</span><button id="d-iter-up" class="mini" aria-label="+">+</button><button id="d-iter-auto" class="chip">Auto</button></span></div>
+            <div class="row"><span class="k" data-i18n="mode">Modus</span><span id="d-engine" class="v">GPU</span></div>
+            <div class="row"><span class="k" data-i18n="render_time">Renderzeit</span><span id="d-time" class="v mono">–</span></div>
+            <div class="row"><span class="k">FPS</span><span id="d-fps" class="v mono">–</span></div>
+            <div class="row"><span class="k" data-i18n="version">Version</span><span id="info-version" class="v mono">5.0.0</span></div>
         </div>
+    </header>
+
+    <div id="corner" class="chrome">
+        <button id="btn-fullscreen" class="round glass" data-i18n-title="fullscreen" title="Vollbild">
+            <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+        <div id="minimap" class="glass" hidden><canvas id="minimap-canvas" width="132" height="99"></canvas></div>
     </div>
 
+    <!-- Julia-Parameter-Chip (nur im Julia-Modus) -->
+    <button id="julia-chip" class="glass chrome" hidden>
+        <span class="mono" id="julia-chip-text">c = −0.8 + 0.156i</span>
+    </button>
 
+    <!-- Dock: Daumenzone unten -->
+    <nav id="dock" class="glass chrome" aria-label="Menü">
+        <button class="dock-btn" data-tab="worlds"><svg viewBox="0 0 24 24"><path d="M12 3c5 0 9 4 9 9s-4 9-9 9"/><path d="M12 21c-5 0-9-4-9-9 0-3 2-5 5-5s4 2 4 4-1 3-3 3"/></svg><span data-i18n="tab_worlds">Welten</span></button>
+        <button class="dock-btn" data-tab="colors"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-2 0-3 3 0 4-1 3-2 3-5a9 9 0 0 0-9-7z"/><circle cx="7.5" cy="11" r="1.3"/><circle cx="10.5" cy="7" r="1.3"/><circle cx="15.5" cy="7.5" r="1.3"/></svg><span data-i18n="tab_colors">Farben</span></button>
+        <button class="dock-btn" data-tab="places"><svg viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><span data-i18n="tab_places">Orte</span></button>
+        <button class="dock-btn" id="btn-share"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg><span data-i18n="tab_share">Teilen</span></button>
+        <button class="dock-btn" data-tab="more"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span data-i18n="tab_more">Mehr</span></button>
+    </nav>
 
-    <!-- Info Panel (top-left) -->
-    <div id="info-panel" class="glass-panel">
-        <div class="panel-header">
-            <span class="panel-icon">◈</span>
-            <span id="info-title" class="panel-title">MANDELBROT</span>
-            <span id="info-version" class="version-tag">4.8.0</span>
+    <!-- Bottom-Sheet -->
+    <div id="sheet-backdrop" hidden></div>
+    <section id="sheet" class="glass" aria-hidden="true" role="dialog">
+        <div id="sheet-grab" aria-hidden="true"><span></span></div>
+        <div id="sheet-tabs" role="tablist">
+            <button role="tab" data-tab="worlds" data-i18n="tab_worlds">Welten</button>
+            <button role="tab" data-tab="colors" data-i18n="tab_colors">Farben</button>
+            <button role="tab" data-tab="places" data-i18n="tab_places">Orte</button>
+            <button role="tab" data-tab="more" data-i18n="tab_more">Mehr</button>
+            <button id="sheet-close" class="round small" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
-        <div class="info-grid">
-            <div class="info-row">
-                <span id="info-re-label" class="label">Re</span>
-                <span id="info-re" class="value mono">−0.500000</span>
+        <div id="sheet-body">
+            <!-- Welten -->
+            <div class="pane" data-pane="worlds">
+                <div id="mode-grid" class="card-grid"></div>
+                <div id="julia-panel" class="section" hidden>
+                    <h3 data-i18n="julia_param">Julia-Parameter c</h3>
+                    <div class="julia-row">
+                        <canvas id="cpad" width="264" height="198" aria-label="c-Pad"></canvas>
+                        <div class="julia-fields">
+                            <div class="stepper"><span class="lbl">Re</span><button class="mini" data-step="x-">−</button><span id="jx" class="mono">−0.80000</span><button class="mini" data-step="x+">+</button></div>
+                            <div class="stepper"><span class="lbl">Im</span><button class="mini" data-step="y-">−</button><span id="jy" class="mono">0.15600</span><button class="mini" data-step="y+">+</button></div>
+                            <div class="seg" id="jstep">
+                                <button data-v="0.1">0.1</button><button data-v="0.01" class="on">0.01</button><button data-v="0.001">0.001</button><button data-v="0.0001">10⁻⁴</button>
+                            </div>
+                            <p class="hint" data-i18n="cpad_hint">Punkt im c-Pad ziehen — die Julia-Menge folgt live.</p>
+                        </div>
+                    </div>
+                </div>
+                <p class="hint" data-i18n="longpress_hint">Tipp: Im Mandelbrot lange auf eine Stelle drücken öffnet die Julia-Menge genau dort.</p>
             </div>
-            <div class="info-row">
-                <span id="info-im-label" class="label">Im</span>
-                <span id="info-im" class="value mono">0.000000</span>
-            </div>
-            <div class="info-row">
-                <span id="info-zoom-label" class="label">Zoom</span>
-                <span id="info-zoom" class="value mono">1.0×</span>
-            </div>
-            <div class="info-row">
-                <span id="info-iter-label" class="label">Iterationen</span>
-                <div class="iter-ctrl">
-                    <button id="btn-iter-down" class="iter-btn" title="Weniger Details (−)">−</button>
-                    <span id="info-iter" class="value mono">300</span>
-                    <button id="btn-iter-up" class="iter-btn" title="Mehr Details (+)">+</button>
+            <!-- Farben -->
+            <div class="pane" data-pane="colors">
+                <div id="palette-grid" class="swatch-grid"></div>
+                <div id="custom-editor" class="section">
+                    <h3 data-i18n="custom_palette">Eigene Palette</h3>
+                    <div id="custom-bar"></div>
+                    <div id="custom-pickers">
+                        <input type="color" id="custom-color-0" aria-label="1"><input type="color" id="custom-color-1" aria-label="2"><input type="color" id="custom-color-2" aria-label="3">
+                        <input type="color" id="custom-color-3" aria-label="4"><input type="color" id="custom-color-4" aria-label="5"><input type="color" id="custom-color-5" aria-label="6">
+                    </div>
+                </div>
+                <div class="section">
+                    <label class="slider"><span data-i18n="density">Farbdichte</span><input type="range" id="s-density" min="-2" max="2" step="0.01" value="0"><output id="o-density">1.00×</output></label>
+                    <label class="toggle"><span data-i18n="color_anim">Farbanimation</span><input type="checkbox" id="t-anim" checked><i></i></label>
+                    <label class="slider"><span data-i18n="anim_speed">Tempo</span><input type="range" id="s-speed" min="0.02" max="0.8" step="0.01" value="0.15"><output id="o-speed"></output></label>
+                    <label class="toggle"><span data-i18n="relief">3D-Relief</span><input type="checkbox" id="t-relief"><i></i></label>
+                    <label class="slider"><span data-i18n="relief_strength">Relief-Stärke</span><input type="range" id="s-relief" min="0.1" max="1.5" step="0.01" value="0.7"><output id="o-relief"></output></label>
+                    <label class="toggle"><span data-i18n="smooth">Weiche Übergänge</span><input type="checkbox" id="t-smooth" checked><i></i></label>
+                    <label class="toggle"><span data-i18n="sparkle">Funkeln im Inneren</span><input type="checkbox" id="t-particles" checked><i></i></label>
                 </div>
             </div>
-            <div class="info-row">
-                <span id="info-mode-label" class="label">Mode</span>
-                <span id="info-mode" class="value">GPU</span>
+            <!-- Orte -->
+            <div class="pane" data-pane="places">
+                <button id="btn-save-place" class="wide-btn"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="save_place">Aktuelle Ansicht merken</span></button>
+                <div id="user-places" class="place-list"></div>
+                <h3 data-i18n="presets">Sehenswürdigkeiten</h3>
+                <div id="preset-places" class="place-list"></div>
             </div>
-            <div class="info-row">
-                <span id="info-fps-label" class="label">FPS</span>
-                <span id="info-fps" class="value mono">--</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Palette Picker (top-right) -->
-    <div id="palette-picker" class="glass-panel">
-        <div class="panel-header">
-            <span class="panel-title">PALETTE</span>
-            <span class="hotkey">P</span>
-        </div>
-        <div id="palette-options"></div>
-        <div id="custom-palette-row">
-            <div id="custom-bar"></div>
-            <div id="custom-pickers">
-                <input type="color" id="custom-color-0" value="#7c3aed" title="Custom-Farbe 1">
-                <input type="color" id="custom-color-1" value="#22d3ee" title="Custom-Farbe 2">
-                <input type="color" id="custom-color-2" value="#f472b6" title="Custom-Farbe 3">
-                <input type="color" id="custom-color-3" value="#facc15" title="Custom-Farbe 4">
-                <input type="color" id="custom-color-4" value="#34d399" title="Custom-Farbe 5">
-                <input type="color" id="custom-color-5" value="#ffffff" title="Custom-Farbe 6">
-            </div>
-        </div>
-    </div>
-
-    <!-- Bookmarks (bottom-center) -->
-    <div id="bookmarks" class="glass-panel">
-        <div id="bookmark-list"></div>
-    </div>
-
-    <!-- Controls (bottom-right) -->
-    <div id="controls">
-        <button id="btn-reset" class="ctrl-btn glass-panel" title="Reset View (R)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 1 3 7"/><polyline points="3 22 3 16 9 16"/></svg>
-        </button>
-        <button id="btn-screenshot" class="ctrl-btn glass-panel" title="Screenshot (S)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="13" r="3"/><path d="M8.5 3v2M15.5 3v2"/></svg>
-        </button>
-        <button id="btn-fullscreen" class="ctrl-btn glass-panel" title="Fullscreen (F)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-        </button>
-        <button id="btn-zoom-mode" class="ctrl-btn glass-panel" title="Zoom-Modus (Z)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-        </button>
-        <button id="btn-mode-toggle" class="ctrl-btn glass-panel" title="Modus wechseln (M)">
-            <span id="mode-icon" style="font-weight:700;font-size:1.1rem;font-family:'JetBrains Mono'">M</span>
-        </button>
-        <button id="btn-help-toggle" class="ctrl-btn glass-panel" title="Was ist ein Fraktal? (?)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        </button>
-        <button id="btn-info-toggle" class="ctrl-btn glass-panel" title="Toggle Info (I)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
-        </button>
-        <button id="btn-lang-toggle" class="ctrl-btn glass-panel" title="Sprache wechseln (L)">
-            <span id="lang-icon" style="font-weight:700;font-size:0.9rem;font-family:'Inter'">DE</span>
-        </button>
-    </div>
-
-    <!-- Formula Bar (bottom-center) -->
-    <div id="formula-bar" class="glass-panel">
-        <div class="formula-container">
-            <span id="formula-label-text" class="formula-label">Formel</span>
-            <span id="formula-base" class="formula-text mono">z<sub>n+1</sub> = z<sub>n</sub><sup>2</sup> + </span>
-            
-            <div id="mandel-c-text" class="formula-text mono">c</div>
-            
-            <div id="julia-c-inputs" class="hidden">
-                <span class="formula-bracket">(</span>
-                <div id="stepper-cx" class="stepper-group"></div>
-                <span class="formula-plus"> + i &times; </span>
-                <div id="stepper-cy" class="stepper-group"></div>
-                <span class="formula-bracket">)</span>
+            <!-- Mehr -->
+            <div class="pane" data-pane="more">
+                <div class="section">
+                    <h3 data-i18n="iterations">Iterationen</h3>
+                    <div class="iter-big"><button id="m-iter-down" class="mini big">−</button><span id="m-iter" class="mono">300</span><button id="m-iter-up" class="mini big">+</button>
+                        <label class="toggle inline"><span>Auto</span><input type="checkbox" id="t-iter-auto" checked><i></i></label></div>
+                </div>
+                <div class="section">
+                    <h3 data-i18n="quality">Auflösung</h3>
+                    <div class="seg" id="seg-quality"><button data-v="eco" data-i18n="q_eco">Akku</button><button data-v="balanced" data-i18n="q_balanced">Ausgewogen</button><button data-v="max" data-i18n="q_max">Maximal</button></div>
+                    <h3 data-i18n="renderer">Rechenweg</h3>
+                    <div class="seg" id="seg-renderer"><button data-v="auto">Auto</button><button data-v="gpu">GPU</button><button data-v="cpu">CPU</button></div>
+                    <p class="hint mono" id="engine-info"></p>
+                </div>
+                <div class="section">
+                    <label class="toggle"><span data-i18n="minimap">Übersichtskarte</span><input type="checkbox" id="t-minimap"><i></i></label>
+                    <label class="toggle"><span data-i18n="rect_zoom">Rechteck-Zoom (Ziehen)</span><input type="checkbox" id="t-rect"><i></i></label>
+                    <label class="select"><span data-i18n="language">Sprache</span><select id="sel-lang"></select></label>
+                </div>
+                <div class="btn-grid">
+                    <button id="btn-reset" class="tile-btn"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 4v5h5"/></svg><span data-i18n="reset_view">Zurücksetzen</span></button>
+                    <button id="btn-fullscreen2" class="tile-btn"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span data-i18n="fullscreen">Vollbild</span></button>
+                    <button id="btn-link" class="tile-btn"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span data-i18n="copy_link">Link teilen</span></button>
+                    <button id="btn-help" class="tile-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg><span data-i18n="help_short">Was ist ein Fraktal?</span></button>
+                    <button id="btn-gestures" class="tile-btn"><svg viewBox="0 0 24 24"><path d="M9 11V5a1.5 1.5 0 0 1 3 0v5M12 10V4a1.5 1.5 0 0 1 3 0v6M15 10V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7s-5-2-7-5l-1.5-2.5a1.4 1.4 0 0 1 2.3-1.6L9 14"/></svg><span data-i18n="gestures">Gesten</span></button>
+                    <button id="btn-install" class="tile-btn" hidden><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-i18n="install">Installieren</span></button>
+                </div>
+                <p class="hint version-line">Fraktal-Explorer <span id="version-line" class="mono">5.0.0</span> · <a href="https://github.com/drpeterkalmar/Fraktale" target="_blank" rel="noopener">GitHub</a></p>
             </div>
         </div>
+    </section>
+
+    <!-- Teilen-Popover -->
+    <div id="share-pop" class="glass" hidden>
+        <button id="share-image" class="wide-btn"><svg viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg><span data-i18n="share_image">Bild teilen / speichern</span></button>
+        <button id="share-link" class="wide-btn"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg><span data-i18n="share_link">Link zu dieser Stelle</span></button>
     </div>
 
-    <!-- Educational Info Box -->
-    <div id="info-box-backdrop"></div>
-    <div id="info-box" class="glass-panel">
-        <button id="info-box-close" title="Schließen">&times;</button>
-        <h2 id="help-title">Was ist ein Fraktal? 🌀</h2>
-        <div id="info-box-scroll">
-        <p id="help-desc">Ein Fraktal ist ein mathematisches Wunderwerk. Stell dir ein Bild vor, in das du immer weiter hineinzoomen kannst, und es tauchen immer wieder neue, wunderschöne Muster auf, die dem Ganzen ähneln.</p>
-        
-        <div class="info-section">
-            <h3 id="magic-title">Die Zauberformel: z = z² + c ✨</h3>
-            <p id="magic-desc">Du nimmst eine Zahl (z), nimmst sie mit sich selbst mal (z²) und zählst eine feste Zahl (c) dazu. Das Ergebnis nimmst du dann als neues (z) und machst das immer wieder.</p>
+    <!-- Hilfe (Inhalte aus translations.js) -->
+    <div id="modal" hidden>
+        <div class="modal-card glass" role="dialog" aria-modal="true">
+            <button id="modal-close" class="round small" aria-label="Schließen"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <div id="modal-body"></div>
         </div>
-
-        <div class="info-section">
-            <h3 id="black-title">Warum ist das "Männchen" schwarz? 🌑</h3>
-            <p id="black-desc">Das ist eine tolle Frage! Wenn du die Zauberformel immer wieder anwendest, gibt es zwei Möglichkeiten:</p>
-            <ul>
-                <li><strong id="trapped-label">Gefangen:</strong> <span id="trapped-desc">Die Zahl bleibt klein und "kreist" immer weiter herum. Diese Punkte gehören zum Fraktal und wir malen sie schwarz an.</span></li>
-                <li><strong id="escape-label">Flucht:</strong> <span id="escape-desc">Die Zahl wird riesig und schießt wie eine Rakete ins Unendliche ab!</span></li>
-            </ul>
-        </div>
-
-        <div class="info-section">
-            <h3 id="color-title">Woher kommen die bunten Farben? 🌈</h3>
-            <p id="color-desc">Die Farben zeigen uns, wie schnell eine Zahl "geflüchtet" ist. Eine Zahl, die schon nach 3 Schritten riesig wird, bekommt eine andere Farbe als eine, die 100 Schritte gebraucht hat.</p>
-        </div>
-
-        <div class="info-section">
-            <h3 id="ctrl-title">Steuerung 🎮</h3>
-            <ul>
-                <li id="ctrl-scroll"><strong>Scrollen:</strong> Rein- und Rauszoomen.</li>
-                <li id="ctrl-drag"><strong>Ziehen:</strong> Den Bildausschnitt verschieben.</li>
-                <li id="ctrl-shift"><strong>Shift + Ziehen:</strong> Ein Rechteck ziehen.</li>
-                <li id="ctrl-keys"><strong>Tasten:</strong> Pfeiltasten zum Bewegen, +/− für Details.</li>
-            </ul>
-        </div>
-
-        <div class="info-section fractal-cards-title">
-            <h3 id="help-fractals-title">Die 8 Welten 🌌</h3>
-            <div id="help-mandelbrot" class="fractal-card"></div>
-            <div id="help-julia" class="fractal-card"></div>
-            <div id="help-burning-ship" class="fractal-card"></div>
-            <div id="help-tricorn" class="fractal-card"></div>
-            <div id="help-mandel-z3" class="fractal-card"></div>
-            <div id="help-newton" class="fractal-card"></div>
-            <div id="help-mandelbulb" class="fractal-card"></div>
-            <div id="help-buddhabrot" class="fractal-card"></div>
-        </div>
-
-        <div class="info-footer">
-            <p id="help-footer-tip">Halte Shift gedrückt und klicke irgendwo hin, um deine eigene Julia-Welt zu erschaffen!</p>
-        </div>
-        </div> <!-- End of info-box-scroll -->
-    </div> <!-- End of info-box -->
-
-    <!-- Minimap -->
-    <div id="minimap" class="glass-panel">
-        <canvas id="minimap-canvas" width="160" height="120"></canvas>
-        <div id="minimap-rect"></div>
     </div>
 
-    <!-- Inside-Set Toast -->
-    <div id="inside-toast" class="glass-panel hidden">
-        <span id="inside-title">⚠ Du bist im Inneren der Menge — hier ist alles schwarz.</span><br>
-        <span id="inside-desc">Zoome heraus oder navigiere zum farbigen Rand für Detail.</span>
-    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/decimal.js@10/decimal.min.js"></script>
-    <script src="translations.js?v=1.15"></script>
-    <script src="shaders.js?v=1.16"></script>
-    <script src="fraktal.js?v=1.17"></script>
+    <noscript><p class="noscript">Fraktal-Explorer 5.0.0 braucht JavaScript und WebGL2.</p></noscript>
+
+    <script src="translations.js?v=5.0.0"></script>
+    <script src="js/hp.js?v=5.0.0"></script>
+    <script src="js/fractal-core.js?v=5.0.0"></script>
+    <script src="js/shaders.js?v=5.0.0"></script>
+    <script src="js/palettes.js?v=5.0.0"></script>
+    <script src="js/gestures.js?v=5.0.0"></script>
+    <script src="js/renderer.js?v=5.0.0"></script>
+    <script src="js/app.js?v=5.0.0"></script>
+    <script src="js/ui.js?v=5.0.0"></script>
 </body>
 </html>
