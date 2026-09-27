@@ -133,6 +133,8 @@
                     <div class="seg" id="seg-quality"><button data-v="eco" data-i18n="q_eco">Akku</button><button data-v="balanced" data-i18n="q_balanced">Ausgewogen</button><button data-v="max" data-i18n="q_max">Maximal</button></div>
                     <h3 data-i18n="renderer">Rechenweg</h3>
                     <div class="seg" id="seg-renderer"><button data-v="auto">Auto</button><button data-v="gpu">GPU</button><button data-v="cpu">CPU</button></div>
+                    <label class="toggle"><span data-i18n="precise">Exakte Nachrechnung (CPU f64)</span><input type="checkbox" id="t-precise" checked><i></i></label>
+                    <p class="hint" data-i18n="precise_hint">Die GPU rechnet schnell in f32 und schätzt pro Pixel den Rundungsfehler; unsichere Pixel rechnet die CPU exakt nach.</p>
                     <p class="hint mono" id="engine-info"></p>
                 </div>
                 <div class="section">

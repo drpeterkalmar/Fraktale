@@ -343,12 +343,18 @@ function create(canvas) {
         gl.uniform3fv(L.u_custom, look.custom);
         gl.uniform1f(L.u_cycle, look.cycle);
     }
+    // Integer-Texturen MÜSSEN NEAREST filtern, sonst 'incomplete' -> texelFetch liefert 0
+    function nearest() {
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    }
     let _dummy = null;
     function dummyU() {
         if (_dummy) return _dummy;
         _dummy = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, _dummy);
         gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32UI, 1, 1);
+        nearest();
         return _dummy;
     }
 
@@ -371,6 +377,7 @@ function create(canvas) {
             histTex = gl.createTexture(); histW = w; histH = h;
             gl.bindTexture(gl.TEXTURE_2D, histTex);
             gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32UI, w, h);
+            nearest();
         }
         gl.bindTexture(gl.TEXTURE_2D, histTex);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RED_INTEGER, gl.UNSIGNED_INT, hist);

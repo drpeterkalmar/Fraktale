@@ -117,7 +117,8 @@ function flyTo(cx, cy, zoom, opts = {}) {
     stopAnims();
     const a = S.cam;
     zoom = clampZoom(zoom);
-    const rA = Math.hypot(HP.toNumber(cx - a.cx), HP.toNumber(cy - a.cy));
+    if (opts.anchor) { cx = a.cx; cy = a.cy; }
+    const rA = opts.anchor ? 0 : Math.hypot(HP.toNumber(cx - a.cx), HP.toNumber(cy - a.cy));
     const viewA = 3 / a.zoom;
     const la = Math.log(a.zoom), lb = Math.log(zoom);
     // weit entfernt -> erst hinaus, dann hinein (van-Wijk-artig, zwei Phasen)
@@ -331,7 +332,7 @@ function viewHalf() { const s = worldPerCss(S.cam.zoom); return [s * cssW / 2, s
 // Bei Flügen/Touren den Referenzorbit gleich fürs ZIEL rechnen: das Ziel liegt während der
 // ganzen Fahrt im Bild, eine Referenz reicht dann für alle Zwischenbilder.
 function refTarget() {
-    if (flight && !flight.anchor && flight.b && flight.b.cx !== null) return flight.b;
+    if (flight && !flight.anchor) return flight.b;
     return S.cam;
 }
 function requestRef(want64) {
@@ -829,6 +830,7 @@ const API = {
                  iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id };
     },
     isMoving: () => isMoving(performance.now()),
+    buddhaInfo: () => ({ max: BUD.max, version: BUD.version, w: BUD.w, h: BUD.h, busy: cpuWorkers.map(w => w.busy) }),
     // --- Test-Hooks
     status() {
         const f = RC.front;

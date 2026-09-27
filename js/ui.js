@@ -59,6 +59,8 @@ function hudUpdate(force) {
     const job = A.RC.job;
     let p = null;
     if (job && now - job.t0 > 250) p = job.kind === 'gpu' ? job.row / job.h : job.tilesDone / Math.max(1, job.tilesTotal);
+    const fx = A.RC.fix;
+    if (p === null && fx) p = fx.total ? 0.5 + 0.5 * fx.done / fx.total : 0.5;   // Präzisionskorrektur = zweite Hälfte
     prog.style.transform = p === null ? 'scaleX(0)' : `scaleX(${Math.max(0.04, p).toFixed(3)})`;
     prog.classList.toggle('on', p !== null);
     $('hud-pill').classList.toggle('busy', p !== null);
@@ -333,6 +335,7 @@ const toggles = [
     bindToggle('t-particles', () => S.particles, (v) => { S.particles = v; }),
     bindToggle('t-minimap', () => S.minimap, (v) => { S.minimap = v; }),
     bindToggle('t-rect', () => S.rectMode, (v) => { S.rectMode = v; }),
+    bindToggle('t-precise', () => S.precise, (v) => { S.precise = v; }),
 ];
 function bindSeg(id, get, set) {
     const g = $(id);

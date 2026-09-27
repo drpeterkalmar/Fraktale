@@ -246,7 +246,8 @@ const TRANSLATIONS_UI = {
         p_full: "Gesamtbild", p_seahorse: "Seepferdchental", p_elephant: "Elefantental", p_spiral: "Doppelspirale",
         p_star: "Stern", p_antenna: "Antenne", p_lightning: "Blitz", p_peter: "Peters Spirale",
         p_deep9: "Seepferdchen-Tiefe", p_deep15: "Filigran 10¹⁵", p_deep29: "Tiefsee 10²⁹", p_deep41: "Jenseits der GPU 10⁴¹",
-        words_thousand: "Tausend", zoom_words: "Wörter", zoom_sci: "10er-Potenz"
+        words_thousand: "Tausend", zoom_words: "Wörter", zoom_sci: "10er-Potenz",
+        precise: "Exakte Nachrechnung (CPU f64)", precise_hint: "Die GPU rechnet schnell in f32 und schätzt pro Pixel den Rundungsfehler; unsichere Pixel rechnet die CPU exakt in f64 nach. Aus = schneller, aber in sehr dichten Tiefen leicht verrauscht.", fixing: "Präzision…"
     },
     en: {
         lang_name: "English",
@@ -281,7 +282,8 @@ const TRANSLATIONS_UI = {
         p_full: "Full set", p_seahorse: "Seahorse valley", p_elephant: "Elephant valley", p_spiral: "Double spiral",
         p_star: "Star", p_antenna: "Antenna", p_lightning: "Lightning", p_peter: "Peter's spiral",
         p_deep9: "Seahorse depths", p_deep15: "Filigree 10¹⁵", p_deep29: "Deep sea 10²⁹", p_deep41: "Beyond the GPU 10⁴¹",
-        words_thousand: "thousand", zoom_words: "words", zoom_sci: "power of ten"
+        words_thousand: "thousand", zoom_words: "words", zoom_sci: "power of ten",
+        precise: "Exact refinement (CPU f64)", precise_hint: "The GPU renders fast in f32 and estimates the rounding error per pixel; uncertain pixels are recomputed exactly in f64 on the CPU. Off = faster, but slightly noisy in very dense depths.", fixing: "Refining…"
     },
     hu: { lang_name: "Magyar" }, es: { lang_name: "Español" }, fr: { lang_name: "Français" }, pt: { lang_name: "Português" },
     zh: { lang_name: "中文" }, ja: { lang_name: "日本語" }, ko: { lang_name: "한국어" }

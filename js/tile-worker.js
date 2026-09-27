@@ -74,7 +74,7 @@ function buddha(q) {
             zy = 2.0 * zx * zy + cy; zx = nzx;
         }
         if (esc && n >= minIter) {
-            for (let i = 0; i < n; i++) {
+            for (let i = 1; i < n; i++) {        // z_0 = 0 auslassen (sonst ein Hotspot, der alles dunkel normiert)
                 const px = Math.floor((ox[i] - centerX) / ps + w / 2.0);
                 const py = Math.floor((centerY - oy[i]) / ps + h / 2.0);
                 if (px >= 0 && px < w && py >= 0 && py < h) hist[py * w + px]++;
