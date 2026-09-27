@@ -36,13 +36,19 @@ with sync_playwright() as p:
     res['user_place'] = dict(stored=n, cards=cards)
     ok &= n == 1 and cards == 1
 
-    # Tour zum Preset "Seepferdchen-Tiefe" (1e9): endet am Ziel
-    pg.locator('#preset-places .place').nth(8).locator('.tour').click()
-    pg.wait_for_function("() => !window.__fraktal.isMoving() && window.__fraktal.S.cam.zoom > 9e8", timeout=60000, polling=200)
+    # keine fest verdrahteten Sehenswürdigkeiten mehr
+    res['preset_places'] = pg.locator('#preset-places').count()
+    ok &= res['preset_places'] == 0
+
+    # Tour zum eben gemerkten Ort (1.705e7): startet im Gesamtbild, endet exakt am Ziel
+    zt = pg.evaluate("() => JSON.parse(localStorage.getItem('fraktal_v5_places'))[0].zoom")
+    pg.locator('#user-places .place').nth(0).locator('.tour').click()
+    pg.wait_for_function("() => window.__fraktal.S.cam.zoom < 10", timeout=10000, polling=50)
+    pg.wait_for_function(f"() => !window.__fraktal.isMoving() && window.__fraktal.S.cam.zoom > {zt * 0.9}", timeout=60000, polling=200)
     t2, st2 = a.wait_done(120)
     z = pg.evaluate("() => window.__fraktal.S.cam.zoom")
-    res['tour'] = dict(zoom=z, finalRender=round(t2, 2))
-    ok &= abs(z / 1e9 - 1) < 1e-6
+    res['tour'] = dict(target=zt, zoom=z, finalRender=round(t2, 2))
+    ok &= abs(z / zt - 1) < 1e-6
 
     # Bild-Export (Screenshot mit Beschriftung)
     size = pg.evaluate("() => window.__fraktal.captureBlob().then(b => b ? b.size : 0)")

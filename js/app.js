@@ -11,7 +11,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '5.0.0';
+const APP_VERSION = '5.0.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -242,6 +242,7 @@ let tour = null;
 function startTour(p) {
     stopAnims();
     setMode(p.formula || 0, true);
+    if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
     const home = MODE_HOME[S.formula];
     setCam(HP.fromString(home[0]), HP.fromString(home[1]), home[2]);
     S.iterManual = false;

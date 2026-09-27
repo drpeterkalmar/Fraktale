@@ -8,20 +8,6 @@ const { S, HP, PAL, t } = A;
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 
-const PRESETS = [
-    { id: 'full', key: 'p_full', cx: '-0.5', cy: '0', zoom: 1 },
-    { id: 'seahorse', key: 'p_seahorse', cx: '-0.7463', cy: '0.1102', zoom: 200 },
-    { id: 'elephant', key: 'p_elephant', cx: '0.2819', cy: '0.0100', zoom: 50 },
-    { id: 'spiral', key: 'p_spiral', cx: '-0.74529', cy: '0.11307', zoom: 20000 },
-    { id: 'star', key: 'p_star', cx: '-1.25066', cy: '0.02012', zoom: 1000 },
-    { id: 'antenna', key: 'p_antenna', cx: '-1.401155', cy: '0', zoom: 500 },
-    { id: 'lightning', key: 'p_lightning', cx: '-0.16', cy: '1.0405', zoom: 200 },
-    { id: 'peter', key: 'p_peter', cx: '-0.8625944137', cy: '0.2495680306', zoom: 17050000 },
-    { id: 'deep9', key: 'p_deep9', cx: '-0.743637214380908705', cy: '0.131822306549061970', zoom: 1e9 },
-    { id: 'deep15', key: 'p_deep15', cx: '-0.743637215354753236002154', cy: '0.131822307028445564243233', zoom: 1e15 },
-    { id: 'deep29', key: 'p_deep29', cx: '-0.74363721535475353201560573970021652303', cy: '0.13182230702844485014116030906246974788', zoom: 1e29 },
-    { id: 'deep41', key: 'p_deep41', cx: '-0.74363721535475353201560573969820799606042412635682', cy: '0.13182230702844485014116030906137622412768064249224', zoom: 1e41 },
-];
 const V = '?v=' + A.APP_VERSION;
 
 // ------------------------------------------------------------------ i18n
@@ -30,7 +16,7 @@ function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(n => { n.textContent = t(n.dataset.i18n); });
     document.querySelectorAll('[data-i18n-title]').forEach(n => { n.title = t(n.dataset.i18nTitle); n.setAttribute('aria-label', t(n.dataset.i18nTitle)); });
     $('sheet-close').setAttribute('aria-label', t('close') !== 'close' ? t('close') : '×');
-    buildModes(); buildPresets(); buildUserPlaces();
+    buildModes(); buildUserPlaces();
     hudUpdate(true);
 }
 
@@ -363,11 +349,11 @@ function syncControls() {
 })();
 
 // ------------------------------------------------------------------ Orte
-function presetCard(p, opts) {
+function placeCard(p, opts) {
     const c = el('div', 'place');
     const name = opts.name || t(p.key);
-    const thumb = opts.thumb || `assets/thumbs/${p.id}.jpg${V}`;
-    c.innerHTML = `<button class="place-main"><span class="thumb" style="background-image:url('${thumb}')"></span>
+    const thumb = opts.thumb ? `url('${opts.thumb}')` : 'none';
+    c.innerHTML = `<button class="place-main"><span class="thumb" style="background-image:${thumb}"></span>
         <span class="meta"><span class="name"></span><span class="zoom mono">${A.fmtZoom(+p.zoom, 'sci')}</span></span></button>
         <div class="place-actions"><button class="chip tour">▶ ${t('tour')}</button>${opts.onDelete ? `<button class="chip del" aria-label="${t('delete')}">✕</button>` : ''}</div>`;
     c.querySelector('.name').textContent = name;
@@ -376,19 +362,15 @@ function presetCard(p, opts) {
     if (opts.onDelete) c.querySelector('.del').addEventListener('click', opts.onDelete);
     return c;
 }
-function buildPresets() {
-    const box = $('preset-places');
-    box.innerHTML = '';
-    PRESETS.forEach(p => box.appendChild(presetCard(p, {})));
-}
 function loadPlaces() { try { return JSON.parse(localStorage.getItem('fraktal_v5_places') || '[]'); } catch (e) { return []; } }
 function savePlaces(a) { try { localStorage.setItem('fraktal_v5_places', JSON.stringify(a)); } catch (e) { toast('Speicher voll'); } }
 function buildUserPlaces() {
     const box = $('user-places');
     box.innerHTML = '';
     const list = loadPlaces();
-    if (list.length) box.appendChild(el('h3', '', t('my_places')));
-    list.forEach((p, i) => box.appendChild(presetCard(p, { name: p.name, thumb: p.thumb, onDelete: () => { const a = loadPlaces(); a.splice(i, 1); savePlaces(a); buildUserPlaces(); } })));
+    if (!list.length) { box.appendChild(el('p', 'hint', t('places_empty'))); return; }
+    box.appendChild(el('h3', '', t('my_places')));
+    list.forEach((p, i) => box.appendChild(placeCard(p, { name: p.name, thumb: p.thumb, onDelete: () => { const a = loadPlaces(); a.splice(i, 1); savePlaces(a); buildUserPlaces(); } })));
 }
 $('btn-save-place').addEventListener('click', () => {
     const v = A.viewState();
