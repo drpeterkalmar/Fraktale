@@ -50,7 +50,7 @@ uint encode(float mu, bool unsure) {
 float magn(vec2 v) { return max(abs(v.x), abs(v.y)) * 1.2; }  // |v| ohne Unterlauf (grob)
 bool unsureEsc(float E2, vec2 Dt, vec2 z) {
     float r = length(z);
-    return ERRK * sqrt(E2) * length(Dt) / (r * log(r) * 0.6931472) > 0.7;
+    return ERRK * sqrt(E2) * length(Dt) / (r * log(r) * 0.6931472) > 1.0;
 }
 bool unsureIn(float E2, vec2 Dt) { return ERRK * sqrt(E2) * length(Dt) > 0.05; }
 
@@ -179,6 +179,7 @@ void main() {
     vec2 dz = vec2(0.0), c = dc;
 #endif
     int m = 0, n = 0;
+    int bwait = 0, bback = 1;       // BLA-Backoff (spart Texturzugriffe, wenn dz zu groß ist)
 #if ERR
 #if F == 1
     vec2 Dt = vec2(u_scale, 0.0);
@@ -191,32 +192,35 @@ void main() {
 #endif
     for (int guard = 0; guard < 4000000; guard++) {
         if (n >= u_maxIter) break;
-${hasBLA ? `        if (u_blaOn != 0 && m > 0) {
+${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             int k = m - 1;
             int L = u_blaL[o];
-            int l = (k == 0) ? L : min(L, ctz(k));
+            int lmax = (k == 0) ? L : min(L, ctz(k));
             float dmax = max(abs(dz.x), abs(dz.y)) * 1.4142136;
-            bool applied = false;
-            for (; l >= 1; l--) {
+            // R fällt monoton mit der Stufe: aufsteigend suchen, bei erster ungültiger Stufe stoppen
+            int bestE = -1, bestL = 0;
+            for (int l = 1; l <= lmax; l++) {
                 int st = 1 << l;
-                if (m + st > len - 1 || n + st > u_maxIter) continue;
+                if (m + st > len - 1 || n + st > u_maxIter) break;
                 int e = u_blaOff[o * 24 + l] + (k >> l);
-                ivec2 tc = ivec2(e & 2047, e >> 11);
-                if (dmax < texelFetch(u_blaR, tc, 0).r) {
-                    vec4 ab = texelFetch(u_blaAB, tc, 0);
+                if (dmax < texelFetch(u_blaR, ivec2(e & 2047, e >> 11), 0).r) { bestE = e; bestL = l; } else break;
+            }
+            bool applied = false;
+            if (bestE < 0) { bback = min(bback * 2, 64); bwait = bback; }
+            else {
+                bback = 1;
+                vec4 ab = texelFetch(u_blaAB, ivec2(bestE & 2047, bestE >> 11), 0);
 #if ERR
-                    {
-                        vec2 nD = cmul(ab.xy, Dt) + ab.zw * u_scale;
-                        float den = max(magn(nD), 1e-37);
-                        float q = 2.0 * EPS * (length(ab.xy) * (magn(dz) / den) + length(ab.zw) * (mc / den));
-                        E2 += q * q; Dt = nD;
-                    }
-#endif
-                    dz = cmul(ab.xy, dz) + cmul(ab.zw, c);
-                    m += st; n += st;
-                    applied = true;
-                    break;
+                {
+                    vec2 nD = cmul(ab.xy, Dt) + ab.zw * u_scale;
+                    float den = max(magn(nD), 1e-37);
+                    float q = 2.0 * EPS * (length(ab.xy) * (magn(dz) / den) + length(ab.zw) * (mc / den));
+                    E2 += q * q; Dt = nD;
                 }
+#endif
+                dz = cmul(ab.xy, dz) + cmul(ab.zw, c);
+                m += 1 << bestL; n += 1 << bestL;
+                applied = true;
             }
             if (applied) {
                 Zc = orb(base + m);
@@ -232,7 +236,7 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0) {
 #if ERR
                     { float q = EPS * length(Zc) / max(magn(Dt), 1e-37); E2 += q * q; }
 #endif
-                    o = 1; base = u_baseB; len = u_lenB; dz = z; m = 0; Zc = vec2(0.0);
+                    o = 1; base = u_baseB; len = u_lenB; dz = z; m = 0; Zc = vec2(0.0); bwait = 0; bback = 1;
                 }
                 continue;
             }
@@ -283,7 +287,7 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0) {
 #if ERR
             { float q = EPS * length(Zc) / max(magn(Dt), 1e-37); E2 += q * q; }
 #endif
-            o = 1; base = u_baseB; len = u_lenB; dz = z; m = 0; Zc = vec2(0.0);
+            o = 1; base = u_baseB; len = u_lenB; dz = z; m = 0; Zc = vec2(0.0); bwait = 0; bback = 1;
         }
     }
 #if ERR

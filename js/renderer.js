@@ -125,7 +125,7 @@ function create(canvas) {
     R.beginJob = function (job) {
         job.buf = acquire(job.w, job.h);
         job.row = 0;
-        job.inflight = null;
+        job.q = [];
         job.done = false;
         job.gpuStart = performance.now();
         if (job.mode === 'perturb') {
@@ -138,26 +138,32 @@ function create(canvas) {
     };
 
     let pxPerChunk = 60000;           // adaptive Häppchengröße (Pixel)
-    // Ein Häppchen abschicken, falls keins mehr in Arbeit. Liefert true wenn Job fertig.
+    R.maxInflight = 2;                // 2 Häppchen in der GPU-Warteschlange: kein Leerlauf zwischen Frames
+    // Häppchen nachschieben, fertige einsammeln. Liefert true wenn Job fertig.
     R.pump = function (job, now) {
         if (job.done) return true;
-        if (job.inflight) {
-            const st = gl.clientWaitSync(job.inflight.sync, 0, 0);
-            if (st === gl.TIMEOUT_EXPIRED) { job.inflight.polls++; return false; }
-            gl.deleteSync(job.inflight.sync);
-            const polls = job.inflight.polls;
-            // Adaptive Größe: fertig binnen eines Frames -> größer, sonst kleiner
-            if (polls === 0) pxPerChunk = Math.min(8e6, pxPerChunk * 1.6);
+        if (!job.q) job.q = [];
+        // fertige Häppchen einsammeln (in Reihenfolge)
+        while (job.q.length) {
+            const c = job.q[0];
+            const st = gl.clientWaitSync(c.sync, 0, 0);
+            if (st === gl.TIMEOUT_EXPIRED) { c.polls++; break; }
+            gl.deleteSync(c.sync);
+            job.q.shift();
+            // Adaptive Größe: ein Häppchen soll etwa einen Frame dauern
+            const polls = c.polls - (c.waited || 0);
+            if (polls <= 0) pxPerChunk = Math.min(8e6, pxPerChunk * 1.5);
             else if (polls >= 2) pxPerChunk = Math.max(4096, pxPerChunk * (polls >= 4 ? 0.4 : 0.7));
-            job.inflight = null;
-            if (job.row >= job.h) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
         }
-        if (job.row >= job.h) { job.done = true; return true; }
-        const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(pxPerChunk / job.w)));
-        drawCompute(job, job.row, rows);
-        job.row += rows;
-        job.inflight = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0 };
-        gl.flush();
+        if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
+        while (job.row < job.h && job.q.length < R.maxInflight) {
+            const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(pxPerChunk / job.w)));
+            drawCompute(job, job.row, rows);
+            job.row += rows;
+            // ein zweites Häppchen wartet erst auf das erste -> seine Poll-Zählung entsprechend versetzen
+            job.q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0, waited: job.q.length ? 1 : 0 });
+            gl.flush();
+        }
         return false;
     };
 
@@ -288,7 +294,7 @@ function create(canvas) {
 
     R.cancelJob = function (job) {
         if (!job) return;
-        if (job.inflight) { gl.deleteSync(job.inflight.sync); job.inflight = null; }
+        if (job.q) { job.q.forEach(c => gl.deleteSync(c.sync)); job.q = []; }
         if (!job.kept) release(job.buf);
         job.done = true;
         job.cancelled = true;

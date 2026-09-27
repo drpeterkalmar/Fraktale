@@ -597,6 +597,8 @@ function schedule(now) {
     const p = plan();
     if (p.kind === 'bulb' || p.kind === 'buddha') return;
     const moving = isMoving(now);
+    // Bewegung: nur 1 GPU-Häppchen in der Warteschlange (60 fps), Stillstand: 2 (doppelter Durchsatz)
+    R.maxInflight = Q.get('inflight') ? +Q.get('inflight') : (moving ? 1 : 2);
     const key = viewKey();
     if (key !== RC.lastKey) { RC.lastKey = key; RC.keyT0 = now; }
     const needRef = p.mode === 'perturb';
@@ -805,6 +807,7 @@ function init() {
     if (Q.get('renderer')) S.renderer = Q.get('renderer');
     if (Q.has('noanim')) S.anim = false;
     if (Q.has('nobla')) R.noBLA = true;
+    if (Q.get('inflight')) R.maxInflight = +Q.get('inflight');
     resize();
     requestAnimationFrame(frame);
 }

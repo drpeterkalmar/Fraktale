@@ -8,23 +8,23 @@
    "method": "center",
    "period": 0,
    "len": 3366,
-   "ms": 13
+   "ms": 14
   },
   "size": "824x1678",
   "maxIter": 2450,
   "okPct": 100.0,
   "okCondPct": 100.0,
   "illCond": 8,
-  "maxDiff": 0.025,
+  "maxDiff": 0.101,
   "n": 400,
   "interior": 236,
   "truthRange": [
    674.0,
    2354.7
   ],
-  "renderS": 3.03,
-  "lastFullMs": 2550.6000000715258,
-  "truthS": 0.7,
+  "renderS": 1.53,
+  "lastFullMs": 1125.7999999761582,
+  "truthS": 0.6,
   "pass": true
  },
  {
@@ -36,7 +36,7 @@
    "method": "nucleus",
    "period": 150,
    "len": 151,
-   "ms": 3
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 4050,
@@ -50,8 +50,8 @@
    308.9,
    1273.7
   ],
-  "renderS": 1.88,
-  "lastFullMs": 1444.5,
+  "renderS": 1.08,
+  "lastFullMs": 690.6000000238419,
   "truthS": 0.3,
   "pass": true
  },
@@ -64,22 +64,22 @@
    "method": "grid",
    "period": 0,
    "len": 130,
-   "ms": 2
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 2614,
   "okPct": 100.0,
   "okCondPct": 100.0,
   "illCond": 0,
-  "maxDiff": 0.027,
+  "maxDiff": 0.031,
   "n": 400,
   "interior": 0,
   "truthRange": [
    49.0,
    119.6
   ],
-  "renderS": 0.78,
-  "lastFullMs": 286.1999999761583,
+  "renderS": 0.64,
+  "lastFullMs": 218.10000000000036,
   "truthS": 0.2,
   "pass": true
  },
@@ -92,23 +92,23 @@
    "method": "center",
    "period": 0,
    "len": 11559,
-   "ms": 11
+   "ms": 13
   },
   "size": "824x1678",
   "maxIter": 9800,
   "okPct": 99.5,
   "okCondPct": 100.0,
   "illCond": 15,
-  "maxDiff": 27.205,
+  "maxDiff": 15.721,
   "n": 400,
   "interior": 1,
   "truthRange": [
    3030.3,
    8961.4
   ],
-  "renderS": 5.91,
-  "lastFullMs": 5598.600000023842,
-  "truthS": 1.3,
+  "renderS": 3.27,
+  "lastFullMs": 2822.199999952316,
+  "truthS": 1.2,
   "pass": true
  },
  {
@@ -120,7 +120,7 @@
    "method": "grid",
    "period": 0,
    "len": 1570,
-   "ms": 7
+   "ms": 6
   },
   "size": "824x1678",
   "maxIter": 11250,
@@ -134,8 +134,8 @@
    1005.4,
    1712.9
   ],
-  "renderS": 1.85,
-  "lastFullMs": 1506.400000071526,
+  "renderS": 1.27,
+  "lastFullMs": 819.0999999284741,
   "truthS": 0.5,
   "pass": true
  },
@@ -155,15 +155,15 @@
   "okPct": 98.75,
   "okCondPct": 100.0,
   "illCond": 15,
-  "maxDiff": 343.844,
+  "maxDiff": 343.653,
   "n": 400,
   "interior": 0,
   "truthRange": [
    2318.6,
    3093.2
   ],
-  "renderS": 3.86,
-  "lastFullMs": 3522.0000000238433,
+  "renderS": 2.15,
+  "lastFullMs": 1795.9000000238411,
   "truthS": 1.1,
   "pass": false
  },
@@ -176,7 +176,7 @@
    "method": "center",
    "period": 0,
    "len": 113,
-   "ms": 2
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -190,8 +190,8 @@
    109.7,
    110.6
   ],
-  "renderS": 0.79,
-  "lastFullMs": 285.0000000715263,
+  "renderS": 0.77,
+  "lastFullMs": 385.09999992847406,
   "truthS": 0.2,
   "pass": true
  },
@@ -204,23 +204,23 @@
    "method": "center",
    "period": 0,
    "len": 113,
-   "ms": 2
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 450,
   "okPct": 100.0,
   "okCondPct": 100.0,
   "illCond": 7,
-  "maxDiff": 0.012,
+  "maxDiff": 0.017,
   "n": 400,
   "interior": 19,
   "truthRange": [
    40.1,
    447.2
   ],
-  "renderS": 0.89,
-  "lastFullMs": 344.7000000238404,
-  "truthS": 0.3,
+  "renderS": 0.7,
+  "lastFullMs": 359.999999952317,
+  "truthS": 0.2,
   "pass": true
  },
  {
@@ -239,16 +239,16 @@
   "okPct": 100.0,
   "okCondPct": 100.0,
   "illCond": 4,
-  "maxDiff": 0.027,
+  "maxDiff": 0.036,
   "n": 400,
   "interior": 13,
   "truthRange": [
    40.1,
    427.7
   ],
-  "renderS": 0.9,
-  "lastFullMs": 555.8000000476823,
-  "truthS": 0.3,
+  "renderS": 0.69,
+  "lastFullMs": 382.6999999761574,
+  "truthS": 0.2,
   "pass": true
  },
  {
@@ -260,23 +260,23 @@
    "method": "center",
    "period": 0,
    "len": 3980,
-   "ms": 11
+   "ms": 14
   },
   "size": "824x1678",
   "maxIter": 30000,
-  "okPct": 46.75,
-  "okCondPct": 47.95,
+  "okPct": 99.75,
+  "okCondPct": 100.0,
   "illCond": 10,
-  "maxDiff": 613.603,
+  "maxDiff": 50.934,
   "n": 400,
   "interior": 0,
   "truthRange": [
    3276.4,
    3803.4
   ],
-  "renderS": 5.99,
-  "lastFullMs": 5549.9000000000015,
-  "truthS": 1.4,
-  "pass": false
+  "renderS": 3.31,
+  "lastFullMs": 2849.899999999998,
+  "truthS": 1.3,
+  "pass": true
  }
 ]

@@ -1,0 +1,64 @@
+{
+ "hardwareConcurrency": 8,
+ "v4": {
+  "seahorse_1e7": {
+   "finalMs": 4093,
+   "longTasks": 2,
+   "maxLongTask": 65
+  },
+  "seahorse_1e9": {
+   "finalMs": 2268,
+   "longTasks": 2,
+   "maxLongTask": 108
+  },
+  "seahorse_1e14": {
+   "finalMs": 13606,
+   "longTasks": 2,
+   "maxLongTask": 236
+  },
+  "peter_17M": {
+   "finalMs": 631,
+   "longTasks": 0,
+   "maxLongTask": 0
+  }
+ },
+ "v5": {
+  "seahorse_1e7": {
+   "firstPreviewMs": 110,
+   "gpuFullMs": 659,
+   "finalMs": 1292,
+   "fixPct": 10.6,
+   "longTasks": 0,
+   "maxLongTask": 0,
+   "ref": "center"
+  },
+  "seahorse_1e9": {
+   "firstPreviewMs": 84,
+   "gpuFullMs": 467,
+   "finalMs": 1051,
+   "fixPct": 10.4,
+   "longTasks": 0,
+   "maxLongTask": 0,
+   "ref": "center"
+  },
+  "seahorse_1e14": {
+   "firstPreviewMs": 122,
+   "gpuFullMs": 938,
+   "finalMs": 3255,
+   "fixPct": 25.1,
+   "longTasks": 0,
+   "maxLongTask": 0,
+   "ref": "center"
+  },
+  "peter_17M": {
+   "firstPreviewMs": 61,
+   "gpuFullMs": 228,
+   "finalMs": 544,
+   "fixPct": 0.8,
+   "longTasks": 0,
+   "maxLongTask": 0,
+   "ref": "grid"
+  },
+  "errors": []
+ }
+}
