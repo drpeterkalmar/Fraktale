@@ -287,8 +287,9 @@ function plan() {
     const cpu = S.renderer === 'cpu' || !gpuPerturbOK;
     if (z < DIRECT_MAX && S.renderer !== 'cpu') return { kind: 'gpu', mode: 'direct' };
     if (cpu || z > GPU_MAX) {
-        // CPU: Tricorn/Burning Ship bis 1e12 direkt in f64 (exakt, v4-Lehre), sonst Perturbation+BLA
-        if ((f === 2 || f === 3) && z <= 1e12) return { kind: 'cpu', mode: 'direct' };
+        // CPU: unter DIRECT_MAX direkt in f64, darüber Perturbation (+BLA) — auch für Tricorn/Burning
+        // Ship: die direkte f64-Iteration ist in parabolischen Randzonen messbar ungenauer (Test: 96 %
+        // statt 99,5 % bei Tricorn 1e6), die Perturbation ist inzwischen gegen die Wahrheit geprüft.
         if (z < DIRECT_MAX) return { kind: 'cpu', mode: 'direct' };
         return { kind: 'cpu', mode: 'perturb' };
     }
@@ -505,10 +506,13 @@ function jobFinished(job, now) {
     RC.foreign = false;
     RC.dirty = true;
     if (job.stage > 1) {
-        // Vorschau-Dauer steuert die Vorschau-Auflösung (Ziel ~50 ms pro Vorschau)
+        // Vorschau-Auflösung regelt sich über die gemessene Frame-Zeit während der Bewegung
+        // (Ziel 60 fps: Frame > 24 ms -> gröber, < 18 ms und schnelle Vorschau -> feiner)
         const t = fr.ms;
-        if (t > 90 && RC.previewDiv < 8) RC.previewDiv++;
-        else if (t < 25 && RC.previewDiv > 2) RC.previewDiv--;
+        if (moving) {
+            if ((RC.dtEMA > 1.4 * (RC.vsync || 16.7) || t > 90) && RC.previewDiv < 12) RC.previewDiv++;
+            else if (RC.dtEMA < 1.1 * (RC.vsync || 16.7) && t < 40 && RC.previewDiv > 2) RC.previewDiv--;
+        }
         RC.estFull = t * job.stage * job.stage;
     } else {
         stats.lastJobMs = fr.ms;
@@ -589,6 +593,7 @@ function cancelFix() {
     if (fix.buf) R.releaseFrame({ buf: fix.buf });
 }
 
+function pumpCtl(moving) { return { moving, dt: RC.dtEMA || 16, vsync: RC.vsync || 16.7 }; }
 function isMoving(now) {
     return gestures.active() || !!inertia || !!flight || !!wheelAnim || now - RC.lastMoveT < 150 || now - lastParamT < 150;
 }
@@ -603,6 +608,7 @@ function schedule(now) {
     if (key !== RC.lastKey) { RC.lastKey = key; RC.keyT0 = now; }
     const needRef = p.mode === 'perturb';
     const refOK = needRef ? ensureRef(p, moving) : true;
+    if (moving && Q.has('nopreview')) return;
 
     if (RC.fix) {
         if (RC.fix.key !== key) cancelFix();
@@ -614,7 +620,7 @@ function schedule(now) {
         if (job.key !== key && (job.stage === 1 || job.stage === 2 || job.kind !== p.kind || job.formula !== S.formula || now - job.t0 > 400)) { cancelJob(); job = null; }
     }
     if (job) {
-        const done = job.kind === 'gpu' ? R.pump(job, now) : job.done;
+        const done = job.kind === 'gpu' ? R.pump(job, now, pumpCtl(moving)) : job.done;
         if (done) { RC.job = null; jobFinished(job, now); }
         return;
     }
@@ -627,7 +633,7 @@ function schedule(now) {
         const next = (front.stage > 2 && (RC.estFull || 0) > 450) ? 2 : 1;
         startJob(key, next, p);
     }
-    if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
+    if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
 }
 
 function look() {
@@ -731,6 +737,7 @@ function syncURL(now) {
 let lastT = performance.now();
 function frame(now) {
     requestAnimationFrame(frame);
+    const js0 = performance.now();
     const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
     lastT = now;
     if (document.hidden || R.lost) return;
@@ -739,6 +746,10 @@ function frame(now) {
     updateAnims(now, dt);
     const camChanged = camDirty;
     camDirty = false;
+    RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
+    // Vsync-Periode schätzen (kürzeste Frame-Zeit, driftet langsam nach oben): 60/90/120-Hz-tauglich
+    const dms = dt * 1000;
+    if (dms > 4) RC.vsync = RC.vsync === undefined ? dms : Math.min(RC.vsync * 1.002, Math.max(dms, RC.vsync * 0.5));
     if (camChanged) RC.lastMoveT = now;
     schedule(now);
     present(now, camChanged);
@@ -746,6 +757,9 @@ function frame(now) {
     if (now - stats.fpsT > 1000) { stats.fps = Math.round(stats.frames * 1000 / (now - stats.fpsT)); stats.frames = 0; stats.fpsT = now; }
     syncURL(now);
     emit('frame');
+    const js = performance.now() - js0;
+    stats.jsMs = stats.jsMs === undefined ? js : stats.jsMs * 0.9 + js * 0.1;
+    if (js > (stats.jsMax || 0)) stats.jsMax = js;
 }
 
 R.onRestored = () => { gpuPerturbOK = R.selfTest(); RC.front = RC.prev = null; RC.job = null; REF.cur = null; invalidate(); };
@@ -835,12 +849,40 @@ const API = {
     isMoving: () => isMoving(performance.now()),
     buddhaInfo: () => ({ max: BUD.max, version: BUD.version, w: BUD.w, h: BUD.h, busy: cpuWorkers.map(w => w.busy) }),
     // --- Test-Hooks
+    // GPU-Zeiten per Timer-Query (headless-rAF-FPS sind unbrauchbar): Display-Pass und Vorschau-Jobs
+    benchGPU(divs) {
+        const gl = R.gl, ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+        if (!ext) return Promise.resolve(null);
+        const p = plan();
+        const timeIt = (fn) => { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); fn(); gl.endQuery(ext.TIME_ELAPSED_EXT); return q; };
+        const qs = [];
+        for (let i = 0; i < 5; i++) qs.push(['present', timeIt(() => R.present(RC.prev, RC.front, 1, S.cam, look()))]);
+        for (const d of divs) {
+            const w = Math.ceil(canvas.width * 1.2 / d), h = Math.ceil(canvas.height * 1.2 / d);
+            const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
+                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise };
+            if (d === 1) { job.w = canvas.width; job.h = canvas.height; }
+            R.beginJob(job);
+            qs.push(['div' + d + '_' + job.w + 'x' + job.h, timeIt(() => { R.maxInflight = 1e9; while (job.row < job.h) R.pump(job, 0); })]);
+            R.cancelJob(job);
+        }
+        return new Promise((res) => {
+            const poll = () => {
+                if (!qs.every(([, q]) => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
+                const out = {};
+                for (const [k, q] of qs) { const ms = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6; out[k] = out[k] ? Math.min(out[k], ms) : ms; gl.deleteQuery(q); }
+                for (const k in out) out[k] = +out[k].toFixed(2);
+                res(out);
+            };
+            poll();
+        });
+    },
     status() {
         const f = RC.front;
         return { key: viewKey(), frontKey: f ? f.key : null, stage: f ? f.stage : null, busy: !!RC.job, moving: isMoving(performance.now()),
                  fading: RC.fading, done: !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !RC.fading, fix: stats.lastFix || null, fixing: !!RC.fix, gpuFullMs: stats.gpuFullMs,
                  plan: plan(), ref: REF.cur ? { id: REF.cur.id, method: REF.cur.method, period: REF.cur.period, len: REF.cur.lenA, ms: REF.cur.ms } : null,
-                 lastFullMs: stats.lastFullMs, lastJobMs: stats.lastJobMs, fps: stats.fps, useBLA: f ? f.useBLA : null, kind: f ? f.kind : null, previewDiv: RC.previewDiv,
+                 jsMs: stats.jsMs, jsMax: stats.jsMax, vsync: RC.vsync, dtEMA: RC.dtEMA, chunk: R.chunkInfo(), lastFullMs: stats.lastFullMs, lastJobMs: stats.lastJobMs, fps: stats.fps, useBLA: f ? f.useBLA : null, kind: f ? f.kind : null, previewDiv: RC.previewDiv,
                  canvas: [canvas.width, canvas.height], maxIter: currentMaxIter(), gpuPerturbOK };
     },
     setView(cx, cy, zoom) { stopAnims(); setCam(HP.fromString(cx), HP.fromString(cy), zoom); },

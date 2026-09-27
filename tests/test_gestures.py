@@ -56,7 +56,8 @@ def run(gpu=True):
         touch(cdp, 'touchEnd', [])
         pg.wait_for_timeout(900)
         g = pg.evaluate("() => ({ lt: window.__lt.slice(), frames: window.__fr, ms: performance.now() - window.__t0, zoom: window.__fraktal.S.cam.zoom })")
-        out['pinch_pan'] = dict(zoomFactor=round(g['zoom'] / z0, 2), fps=round(g['frames'] * 1000 / g['ms'], 1), longTasks=g['lt'], durationS=round(g['ms'] / 1000, 2))
+        # Hinweis: rAF-FPS sind headless auf ~16-19 gedrosselt (selbst eine leere gl.clear-Seite) -> nur informativ.
+        out['pinch_pan'] = dict(zoomFactor=round(g['zoom'] / z0, 2), fps_headless_info=round(g['frames'] * 1000 / g['ms'], 1), longTasks=g['lt'], durationS=round(g['ms'] / 1000, 2))
         ok &= 3.0 < g['zoom'] / z0 < 5.5 and not [x for x in g['lt'] if x > 50]
 
         # --- Doppeltipp: ×3
@@ -70,8 +71,7 @@ def run(gpu=True):
         out['double_tap'] = dict(factor=round(z2 / z1, 3))
         ok &= abs(z2 / z1 - 3) < 0.05
         # --- Zwei-Finger-Tipp: ÷3
-        touch(cdp, 'touchStart', [(cx - 50, cy)]); touch(cdp, 'touchStart', [(cx - 50, cy), (cx + 50, cy)])
-        time.sleep(0.08); touch(cdp, 'touchEnd', [])
+        touch(cdp, 'touchStart', [(cx - 50, cy), (cx + 50, cy)]); touch(cdp, 'touchEnd', [])
         pg.wait_for_timeout(900)
         z3 = pg.evaluate("() => window.__fraktal.S.cam.zoom")
         out['two_finger_tap'] = dict(factor=round(z3 / z2, 3))
@@ -85,6 +85,11 @@ def run(gpu=True):
             hs.append(canvas_hash(pg)); pg.wait_for_timeout(1000)
         out['after_settle'] = dict(renderS=round(t, 2), stable=len(set(hs)) == 1, fix=st.get('fix'))
         ok &= len(set(hs)) == 1
+        # GPU-Budget pro Frame (Timer-Query): Display-Pass muss << 16 ms sein
+        out['gpu_ms'] = pg.evaluate("() => window.__fraktal.benchGPU([8, 4])")
+        out['chunk'] = pg.evaluate("() => window.__fraktal.status().chunk")
+        if out['gpu_ms']:
+            ok &= out['gpu_ms']['present'] < 4
         out['errors'] = app.errors
         ok &= not app.errors
         app.close()

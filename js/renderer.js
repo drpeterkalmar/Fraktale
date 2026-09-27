@@ -140,8 +140,16 @@ function create(canvas) {
     let pxPerChunk = 60000;           // adaptive Häppchengröße (Pixel)
     R.maxInflight = 2;                // 2 Häppchen in der GPU-Warteschlange: kein Leerlauf zwischen Frames
     // Häppchen nachschieben, fertige einsammeln. Liefert true wenn Job fertig.
-    R.pump = function (job, now) {
+    let pxMove = 16384;               // Häppchengröße während Bewegung (Frame-Zeit-geregelt)
+    // ctl: { moving, dt (EMA ms), vsync (ms) } — während Gesten regelt die gemessene Frame-Zeit
+    // die Häppchengröße (Ziel: Frame <= 1.3 x Vsync), im Stillstand der Durchsatz (Fence-Polls).
+    R.pump = function (job, now, ctl) {
         if (job.done) return true;
+        const moving = !!(ctl && ctl.moving);
+        if (moving) {
+            if (ctl.dt > 1.3 * ctl.vsync) pxMove = Math.max(1024, pxMove * 0.8);
+            else if (ctl.dt < 1.12 * ctl.vsync) pxMove = Math.min(pxPerChunk, 2e6, pxMove * 1.1);
+        }
         if (!job.q) job.q = [];
         // fertige Häppchen einsammeln (in Reihenfolge)
         while (job.q.length) {
@@ -152,12 +160,14 @@ function create(canvas) {
             job.q.shift();
             // Adaptive Größe: ein Häppchen soll etwa einen Frame dauern
             const polls = c.polls - (c.waited || 0);
-            if (polls <= 0) pxPerChunk = Math.min(8e6, pxPerChunk * 1.5);
-            else if (polls >= 2) pxPerChunk = Math.max(4096, pxPerChunk * (polls >= 4 ? 0.4 : 0.7));
+            if (!moving) {
+                if (polls <= 0) pxPerChunk = Math.min(8e6, pxPerChunk * 1.5);
+                else if (polls >= 2) pxPerChunk = Math.max(4096, pxPerChunk * (polls >= 4 ? 0.4 : 0.7));
+            }
         }
         if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
         while (job.row < job.h && job.q.length < R.maxInflight) {
-            const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(pxPerChunk / job.w)));
+            const rows = Math.max(1, Math.min(job.h - job.row, Math.floor((moving ? pxMove : pxPerChunk) / job.w)));
             drawCompute(job, job.row, rows);
             job.row += rows;
             // ein zweites Häppchen wartet erst auf das erste -> seine Poll-Zählung entsprechend versetzen
@@ -291,6 +301,7 @@ function create(canvas) {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
     };
     R.acquireBuffer = acquire;
+    R.chunkInfo = () => ({ pxPerChunk: Math.round(pxPerChunk), pxMove: Math.round(pxMove) });
 
     R.cancelJob = function (job) {
         if (!job) return;
