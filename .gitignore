@@ -1,4 +1,4 @@
-shots*/
-test_*.py
-*.log
 .DS_Store
+*.log
+__pycache__/
+tests/results_*.json.tmp

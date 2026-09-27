@@ -1,0 +1,450 @@
+[
+ {
+  "view": "seahorse_1e7",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 1,
+   "method": "center",
+   "period": 0,
+   "len": 3366,
+   "ms": 11
+  },
+  "size": "824x1678",
+  "maxIter": 2450,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 8,
+  "maxDiff": 0.009,
+  "n": 400,
+  "interior": 236,
+  "truthRange": [
+   674.0,
+   2354.7
+  ],
+  "renderS": 6.38,
+  "lastFullMs": 5816.3,
+  "truthS": 0.6,
+  "pass": true
+ },
+ {
+  "view": "walk_1e9",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 2,
+   "method": "nucleus",
+   "period": 150,
+   "len": 151,
+   "ms": 2
+  },
+  "size": "824x1678",
+  "maxIter": 4050,
+  "okPct": 99.5,
+  "okCondPct": 100.0,
+  "illCond": 14,
+  "maxDiff": 121.232,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   308.9,
+   1273.7
+  ],
+  "renderS": 2.55,
+  "lastFullMs": 1949.9000000000005,
+  "truthS": 0.3,
+  "pass": true
+ },
+ {
+  "view": "peter_17M",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 3,
+   "method": "grid",
+   "period": 0,
+   "len": 130,
+   "ms": 2
+  },
+  "size": "824x1678",
+  "maxIter": 2614,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 0,
+  "maxDiff": 0.0,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   49.0,
+   119.6
+  ],
+  "renderS": 1.34,
+  "lastFullMs": 833.2999999999993,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "seahorse_1e14",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 4,
+   "method": "center",
+   "period": 0,
+   "len": 11559,
+   "ms": 21
+  },
+  "size": "824x1678",
+  "maxIter": 9800,
+  "okPct": 99.5,
+  "okCondPct": 100.0,
+  "illCond": 15,
+  "maxDiff": 15.721,
+  "n": 400,
+  "interior": 1,
+  "truthRange": [
+   3030.3,
+   8961.4
+  ],
+  "renderS": 10.76,
+  "lastFullMs": 10216.2,
+  "truthS": 1.2,
+  "pass": true
+ },
+ {
+  "view": "walk_1e15",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 5,
+   "method": "grid",
+   "period": 0,
+   "len": 1570,
+   "ms": 10
+  },
+  "size": "824x1678",
+  "maxIter": 11250,
+  "okPct": 99.75,
+  "okCondPct": 100.0,
+  "illCond": 8,
+  "maxDiff": 99.517,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   1005.4,
+   1712.9
+  ],
+  "renderS": 3.94,
+  "lastFullMs": 3416.600000000002,
+  "truthS": 0.5,
+  "pass": true
+ },
+ {
+  "view": "walk_1e29_extrem",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 6,
+   "method": "nucleus",
+   "period": 1939,
+   "len": 1940,
+   "ms": 3
+  },
+  "size": "824x1678",
+  "maxIter": 30000,
+  "okPct": 98.75,
+  "okCondPct": 100.0,
+  "illCond": 15,
+  "maxDiff": 343.653,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   2318.6,
+   3093.2
+  ],
+  "renderS": 5.16,
+  "lastFullMs": 4683.200000000001,
+  "truthS": 1.0,
+  "pass": true
+ },
+ {
+  "view": "julia_1e10",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 7,
+   "method": "grid",
+   "period": 0,
+   "len": 1680,
+   "ms": 7
+  },
+  "size": "824x1678",
+  "maxIter": 5000,
+  "okPct": 99.75,
+  "okCondPct": 100.0,
+  "illCond": 15,
+  "maxDiff": 1.623,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   747.7,
+   1715.8
+  ],
+  "renderS": 4.63,
+  "lastFullMs": 3966.5,
+  "truthS": 0.4,
+  "pass": true
+ },
+ {
+  "view": "z3_1e6",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 8,
+   "method": "nucleus",
+   "period": 90,
+   "len": 91,
+   "ms": 2
+  },
+  "size": "824x1678",
+  "maxIter": 1800,
+  "okPct": 97.5,
+  "okCondPct": 100.0,
+  "illCond": 34,
+  "maxDiff": 318.742,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   143.4,
+   906.4
+  ],
+  "renderS": 2.75,
+  "lastFullMs": 2199.9000000000015,
+  "truthS": 0.3,
+  "pass": true
+ },
+ {
+  "view": "z3_1e5",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 9,
+   "method": "grid",
+   "period": 0,
+   "len": 475,
+   "ms": 7
+  },
+  "size": "824x1678",
+  "maxIter": 1250,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 2,
+  "maxDiff": 0.0,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   73.4,
+   309.4
+  ],
+  "renderS": 1.86,
+  "lastFullMs": 1216.5999999999985,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "z3_1e7",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 10,
+   "method": "nucleus",
+   "period": 90,
+   "len": 91,
+   "ms": 1
+  },
+  "size": "824x1678",
+  "maxIter": 2450,
+  "okPct": 97.75,
+  "okCondPct": 100.0,
+  "illCond": 44,
+  "maxDiff": 289.565,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   214.5,
+   1288.5
+  ],
+  "renderS": 2.86,
+  "lastFullMs": 2283.199999999997,
+  "truthS": 0.3,
+  "pass": true
+ },
+ {
+  "view": "z3_1e8_extrem",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 11,
+   "method": "nucleus",
+   "period": 180,
+   "len": 181,
+   "ms": 2
+  },
+  "size": "824x1678",
+  "maxIter": 3200,
+  "okPct": 96.5,
+  "okCondPct": 100.0,
+  "illCond": 58,
+  "maxDiff": 563.314,
+  "n": 400,
+  "interior": 75,
+  "truthRange": [
+   491.5,
+   3113.8
+  ],
+  "renderS": 8.8,
+  "lastFullMs": 8416.400000000001,
+  "truthS": 0.6,
+  "pass": true
+ },
+ {
+  "view": "tricorn_1e6",
+  "engine": "cpu/perturb",
+  "bla": false,
+  "ref": {
+   "id": 12,
+   "method": "grid",
+   "period": 0,
+   "len": 1489,
+   "ms": 4
+  },
+  "size": "824x1678",
+  "maxIter": 1800,
+  "okPct": 99.5,
+  "okCondPct": 100.0,
+  "illCond": 29,
+  "maxDiff": 296.561,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   297.3,
+   1358.3
+  ],
+  "renderS": 2.88,
+  "lastFullMs": 2433.2000000000044,
+  "truthS": 0.3,
+  "pass": true
+ },
+ {
+  "view": "bship_1e6",
+  "engine": "cpu/perturb",
+  "bla": false,
+  "ref": {
+   "id": 13,
+   "method": "grid",
+   "period": 0,
+   "len": 872,
+   "ms": 7
+  },
+  "size": "824x1678",
+  "maxIter": 1800,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 0,
+  "maxDiff": 0.0,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   753.1,
+   849.6
+  ],
+  "renderS": 4.25,
+  "lastFullMs": 3616.5,
+  "truthS": 0.4,
+  "pass": true
+ },
+ {
+  "view": "transition_999",
+  "engine": "cpu/direct",
+  "bla": null,
+  "ref": {
+   "id": 13,
+   "method": "grid",
+   "period": 0,
+   "len": 872,
+   "ms": 7
+  },
+  "size": "824x1678",
+  "maxIter": 450,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 7,
+  "maxDiff": 0.001,
+  "n": 400,
+  "interior": 19,
+  "truthRange": [
+   40.1,
+   447.2
+  ],
+  "renderS": 1.08,
+  "lastFullMs": 650,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "transition_1001",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 14,
+   "method": "nucleus",
+   "period": 25,
+   "len": 26,
+   "ms": 0
+  },
+  "size": "824x1678",
+  "maxIter": 450,
+  "okPct": 100.0,
+  "okCondPct": 100.0,
+  "illCond": 4,
+  "maxDiff": 0.002,
+  "n": 400,
+  "interior": 13,
+  "truthRange": [
+   40.1,
+   427.7
+  ],
+  "renderS": 1.71,
+  "lastFullMs": 1166.5999999999913,
+  "truthS": 0.2,
+  "pass": true
+ },
+ {
+  "view": "walk_1e41",
+  "engine": "cpu/perturb",
+  "bla": true,
+  "ref": {
+   "id": 15,
+   "method": "center",
+   "period": 0,
+   "len": 3980,
+   "ms": 16
+  },
+  "size": "824x1678",
+  "maxIter": 30000,
+  "okPct": 99.75,
+  "okCondPct": 100.0,
+  "illCond": 10,
+  "maxDiff": 50.934,
+  "n": 400,
+  "interior": 0,
+  "truthRange": [
+   3276.4,
+   3803.4
+  ],
+  "renderS": 4.98,
+  "lastFullMs": 4516.5,
+  "truthS": 1.3,
+  "pass": true
+ }
+]
