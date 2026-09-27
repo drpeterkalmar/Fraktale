@@ -49,7 +49,7 @@ function loadSettings() {
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
     if (!TRANSLATIONS[S.lang]) S.lang = 'de';
-    if (S.minimap === undefined) S.minimap = false;
+    try { if (!localStorage.getItem('fraktal_v5_settings')) S.minimap = window.innerWidth >= 900; } catch (e) {}
 }
 function saveSettings() {
     const o = {};

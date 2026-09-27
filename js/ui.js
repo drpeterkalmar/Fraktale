@@ -209,7 +209,7 @@ function updateJuliaChip() {
     c.hidden = S.formula !== 1;
     if (!c.hidden) $('julia-chip-text').textContent = 'c = ' + A.fmtC(S.julia.x, S.julia.y);
 }
-$('julia-chip').addEventListener('click', () => openSheet('worlds'));
+$('julia-chip').addEventListener('click', () => { openSheet('worlds'); setTimeout(() => $('julia-panel').scrollIntoView({ block: 'start', behavior: 'smooth' }), 380); });
 let jstep = 0.01;
 document.querySelectorAll('#jstep button').forEach(b => b.addEventListener('click', () => {
     jstep = parseFloat(b.dataset.v);

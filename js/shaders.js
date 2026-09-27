@@ -379,12 +379,16 @@ vec3 sampleLayer(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w) 
         float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
         vec2 g = vec2(mix(h10 - h00, h11 - h01, f.y), mix(h01 - h00, h11 - h10, f.x));
         g /= max(xf.x, 1e-6);                 // Gradient pro Texel -> pro Zielpixel normieren
-        g *= 6.0 * u_relief;
-        vec3 nrm = normalize(vec3(-g, 1.0));
-        vec3 L = normalize(vec3(-0.6, 0.7, 0.9));
+        // gesättigte Hangneigung: glatte Zonen bekommen sichtbare Wölbung, Rauschzonen laufen nicht aus
+        float gm = length(g);
+        float sl = 60.0 * u_relief * gm;
+        sl = sl / (1.0 + sl);
+        vec2 dir = gm > 0.0 ? g / gm : vec2(0.0);
+        vec3 nrm = normalize(vec3(-dir * sl * 1.6, 1.0));
+        vec3 L = normalize(vec3(-0.55, 0.65, 0.75));
         float diff = max(dot(nrm, L), 0.0);
-        float spec = pow(max(dot(reflect(-L, nrm), vec3(0.0, 0.0, 1.0)), 0.0), 24.0);
-        float shade = mix(1.0, 0.35 + 0.85 * diff, clamp(u_relief, 0.0, 1.0));
+        float spec = pow(max(dot(reflect(-L, nrm), vec3(0.0, 0.0, 1.0)), 0.0), 18.0);
+        float shade = mix(1.0, 0.25 + 1.0 * diff, clamp(u_relief, 0.0, 1.0));
         col = col * shade + vec3(spec) * 0.35 * u_relief;
     }
     return col;
