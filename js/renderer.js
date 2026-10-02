@@ -77,9 +77,11 @@ function create(canvas) {
     // Puffer holen (wiederverwenden, wenn gleiche Größe frei)
     function acquire(w, h) {
         for (const b of pool) if (!b.inUse && b.w === w && b.h === h) { b.inUse = true; return b; }
-        // unbenutzte andere Größen verwerfen, wenn Pool groß wird
-        if (pool.length > 6) {
-            for (let i = pool.length - 1; i >= 0; i--) if (!pool[i].inUse) { freeBuffer(pool[i]); pool.splice(i, 1); if (pool.length <= 5) break; }
+        // unbenutzte Puffer verwerfen, wenn der Pool sein Speicherbudget überschreitet (älteste zuerst)
+        let bytes = w * h * 4;
+        for (const b of pool) bytes += b.w * b.h * 4;
+        for (let i = 0; i < pool.length && bytes > R.poolBudget; ) {
+            if (!pool[i].inUse) { bytes -= pool[i].w * pool[i].h * 4; freeBuffer(pool[i]); pool.splice(i, 1); } else i++;
         }
         const b = makeBuffer(w, h);
         b.inUse = true;
@@ -87,6 +89,8 @@ function create(canvas) {
         return b;
     }
     function release(b) { if (b) b.inUse = false; }
+    R.poolBudget = 48 * 1024 * 1024;  // Iterationspuffer gesamt (Bytes); app.js setzt es je nach Gerät
+    R.poolInfo = () => { let used = 0, free = 0; for (const b of pool) { if (b.inUse) used += b.w * b.h * 4; else free += b.w * b.h * 4; } return { n: pool.length, usedMB: +(used / 1048576).toFixed(1), freeMB: +(free / 1048576).toFixed(1) }; };
     function freeBuffer(b) { gl.deleteTexture(b.tex); gl.deleteFramebuffer(b.fbo); }
 
     // ------------------------------------------------ Referenzorbit / BLA
@@ -138,6 +142,7 @@ function create(canvas) {
     };
 
     let pxPerChunk = 60000;           // adaptive Häppchengröße (Pixel)
+    R.submitted = 0;                  // Häppchen seit dem letzten Frame (app.js: Leerlauf-Frame-Zeit)
     R.maxInflight = 2;                // 2 Häppchen in der GPU-Warteschlange: kein Leerlauf zwischen Frames
     // Häppchen nachschieben, fertige einsammeln. Liefert true wenn Job fertig.
     let pxMove = 16384;               // Häppchengröße während Bewegung (Frame-Zeit-geregelt)
@@ -160,18 +165,21 @@ function create(canvas) {
             job.q.shift();
             // Adaptive Größe: ein Häppchen soll etwa einen Frame dauern
             const polls = c.polls - (c.waited || 0);
-            if (!moving) {
+            if (!moving && !(ctl && ctl.prefetch)) {
                 if (polls <= 0) pxPerChunk = Math.min(8e6, pxPerChunk * 1.5);
                 else if (polls >= 2) pxPerChunk = Math.max(4096, pxPerChunk * (polls >= 4 ? 0.4 : 0.7));
             }
         }
         if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
+        // Vorausrechnen: kleinere Häppchen (halbes Stillstands-Häppchen), damit eine neue Geste nicht wartet
+        const px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
         while (job.row < job.h && job.q.length < R.maxInflight) {
-            const rows = Math.max(1, Math.min(job.h - job.row, Math.floor((moving ? pxMove : pxPerChunk) / job.w)));
+            const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
             drawCompute(job, job.row, rows);
             job.row += rows;
             // ein zweites Häppchen wartet erst auf das erste -> seine Poll-Zählung entsprechend versetzen
             job.q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0, waited: job.q.length ? 1 : 0 });
+            R.submitted++;
             gl.flush();
         }
         return false;
@@ -321,7 +329,11 @@ function create(canvas) {
         const dy = HP.toNumber(cam.cy - layer.view.cy) / layer.scale;
         return [k, k, dx - tw / 2 * k + layer.buf.w / 2, dy - th / 2 * k + layer.buf.h / 2];
     }
-    R.present = function (A, B, mixB, cam, look, target) {
+    // layers: [{ buf, view, scale, alpha }] von oben (schärfste) nach unten, höchstens SH.NL.
+    // opts: { legacy, mixB, feather, recon } (legacy = 5.0.1: layers[0] = neu, layers[1] = alt)
+    const xfBuf = new Float32Array(4 * SH.NL), sizeBuf = new Float32Array(2 * SH.NL), alphaBuf = new Float32Array(SH.NL);
+    R.present = function (layers, cam, look, target, opts) {
+        opts = opts || {};
         const tw = target ? target.w : canvas.width, th = target ? target.h : canvas.height;
         const pr = program('display', SH.DISPLAY_FS);
         const L = pr.loc;
@@ -329,19 +341,24 @@ function create(canvas) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
         gl.viewport(0, 0, tw, th);
         gl.uniform2f(L.u_target, tw, th);
-        const bind = (layer, unit, texU, xfU, sizeU, hasU) => {
-            gl.activeTexture(gl.TEXTURE0 + unit);
-            if (layer) {
-                gl.bindTexture(gl.TEXTURE_2D, layer.buf.tex);
-                gl.uniform4fv(xfU, xfFor(layer, cam, tw, th));
-                gl.uniform2f(sizeU, layer.buf.w, layer.buf.h);
-            } else gl.bindTexture(gl.TEXTURE_2D, dummyU());
-            gl.uniform1i(texU, unit);
-            gl.uniform1i(hasU, layer ? 1 : 0);
-        };
-        bind(A, 0, L.u_texA, L.u_xfA, L.u_sizeA, L.u_hasA);
-        bind(B, 1, L.u_texB, L.u_xfB, L.u_sizeB, L.u_hasB);
-        gl.uniform1f(L.u_mixB, mixB);
+        const list = (layers || []).filter(l => l && l.buf).slice(0, SH.NL);
+        for (let i = 0; i < SH.NL; i++) {
+            const l = list[i];
+            gl.activeTexture(gl.TEXTURE0 + i);
+            gl.bindTexture(gl.TEXTURE_2D, l ? l.buf.tex : dummyU());
+            gl.uniform1i(L['u_t' + i], i);
+            if (l) {
+                xfBuf.set(xfFor(l, cam, tw, th), 4 * i);
+                sizeBuf[2 * i] = l.buf.w; sizeBuf[2 * i + 1] = l.buf.h;
+                alphaBuf[i] = l.alpha === undefined ? 1 : l.alpha;
+            }
+        }
+        gl.uniform4fv(L.u_xf, xfBuf); gl.uniform2fv(L.u_size, sizeBuf); gl.uniform1fv(L.u_alpha, alphaBuf);
+        gl.uniform1i(L.u_n, list.length);
+        gl.uniform1i(L.u_legacy, opts.legacy ? 1 : 0);
+        gl.uniform1f(L.u_mixB, opts.mixB === undefined ? 1 : opts.mixB);
+        gl.uniform1f(L.u_feather, opts.feather || 0);
+        gl.uniform1i(L.u_recon, opts.recon ? 1 : 0);
         gl.uniform1i(L.u_formula, look.formula);
         gl.uniform1i(L.u_maxIter, look.maxIter);
         setPalette(L, look);
@@ -353,6 +370,7 @@ function create(canvas) {
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (target) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
+    R.xfFor = xfFor;
     function setPalette(L, look) {
         const p = look.pal;
         gl.uniform3fv(L.u_palA, p.a); gl.uniform3fv(L.u_palB, p.b); gl.uniform3fv(L.u_palC, p.c); gl.uniform3fv(L.u_palD, p.d);
@@ -417,7 +435,7 @@ function create(canvas) {
         const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-        R.present(null, layer, 1, cam, look, { w, h, fbo });
+        R.present([layer], cam, look, { w, h, fbo });
         return R.readAsync(fbo, w, h, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array, 4).then((px) => {
             gl.deleteFramebuffer(fbo); gl.deleteTexture(tex); return px;
         });

@@ -322,6 +322,7 @@ const toggles = [
     bindToggle('t-minimap', () => S.minimap, (v) => { S.minimap = v; }),
     bindToggle('t-rect', () => S.rectMode, (v) => { S.rectMode = v; }),
     bindToggle('t-precise', () => S.precise, (v) => { S.precise = v; }),
+    bindToggle('t-governor', () => S.governor, (v) => { S.governor = v; }),
 ];
 function bindSeg(id, get, set) {
     const g = $(id);
@@ -374,7 +375,7 @@ function buildUserPlaces() {
 }
 $('btn-save-place').addEventListener('click', () => {
     const v = A.viewState();
-    A.R.present(A.RC.prev, A.RC.front, 1, S.cam, lookNow());
+    A.presentNow();
     const c = document.createElement('canvas');
     c.width = 176; c.height = 110;
     const src = A.R.canvas;
@@ -387,11 +388,6 @@ $('btn-save-place').addEventListener('click', () => {
     buildUserPlaces();
     toast(t('saved'));
 });
-function lookNow() {
-    const p = PAL.list[S.palette];
-    return { formula: S.formula, maxIter: A.currentMaxIter(), pal: p, custom: PAL.customFlat(), cycle: S.cycle, density: S.density, time: S.time,
-             relief: S.relief ? S.reliefStrength : 0, particles: S.particles && S.anim, banded: S.banded };
-}
 
 // ------------------------------------------------------------------ Teilen
 $('btn-share').addEventListener('click', () => { const p = $('share-pop'); p.hidden = !p.hidden; if (!p.hidden) closeSheet(); });

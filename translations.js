@@ -244,7 +244,8 @@ const TRANSLATIONS_UI = {
         f_mandelbrot: "z² + c", f_julia: "z² + c, c fest", f_burning_ship: "(|Re z| + i|Im z|)² + c", f_tricorn: "z̄² + c",
         f_mandel_z3: "z³ + c", f_newton: "z − (z³ − 1)/(3z²)", f_mandelbulb: "3D, Raymarching", f_buddhabrot: "Orbit-Dichte",
         words_thousand: "Tausend", zoom_words: "Wörter", zoom_sci: "10er-Potenz",
-        precise: "Exakte Nachrechnung (CPU f64)", precise_hint: "Die GPU rechnet schnell in f32 und schätzt pro Pixel den Rundungsfehler; unsichere Pixel rechnet die CPU exakt in f64 nach. Aus = schneller, aber in sehr dichten Tiefen leicht verrauscht.", fixing: "Präzision…"
+        precise: "Exakte Nachrechnung (CPU f64)", precise_hint: "Die GPU rechnet schnell in f32 und schätzt pro Pixel den Rundungsfehler; unsichere Pixel rechnet die CPU exakt in f64 nach. Aus = schneller, aber in sehr dichten Tiefen leicht verrauscht.", fixing: "Präzision…",
+        governor: "Tempo an Rechenleistung anpassen", governor_hint: "Tour, Doppeltipp, Mausrad und Schwung werden kurz langsamer, wenn das Bild sonst grob würde. Die Finger-Gesten bleiben immer 1:1."
     },
     en: {
         lang_name: "English",
@@ -277,7 +278,8 @@ const TRANSLATIONS_UI = {
         f_mandelbrot: "z² + c", f_julia: "z² + c, fixed c", f_burning_ship: "(|Re z| + i|Im z|)² + c", f_tricorn: "z̄² + c",
         f_mandel_z3: "z³ + c", f_newton: "z − (z³ − 1)/(3z²)", f_mandelbulb: "3D, ray marching", f_buddhabrot: "orbit density",
         words_thousand: "thousand", zoom_words: "words", zoom_sci: "power of ten",
-        precise: "Exact refinement (CPU f64)", precise_hint: "The GPU renders fast in f32 and estimates the rounding error per pixel; uncertain pixels are recomputed exactly in f64 on the CPU. Off = faster, but slightly noisy in very dense depths.", fixing: "Refining…"
+        precise: "Exact refinement (CPU f64)", precise_hint: "The GPU renders fast in f32 and estimates the rounding error per pixel; uncertain pixels are recomputed exactly in f64 on the CPU. Off = faster, but slightly noisy in very dense depths.", fixing: "Refining…",
+        governor: "Match speed to computing power", governor_hint: "Tour, double tap, mouse wheel and fling slow down briefly when the image would otherwise turn coarse. Finger gestures always stay 1:1."
     },
     hu: { lang_name: "Magyar" }, es: { lang_name: "Español" }, fr: { lang_name: "Français" }, pt: { lang_name: "Português" },
     zh: { lang_name: "中文" }, ja: { lang_name: "日本語" }, ko: { lang_name: "한국어" }

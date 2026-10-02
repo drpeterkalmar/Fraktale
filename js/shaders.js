@@ -300,14 +300,23 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
 }
 
 // ---------------------------------------------------------------- DISPLAY
+// Bis zu NL Iterationspuffer ("Ebenen"), von app.js nach Schärfe sortiert (schärfste oben). Jede Ebene
+// wird auf die aktuelle Kamera reprojiziert und mit Deckkraft = gefederte Abdeckung × Einblendung
+// von oben nach unten aufgetragen: eine gröbere Ebene füllt nur Lücken, eine schärfere blendet weich
+// darüber. Vergrößerte Ebenen (Vorschau) werden auf dem Iterationswert interpoliert (Catmull-Rom),
+// nicht auf Farben. u_legacy = 1: Verhalten 5.0.1 (zwei Ebenen, harte Kante, Farbmischung).
+const NL = 8;
 const DISPLAY_FS = `#version 300 es
 ${COMMON}
-uniform usampler2D u_texA;      // älterer Puffer (Fallback / Crossfade-Quelle)
-uniform usampler2D u_texB;      // neuester Puffer
-uniform vec4 u_xfA, u_xfB;      // Texel = Zielpixel * xy + zw
-uniform vec2 u_sizeA, u_sizeB;
-uniform int u_hasA, u_hasB;
-uniform float u_mixB;           // Crossfade A -> B
+${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
+uniform vec4 u_xf[${NL}];       // Texel = Zielpixel * xy + zw
+uniform vec2 u_size[${NL}];
+uniform float u_alpha[${NL}];   // Einblendung 0..1
+uniform int u_n;                // Zahl der Ebenen
+uniform int u_legacy;           // 1 = 5.0.1: Ebene 0 = neu (B), Ebene 1 = alt (A), Crossfade u_mixB
+uniform float u_mixB;
+uniform float u_feather;        // Federbreite der Ebenenränder (Zielpixel)
+uniform int u_recon;            // 1 = Vorschau auf dem Iterationswert rekonstruieren
 uniform vec2 u_target;          // Zielgröße in Pixeln
 uniform int u_formula, u_maxIter;
 uniform vec3 u_palA, u_palB, u_palC, u_palD;
@@ -357,7 +366,36 @@ float fetchV(usampler2D t, ivec2 c) {
     return v < -1.5 ? -1.0 : v;
 }
 
-// bilinear eingefärbte Probe eines Iterationspuffers; w = Abdeckung (0 = ausserhalb)
+vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
+    float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
+    vec2 g = vec2(mix(h10 - h00, h11 - h01, f.y), mix(h01 - h00, h11 - h10, f.x));
+    g /= max(kx, 1e-6);                   // Gradient pro Texel -> pro Zielpixel normieren
+    // gesättigte Hangneigung: glatte Zonen bekommen sichtbare Wölbung, Rauschzonen laufen nicht aus
+    float gm = length(g);
+    float sl = 60.0 * u_relief * gm;
+    sl = sl / (1.0 + sl);
+    vec2 dir = gm > 0.0 ? g / gm : vec2(0.0);
+    vec3 nrm = normalize(vec3(-dir * sl * 1.6, 1.0));
+    vec3 L = normalize(vec3(-0.55, 0.65, 0.75));
+    float diff = max(dot(nrm, L), 0.0);
+    float spec = pow(max(dot(reflect(-L, nrm), vec3(0.0, 0.0, 1.0)), 0.0), 18.0);
+    float shade = mix(1.0, 0.25 + 1.0 * diff, clamp(u_relief, 0.0, 1.0));
+    return col * shade + vec3(spec) * 0.35 * u_relief;
+}
+
+// bilinear eingefärbte Probe aus 4 Texeln (Verhalten 5.0.1; bei Ausrichtung 1:1 exakt der Texel)
+vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 voidCol) {
+    vec3 c00 = v00 < 0.0 ? voidCol : exteriorColor(v00);
+    vec3 c10 = v10 < 0.0 ? voidCol : exteriorColor(v10);
+    vec3 c01 = v01 < 0.0 ? voidCol : exteriorColor(v01);
+    vec3 c11 = v11 < 0.0 ? voidCol : exteriorColor(v11);
+    vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+    if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
+        col = relief(col, v00, v10, v01, v11, f, kx);
+    return col;
+}
+
+// 5.0.1: harte Abdeckung, Farbmischung
 vec3 sampleLayer(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w) {
     vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > size.x || tc.y > size.y) { w = 0.0; return vec3(0.0); }
@@ -368,29 +406,81 @@ vec3 sampleLayer(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w) 
     ivec2 mx = ivec2(size) - 1;
     ivec2 i0 = clamp(ivec2(fl), ivec2(0), mx);
     ivec2 i1 = clamp(ivec2(fl) + 1, ivec2(0), mx);
-    float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y));
-    float v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
-    vec3 c00 = v00 < 0.0 ? voidCol : exteriorColor(v00);
-    vec3 c10 = v10 < 0.0 ? voidCol : exteriorColor(v10);
-    vec3 c01 = v01 < 0.0 ? voidCol : exteriorColor(v01);
-    vec3 c11 = v11 < 0.0 ? voidCol : exteriorColor(v11);
-    vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
-    if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0) {
-        float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
-        vec2 g = vec2(mix(h10 - h00, h11 - h01, f.y), mix(h01 - h00, h11 - h10, f.x));
-        g /= max(xf.x, 1e-6);                 // Gradient pro Texel -> pro Zielpixel normieren
-        // gesättigte Hangneigung: glatte Zonen bekommen sichtbare Wölbung, Rauschzonen laufen nicht aus
-        float gm = length(g);
-        float sl = 60.0 * u_relief * gm;
-        sl = sl / (1.0 + sl);
-        vec2 dir = gm > 0.0 ? g / gm : vec2(0.0);
-        vec3 nrm = normalize(vec3(-dir * sl * 1.6, 1.0));
-        vec3 L = normalize(vec3(-0.55, 0.65, 0.75));
-        float diff = max(dot(nrm, L), 0.0);
-        float spec = pow(max(dot(reflect(-L, nrm), vec3(0.0, 0.0, 1.0)), 0.0), 18.0);
-        float shade = mix(1.0, 0.25 + 1.0 * diff, clamp(u_relief, 0.0, 1.0));
-        col = col * shade + vec3(spec) * 0.35 * u_relief;
+    return shade4(fetchV(tex, i0), fetchV(tex, ivec2(i1.x, i0.y)), fetchV(tex, ivec2(i0.x, i1.y)), fetchV(tex, i1), f, xf.x, voidCol);
+}
+
+// Abdeckung mit gefederten Rändern. Federbreite = Abstand der Kante vom Bildrand (max. u_feather):
+// stetig, auch wenn eine Kante gerade erst ins Bild wandert; Kanten außerhalb des Bildes federn nicht.
+float coverage(vec2 tc, vec2 size, vec4 xf) {
+    if (tc.x < 0.0 || tc.y < 0.0 || tc.x > size.x || tc.y > size.y) return 0.0;
+    if (u_feather <= 0.0) return 1.0;
+    vec2 e0 = -xf.zw / xf.xy, e1 = (size - xf.zw) / xf.xy;
+    vec2 f0 = clamp(e0, 0.0, u_feather), f1 = clamp(u_target - e1, 0.0, u_feather);
+    vec2 p = gl_FragCoord.xy;
+    float c = 1.0;
+    if (f0.x > 0.0) c = min(c, (p.x - e0.x) / f0.x);
+    if (f0.y > 0.0) c = min(c, (p.y - e0.y) / f0.y);
+    if (f1.x > 0.0) c = min(c, (e1.x - p.x) / f1.x);
+    if (f1.y > 0.0) c = min(c, (e1.y - p.y) / f1.y);
+    return smoothstep(0.0, 1.0, clamp(c, 0.0, 1.0));
+}
+
+vec4 cubicW(float t) {
+    float t2 = t * t, t3 = t2 * t;
+    return 0.5 * vec4(-t3 + 2.0 * t2 - t, 3.0 * t3 - 5.0 * t2 + 2.0, -3.0 * t3 + 4.0 * t2 + t, t3 - t2);
+}
+
+// Probe einer Ebene (neu): gefedert; vergrößerte Ebenen (Vorschau) auf dem Iterationswert rekonstruiert
+vec3 sampleLayerN(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w) {
+    vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
+    w = coverage(tc, size, xf);
+    if (w <= 0.0) return vec3(0.0);
+    vec2 q = tc - 0.5;
+    vec2 fl = floor(q);
+    vec2 f = q - fl;
+    ivec2 b = ivec2(fl);
+    ivec2 mx = ivec2(size) - 1;
+    ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
+    float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
+    if (u_recon == 0 || xf.x >= 0.9) return shade4(v00, v10, v01, v11, f, xf.x, voidCol);
+    // Innen/Außen getrennt: Außenwerte untereinander interpolieren, Innenanteil weich-scharf darüber
+    vec4 v = vec4(v00, v10, v01, v11);
+    vec4 wb = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+    vec4 ext = step(0.0, v);
+    float wo = dot(wb, ext);
+    float inside = 1.0 - wo;
+    if (wo <= 0.0) return voidCol;
+    float lo = 1e30, hi = -1e30;
+    for (int i = 0; i < 4; i++) if (v[i] >= 0.0) { lo = min(lo, v[i]); hi = max(hi, v[i]); }
+    float thr = 2.0 / max(u_density, 0.05);
+    vec3 col;
+    if (hi - lo < thr && u_formula != 5 || (u_formula == 5 && hi - lo < 4.0)) {
+        float mu = dot(wb * ext, v) / wo;
+        if (wo > 0.999) {
+            // glatte Zone: Catmull-Rom über 4x4 (C1-stetig, keine Rautenmuster), auf [lo, hi] begrenzt
+            vec4 wx = cubicW(f.x), wy = cubicW(f.y);
+            float s = 0.0, mn = lo, mxv = hi;
+            bool ok = true;
+            for (int j = 0; j < 4; j++) {
+                float r = 0.0;
+                for (int i = 0; i < 4; i++) {
+                    float t = fetchV(tex, clamp(b + ivec2(i - 1, j - 1), ivec2(0), mx));
+                    if (t < 0.0) ok = false;
+                    mn = min(mn, t); mxv = max(mxv, t);
+                    r += wx[i] * t;
+                }
+                s += wy[j] * r;
+            }
+            if (ok && mxv - mn < 3.0 * thr) mu = clamp(s, lo, hi);
+        }
+        col = exteriorColor(mu);
+    } else {
+        vec3 c = vec3(0.0);
+        for (int i = 0; i < 4; i++) if (v[i] >= 0.0) c += wb[i] * exteriorColor(v[i]);
+        col = c / wo;
     }
+    if (u_relief > 0.0 && u_formula != 5 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
+    if (inside > 0.0) col = mix(col, voidCol, smoothstep(0.15, 0.85, inside));
     return col;
 }
 
@@ -419,12 +509,20 @@ vec3 voidColor() {
 void main() {
     vec3 vc = voidColor();
     vec3 col = vec3(0.012, 0.016, 0.04);
-    float wa = 0.0, wb = 0.0;
-    vec3 ca = vec3(0.0), cb = vec3(0.0);
-    if (u_hasA == 1) ca = sampleLayer(u_texA, u_sizeA, u_xfA, vc, wa);
-    if (u_hasB == 1) cb = sampleLayer(u_texB, u_sizeB, u_xfB, vc, wb);
-    if (wa > 0.0) col = ca;
-    if (wb > 0.0) col = (wa > 0.0) ? mix(ca, cb, u_mixB) : cb;
+    if (u_legacy == 1) {
+        float wa = 0.0, wb = 0.0;
+        vec3 ca = vec3(0.0), cb = vec3(0.0);
+        if (u_n > 1) ca = sampleLayer(u_t1, u_size[1], u_xf[1], vc, wa);
+        if (u_n > 0) cb = sampleLayer(u_t0, u_size[0], u_xf[0], vc, wb);
+        if (wa > 0.0) col = ca;
+        if (wb > 0.0) col = (wa > 0.0) ? mix(ca, cb, u_mixB) : cb;
+    } else {
+        // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
+        vec3 acc = vec3(0.0);
+        float T = 1.0;
+${Array.from({ length: NL }, (_, i) => `        if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_size[${i}], u_xf[${i}], vc, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
+        col = acc + T * col;
+    }
     // Sättigung, Vignette, Gamma wie v4
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.2);
@@ -570,5 +668,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, DISPLAY_FS, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, DISPLAY_FS, NL, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

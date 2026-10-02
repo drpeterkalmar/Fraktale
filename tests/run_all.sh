@@ -10,4 +10,5 @@ run python3 tests/test_truth.py --n=400 --renderer=cpu --tag=cpu
 run python3 tests/test_gestures.py
 run python3 tests/test_ui.py
 run python3 tests/test_features.py
+run python3 tests/test_blend.py
 exit $fail

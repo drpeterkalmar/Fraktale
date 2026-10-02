@@ -5,13 +5,15 @@
 //    DIREKT (kein Nachzieh-Lerp); Trägheit/Flüge animieren sie zeitbasiert.
 //  * Jede Ansicht wird in einen Iterationspuffer gerechnet (GPU oder CPU-Worker) und vom
 //    Display-Pass auf die aktuelle Kamera reprojiziert -> Gesten laufen immer mit 60 fps.
-//  * Stufen: bei Bewegung laufend Vorschau (1/div Auflösung), im Stillstand Verfeinerung
-//    bis volle Auflösung, Tausch per Crossfade. Fertiges Bild ändert sich danach nicht mehr.
+//  * 5.1 nahtloser Bildaufbau: jedes fertige Bild bleibt als Ebene erhalten (bis 8); der Display-Pass
+//    trägt sie nach Schärfe sortiert gefedert auf, neue blenden weich ein. In Bewegung wird für die
+//    vorausgesagte Kamera nur gerechnet, was fehlt; im Leerlauf wird vorausgerechnet; animierte
+//    Bewegungen bremsen weich, bevor das Bild grob würde. Fertiges Bild ändert sich danach nicht mehr.
 //  * Referenzorbit + BLA im Orbit-Worker (BigInt), nie auf dem Main-Thread.
 (function () {
 'use strict';
 
-const APP_VERSION = '5.0.1';
+const APP_VERSION = '5.1.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -34,7 +36,7 @@ const S = {
     iterManual: false, iterValue: 300,
     palette: 0, density: 1, anim: true, speed: 0.15, relief: false, reliefStrength: 0.7, banded: false, particles: true,
     cycle: 0, time: 0,
-    quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci',
+    quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true,
     chrome: true,
 };
 const listeners = [];
@@ -44,7 +46,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -53,7 +55,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -131,7 +133,7 @@ function flyTo(cx, cy, zoom, opts = {}) {
     const perDecade = opts.perDecade || 0.22;
     const d1 = mid ? decades(a.zoom, mid.zoom) + decades(mid.zoom, zoom) : decades(a.zoom, zoom);
     const dur = opts.duration || Math.min(opts.maxDur || 9, 0.45 + perDecade * d1 + (mid ? 0.4 : 0));
-    flight = { a, b: { cx, cy, zoom }, mid, t0: performance.now(), dur: dur * 1000, la, lb, anchor: opts.anchor || null, onDone: opts.onDone };
+    flight = { a, b: { cx, cy, zoom }, mid, t0: performance.now(), u: 0, dur: dur * 1000, la, lb, anchor: opts.anchor || null, onDone: opts.onDone };
     camDirty = true;
 }
 const ease = (u) => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
@@ -145,29 +147,41 @@ function pathCam(A, B, u) {
     return { cx: B.cx + HP.mulNumber(A.cx - B.cx, g), cy: B.cy + HP.mulNumber(A.cy - B.cy, g), zoom: z };
 }
 
+// Kamera eines Flugs bei Fortschritt u (0..1)
+function flightCamAt(f, u) {
+    const e = ease(u);
+    let c;
+    if (f.anchor) {
+        const an = f.anchor;
+        c = anchoredCam(f.a, an.x, an.y, an.x, an.y, Math.exp((f.lb - f.la) * e));
+    } else if (f.mid) {
+        const m = f.mid;
+        const l1 = Math.abs(Math.log(f.a.zoom / m.zoom)) + 0.3, l2 = Math.abs(Math.log(m.zoom / f.b.zoom)) + 0.3;
+        const split = l1 / (l1 + l2);
+        c = e < split ? pathCam(f.a, m, e / split) : pathCam(m, f.b, (e - split) / (1 - split));
+    } else c = pathCam(f.a, f.b, e);
+    if (u >= 1 && !f.anchor) c = { cx: f.b.cx, cy: f.b.cy, zoom: f.b.zoom };
+    return c;
+}
+
+// Tempo-Bremse (nur animierte Bewegungen): GOV.g = Zeitfaktor 0.3..1, siehe governorUpdate()
+const GOV = { g: 1, on: true, kmin: +(Q.get('govk') || 0.4), min: +(Q.get('govmin') || 0.4) };
+const INERTIA_TAU = 0.32;
 function updateAnims(now, dt) {
     if (flight) {
-        const u = Math.min(1, (now - flight.t0) / flight.dur);
-        const e = ease(u);
-        let c;
-        if (flight.anchor) {
-            const f = flight.anchor;
-            c = anchoredCam(flight.a, f.x, f.y, f.x, f.y, Math.exp((flight.lb - flight.la) * e));
-        } else if (flight.mid) {
-            const m = flight.mid;
-            const l1 = Math.abs(Math.log(flight.a.zoom / m.zoom)) + 0.3, l2 = Math.abs(Math.log(m.zoom / flight.b.zoom)) + 0.3;
-            const split = l1 / (l1 + l2);
-            c = e < split ? pathCam(flight.a, m, e / split) : pathCam(m, flight.b, (e - split) / (1 - split));
-        } else c = pathCam(flight.a, flight.b, e);
-        if (u >= 1) c = flight.anchor ? c : { cx: flight.b.cx, cy: flight.b.cy, zoom: flight.b.zoom };
+        // Fortschritt statt Wanduhr: die Tempo-Bremse dehnt die Zeit weich
+        flight.u = Math.min(1, (flight.u || 0) + dt * 1000 * GOV.g / flight.dur);
+        const u = flight.u;
+        const c = flightCamAt(flight, u);
         setCam(c.cx, c.cy, c.zoom);
         if (u >= 1) { const cb = flight.onDone; flight = null; if (cb) cb(); }
         return;
     }
     if (inertia) {
-        const k = Math.exp(-dt / 0.32);
+        const dtg = dt * Math.max(0.5, GOV.g);
+        const k = Math.exp(-dtg / INERTIA_TAU);
         const c0 = S.cam;
-        const dx = inertia.vx * dt, dy = inertia.vy * dt, ds = Math.exp(inertia.vs * dt);
+        const dx = inertia.vx * dtg, dy = inertia.vy * dtg, ds = Math.exp(inertia.vs * dtg);
         const ax = inertia.ax, ay = inertia.ay;
         const c = anchoredCam(c0, ax, ay, ax + dx, ay + dy, ds);
         setCam(c.cx, c.cy, c.zoom);
@@ -177,13 +191,55 @@ function updateAnims(now, dt) {
         return;
     }
     if (wheelAnim) {
-        const k = 1 - Math.exp(-dt / 0.07);
+        const k = 1 - Math.exp(-dt * GOV.g / 0.07);
         const step = Math.exp(wheelAnim.ls * k);
         wheelAnim.ls -= Math.log(step);
         const c = anchoredCam(S.cam, wheelAnim.x, wheelAnim.y, wheelAnim.x, wheelAnim.y, step);
         setCam(c.cx, c.cy, c.zoom);
         if (Math.abs(wheelAnim.ls) < 1e-3) wheelAnim = null;
     }
+}
+
+// ---- Vorhersage: wo ist die Kamera in dt Sekunden? (bekannte Pfade exakt, Gesten extrapoliert)
+const CV = { last: null, t: 0, vx: 0, vy: 0, vz: 0 };    // Kamera-Geschwindigkeit: CSS px/s (Welt), ln(Zoom)/s
+function trackVelocity(now, moving) {
+    const c = S.cam;
+    if (CV.last && moving) {
+        const dt = (now - CV.t) / 1000;
+        if (dt > 0 && dt < 0.25) {
+            const s = worldPerCss(c.zoom);
+            const vx = HP.toNumber(c.cx - CV.last.cx) / s / dt, vy = HP.toNumber(c.cy - CV.last.cy) / s / dt;
+            const vz = Math.log(c.zoom / CV.last.zoom) / dt;
+            const a = 1 - Math.exp(-dt / 0.12);                  // ~ letzte 200 ms
+            CV.vx += (vx - CV.vx) * a; CV.vy += (vy - CV.vy) * a; CV.vz += (vz - CV.vz) * a;
+        }
+    } else if (!moving) { CV.vx = CV.vy = CV.vz = 0; }
+    CV.last = c; CV.t = now;
+}
+function predictCam(dt, clamp = true) {
+    let c = null;
+    if (flight) c = flightCamAt(flight, Math.min(1, (flight.u || 0) + dt * 1000 * GOV.g / flight.dur));
+    else if (inertia) {
+        const dtg = dt * Math.max(0.5, GOV.g);
+        const f = INERTIA_TAU * (1 - Math.exp(-dtg / INERTIA_TAU));
+        c = anchoredCam(S.cam, inertia.ax, inertia.ay, inertia.ax + inertia.vx * f, inertia.ay + inertia.vy * f, Math.exp(inertia.vs * f));
+    } else if (wheelAnim) {
+        const k = 1 - Math.exp(-dt * GOV.g / 0.07);
+        c = anchoredCam(S.cam, wheelAnim.x, wheelAnim.y, wheelAnim.x, wheelAnim.y, Math.exp(wheelAnim.ls * k));
+    } else if (gestures.active() || Math.abs(CV.vz) + Math.abs(CV.vx) + Math.abs(CV.vy) > 0) {
+        const s = worldPerCss(S.cam.zoom), k = 0.8;            // Gesten: vorsichtig extrapolieren
+        c = { cx: S.cam.cx + HP.fromNumber(CV.vx * dt * k * s), cy: S.cam.cy + HP.fromNumber(CV.vy * dt * k * s), zoom: clampZoom(S.cam.zoom * Math.exp(CV.vz * dt * k)) };
+    }
+    if (!c) return S.cam;
+    if (!clamp) return c;
+    // innerhalb des Vorschau-Überhangs bleiben: das Ergebnis muss die aktuelle Ansicht noch decken
+    // (hineinzoomen ≤ 1,3×; herauszoomen bis 1/3 – eine weitere Ansicht deckt die aktuelle ohnehin)
+    const r = Math.max(1 / 3, Math.min(1.3, c.zoom / S.cam.zoom));
+    const s = worldPerCss(S.cam.zoom);
+    const mx = 0.18 * cssW * s, my = 0.18 * cssH * s;
+    const dx = Math.max(-mx, Math.min(mx, HP.toNumber(c.cx - S.cam.cx))), dy = Math.max(-my, Math.min(my, HP.toNumber(c.cy - S.cam.cy)));
+    if (r === c.zoom / S.cam.zoom && Math.abs(dx) < mx && Math.abs(dy) < my) return c;
+    return { cx: S.cam.cx + HP.fromNumber(dx), cy: S.cam.cy + HP.fromNumber(dy), zoom: S.cam.zoom * r };
 }
 
 // ------------------------------------------------------------------ Gesten
@@ -296,9 +352,9 @@ function plan() {
     }
     return { kind: 'gpu', mode: 'perturb' };
 }
-function viewKey() {
-    const c = S.cam;
-    return `${S.formula}|${c.cx}|${c.cy}|${c.zoom}|${currentMaxIter()}|${S.formula === 1 ? S.julia.x + ',' + S.julia.y : ''}|${canvas.width}x${canvas.height}|${S.renderer}`;
+function viewKey(cam) {
+    const c = cam || S.cam;
+    return `${S.formula}|${c.cx}|${c.cy}|${c.zoom}|${S.iterManual ? S.iterValue : autoIter(c.zoom)}|${S.formula === 1 ? S.julia.x + ',' + S.julia.y : ''}|${canvas.width}x${canvas.height}|${S.renderer}`;
 }
 
 // ------------------------------------------------------------------ Referenzorbit (Orbit-Worker)
@@ -311,11 +367,14 @@ orbitWorker.onmessage = (e) => {
         const req = REF.pending;
         REF.pending = null;
         if (req && req.id !== m.id) return;
+        // vorausberechneter Orbit: nur übernehmen, wenn die Ansicht noch dieselbe ist und nichts läuft
+        if (req && req.pfKey && (RC.lastKey !== req.pfKey || RC.job || RC.fix)) { if (REF.queued) { const q = REF.queued; REF.queued = null; sendRef(q); } return; }
         m.sig = req ? req.sig : '';
         m.refXb = BigInt(m.refX); m.refYb = BigInt(m.refY);
         m.viewCx = BigInt(m.cx); m.viewCy = BigInt(m.cy);
         // laufenden Perturbations-Job abbrechen: Texturen werden gleich ersetzt
         if (RC.job && RC.job.mode === 'perturb') cancelJob();
+        if (RC.pjob && RC.pjob.mode === 'perturb') cancelPrefetch();
         R.setReference(m);
         REF.cur = m;
         if (m.orbit64) cpuSendRef(m);
@@ -325,6 +384,7 @@ orbitWorker.onmessage = (e) => {
         REF.blaPending = false;
         if (!REF.cur || REF.cur.id !== m.refId) return;
         if (RC.job && RC.job.mode === 'perturb' && RC.job.kind === 'gpu') cancelJob();
+        if (RC.pjob && RC.pjob.mode === 'perturb' && RC.pjob.kind === 'gpu') cancelPrefetch();
         R.setBLA(m.bla32);
         REF.cur.blaCmax = m.blaCmax;
         if (m.bla64) { REF.cur.bla64 = m.bla64; cpuBroadcast({ type: 'bla', refId: m.refId, bla: m.bla64 }); }
@@ -334,11 +394,12 @@ function viewHalf() { const s = worldPerCss(S.cam.zoom); return [s * cssW / 2, s
 // Bei Flügen/Touren den Referenzorbit gleich fürs ZIEL rechnen: das Ziel liegt während der
 // ganzen Fahrt im Bild, eine Referenz reicht dann für alle Zwischenbilder.
 function refTarget() {
-    if (flight && !flight.anchor) return flight.b;
+    if (flight) return flight.anchor ? flightCamAt(flight, 1) : flight.b;
     return S.cam;
 }
-function requestRef(want64) {
-    const tg = refTarget();
+function requestRef(want64) { return requestRefFor(refTarget(), null, want64); }
+// tg: Kamera, für die der Orbit gerechnet wird; pfKey: Vorausrechnen für diese Ansicht (verfällt bei Wechsel)
+function requestRefFor(tg, pfKey, want64 = true) {
     const s = 3 / (tg.zoom * cssH);
     const q = {
         type: 'ref', id: 0, formula: S.formula,
@@ -349,6 +410,8 @@ function requestRef(want64) {
         cmax: 0, want64
     };
     const sig = [q.formula, q.cx, q.cy, q.zoom, q.jx, q.jy, q.maxIter, want64].join('|');
+    q.pfKey = pfKey || null;
+    if (REF.pending && pfKey) return;
     if (REF.pending) {
         if (REF.pending.sig !== sig) { q.sig = sig; REF.queued = q; }
         return;
@@ -427,8 +490,8 @@ function onCpuMessage(e) {
     w.busy = Math.max(0, w.busy - 1);
     if (m.type === 'buddha') { buddhaMerge(m); return; }
     if (m.type === 'pixels') { onFixPixels(m, w); return; }
-    const job = RC.job;
-    if (!job || job.kind !== 'cpu' || job.id !== m.jobId || job.done) { cpuFeed(); return; }
+    const job = RC.job && RC.job.id === m.jobId ? RC.job : (RC.pjob && RC.pjob.id === m.jobId ? RC.pjob : null);
+    if (!job || job.kind !== 'cpu' || job.done) { cpuFeed(); return; }
     if (m.missingRef) { if (REF.cur && REF.cur.orbit64) sendRefTo(w, REF.cur); job.tiles.push({ x: m.x, y: m.y, w: m.w, h: m.h }); cpuFeed(); return; }
     R.uploadTile(job, m.x, m.y, m.w, m.h, m.data);
     job.tilesDone++;
@@ -437,7 +500,9 @@ function onCpuMessage(e) {
 }
 function cpuFeed() {
     fixFeed();
-    const job = RC.job;
+    let job = RC.job;
+    // Vorausrechnen nur, wenn der sichtbare Job und die Nachrechnung keine Worker brauchen
+    if ((!job || job.kind !== 'cpu' || job.done || !job.tiles.length) && !RC.fix && RC.pjob && RC.pjob.kind === 'cpu' && !RC.pjob.done) job = RC.pjob;
     if (!job || job.kind !== 'cpu' || job.done) return;
     for (const w of cpuWorkers) {
         while (w.busy < 2 && job.tiles.length) {
@@ -451,25 +516,71 @@ function cpuFeed() {
 }
 
 // ------------------------------------------------------------------ Render-Orchestrierung
-const RC = { front: null, prev: null, job: null, fadeT0: 0, fading: false, previewDiv: 4, lastMoveT: 0, jobSeq: 0,
+// 5.1 „nahtloser Bildaufbau": Jedes fertige Bild (Vorschau, Verfeinerung, exakt, vorausberechnet)
+// bleibt als EBENE erhalten, solange es irgendwo das schärfste gültige Bild liefert. Der Display-Pass
+// trägt die Ebenen nach Schärfe sortiert auf (schärfste oben, gefederte Ränder, zeitbasiertes
+// Einblenden): eine gröbere neue Vorschau füllt nur Lücken und überdeckt nie ein schärferes,
+// reprojiziert noch gültiges Bild. Schärfe = Pufferpixel pro Bildschirmpixel nach Reprojektion.
+// A/B-Regler per URL (Werte von 5.0.1 in Klammern):
+//   ?blend=0      Verhalten 5.0.1 komplett (2 Ebenen, harter Tausch in Bewegung, kein Vorausrechnen)
+//   ?maxdiv=N     gröbste Vorschau 1/N (12)        ?over=X     Vorschau-Überhang (1.2)
+//   ?fadems=N     Einblendzeit ms (280 nur im Stillstand, in Bewegung 0)   ?feather=N  Randfederung CSS px (0)
+//   ?recon=0      Vorschau auf Farben statt Iterationswert interpolieren (Farben)
+//   ?predict=0    Vorschau für die aktuelle statt die vorausgesagte Kamera  ?prefetch=0  kein Vorausrechnen
+//   ?gov=0        Tempo-Bremse aus (gab es nicht)
+const BLEND = Q.get('blend') !== '0';
+const MAXDIV = { gpu: +(Q.get('maxdiv') || (BLEND ? 6 : 12)), cpu: +(Q.get('maxdiv') || (BLEND ? 8 : 12)) };
+const OVER = +(Q.get('over') || (BLEND ? 1.5 : 1.2));       // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
+const OVER_MOVE = +(Q.get('overmove') || 1.2);             // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
+const STRIPS = BLEND && Q.get('strips') !== '0';           // Vorschau nur für den Bereich, der noch nicht scharf genug ist
+const FADE_MS = Q.has('fadems') ? +Q.get('fadems') : (BLEND ? 220 : 280);
+const FADE_MOVE_MS = Q.has('fadems') ? +Q.get('fadems') : (BLEND ? 150 : 0);
+const FEATHER = Q.has('feather') ? +Q.get('feather') : (BLEND ? 12 : 0);
+const RECON = BLEND && Q.get('recon') !== '0';
+const PREDICT = BLEND && Q.get('predict') !== '0';
+const PREFETCH = BLEND && Q.get('prefetch') !== '0';
+const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (6)
+const RC = { front: null, prev: null, job: null, pjob: null, fadeT0: 0, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
+             layers: [], layerSeq: 0, list: [], estPreviewMs: 60, lastPreview: null, pxRate: 0,
              foreign: false, dirty: true, lastKeyFull: null, timeToFull: null, keyT0: 0, lastKey: '' };
 const stats = { fps: 0, frames: 0, fpsT: 0, lastRef: null, lastFullMs: null };
-const FADE_MS = 280;
+// GPU-Speicher: Iterationspuffer (4 B/Pixel). Pixel 7 (824×1830): Vollbild 6 MB; Stapel max. 6 Ebenen
+// (exakt + Vorschauen + 3 vorausberechnete) typ. 15–25 MB, Pool-Grenze 40 MB (Desktop 64 MB).
+R.poolBudget = (Math.min(screen.width, screen.height) < 700 ? 40 : 64) * 1048576;
 
 function invalidate() { RC.dirty = true; camDirty = true; }
 function markFramesForeign() { RC.foreign = true; }
-function cancelJob() { if (RC.job) { R.cancelJob(RC.job); RC.job = null; } }
+function cancelJob() {
+    const j = RC.job;
+    if (!j) return;
+    // abgebrochene Vorschau: geleistete Arbeit trotzdem in die Durchsatz-Schätzung
+    if (j.preview && j.kind === 'gpu' && j.row > 0) {
+        const t = performance.now() - j.t0, rate = j.w * j.row / Math.max(4, t);
+        if (t > 50) RC.pxRate = RC.pxRate ? RC.pxRate * 0.7 + rate * 0.3 : rate;
+    }
+    R.cancelJob(j); RC.job = null;
+}
+function cancelPrefetch() { if (RC.pjob) { R.cancelJob(RC.pjob); RC.pjob = null; } }
+// Inhalt eines Bildes: was es zeigt (unabhängig von Ansicht/Auflösung). Ebenen mit anderem Inhalt
+// (andere Welt, anderes Julia-c, manuelle Iterationen) liegen ganz unten und werden ausgeblendet.
+function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a'); }
+function maxIterFor(zoom) { return S.iterManual ? S.iterValue : autoIter(zoom); }
 
-function startJob(key, div, p) {
+// view: Kamera, für die gerechnet wird (Standard: aktuelle). opts: { prefetch, w, h, scale }
+function startJob(key, div, p, view, opts) {
+    opts = opts || {};
+    view = view || S.cam;
     const w0 = canvas.width, h0 = canvas.height;
-    const over = div > 1 ? 1.2 : 1;                           // Vorschau mit Überhang (kleine Pans ohne Rand)
-    const w = Math.max(8, Math.ceil(w0 * over / div)), h = Math.max(8, Math.ceil(h0 * over / div));
-    const scale = 3 / (S.cam.zoom * h0) * div;                // Welt pro Pufferpixel
-    const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: currentMaxIter(),
-                  view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom }, w, h, scale,
+    // Vorschau mit Überhang (Schwenks laufen nicht an die Kante); auch volle Auflösung in Bewegung
+    const over = opts.preview ? OVER_MOVE : (div > 1 ? OVER : 1);
+    const w = opts.w || Math.max(8, Math.ceil(w0 * over / div)), h = opts.h || Math.max(8, Math.ceil(h0 * over / div));
+    const scale = opts.scale || 3 / (view.zoom * h0) * div;   // Welt pro Pufferpixel
+    const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
+                  view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
                   julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now() };
+    if (opts.prefetch) RC.pjob = job; else RC.job = job;
     if (p.kind === 'gpu') {
-        job.err = div === 1 && S.precise && S.formula !== 5;     // finale Stufe mit Fehlerschätzung
+        job.err = div === 1 && !opts.prefetch && !opts.preview && S.precise && S.formula !== 5;     // finale Stufe mit Fehlerschätzung
         R.beginJob(job);
     } else {
         cpuPool();
@@ -487,38 +598,48 @@ function startJob(key, div, p) {
         for (let y = 0; y < h; y += T) for (let x = 0; x < w; x += T) tiles.push({ x, y, w: Math.min(T, w - x), h: Math.min(T, h - y) });
         tiles.sort((a, b) => Math.hypot(a.x + a.w / 2 - w / 2, a.y + a.h / 2 - h / 2) - Math.hypot(b.x + b.w / 2 - w / 2, b.y + b.h / 2 - h / 2));
         job.tiles = tiles; job.tilesTotal = tiles.length; job.tilesDone = 0;
-        RC.job = job;
         cpuFeed();
     }
-    RC.job = job;
+    return job;
+}
+function jobProgress(job) { return job.kind === 'gpu' ? job.row / Math.max(1, job.h) : job.tilesDone / Math.max(1, job.tilesTotal); }
+
+function makeFrame(job, now) {
+    job.buf && (job.kept = true);
+    return { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
+             kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs,
+             sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false };
 }
 
 function jobFinished(job, now) {
-    job.buf && (job.kept = true);
-    const fr = { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
-                 kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs };
+    if (!BLEND) return jobFinishedLegacy(job, now);
+    const fr = makeFrame(job, now);
     const moving = isMoving(now);
-    // Crossfade beim Verfeinern / Moduswechsel; während Bewegung direkt tauschen
-    if (RC.prev) R.releaseFrame(RC.prev);
-    RC.prev = RC.front;
-    RC.front = fr;
-    RC.fading = !moving && !!RC.prev;
-    RC.fadeT0 = now;
-    RC.foreign = false;
+    addLayer(fr, now, moving);
     RC.dirty = true;
-    if (job.stage > 1) {
+    if (job.prefetch) { PF.busyMs += fr.ms; return; }
+    RC.front = fr;
+    RC.foreign = false;
+    if (fr.preview) {
+        if (!job.part) RC.lastPreview = fr;
         // Vorschau-Auflösung regelt sich über die gemessene Frame-Zeit während der Bewegung
-        // (Ziel 60 fps: Frame > 24 ms -> gröber, < 18 ms und schnelle Vorschau -> feiner)
-        const t = fr.ms;
-        if (moving) {
-            if ((RC.dtEMA > 1.4 * (RC.vsync || 16.7) || t > 90) && RC.previewDiv < 12) RC.previewDiv++;
-            else if (RC.dtEMA < 1.1 * (RC.vsync || 16.7) && t < 40 && RC.previewDiv > 2) RC.previewDiv--;
+        // (Ziel: Vsync halten; Frame > 1.4 Vsync oder Vorschau > 90 ms -> gröber, sonst feiner;
+        // volle Auflösung, wenn die halbe Vorschau < 15 ms braucht – z. B. flache Zooms, direkte f32)
+        const t = fr.ms, k = job.kind;
+        if (moving && !job.isTarget) {
+            RC.estPreviewMs = RC.estPreviewMs * 0.7 + t * 0.3;
+            const rate = job.w * job.h / Math.max(4, t);
+            RC.pxRate = RC.pxRate ? RC.pxRate * 0.7 + rate * 0.3 : rate;
+            const d = RC.previewDiv[k];
+            if ((RC.dtEMA > 1.4 * (RC.vsync || 16.7) || t > 90) && d < MAXDIV[k]) RC.previewDiv[k]++;
+            else if (RC.dtEMA < 1.1 * (RC.vsync || 16.7) && t < (d === 2 ? 15 : 40) && d > 1) RC.previewDiv[k]--;
         }
-        RC.estFull = t * job.stage * job.stage;
+        RC.estFull = t * job.stage * job.stage / (job.w * job.h) * (canvas.width * canvas.height);
     } else {
         stats.lastJobMs = fr.ms;
         stats.gpuFullMs = fr.ms;
-        if (fr.fixed) fullDone(fr, now); else startFix(fr, now);
+        // Nachrechnung erst im Stillstand (Zielbild eines Flugs kann fertig sein, bevor er endet)
+        if (fr.fixed) { fr.exact = true; fullDone(fr, now); } else if (!moving) startFix(fr, now);
         checkInside(fr);
     }
 }
@@ -527,10 +648,133 @@ function fullDone(fr, now) {
     emit('rendered');
 }
 
+// ---------------- Ebenen-Stapel
+function addLayer(fr, now, moving) {
+    fr.seq = ++RC.layerSeq;
+    fr.t0 = now;
+    fr.fadeMs = moving ? FADE_MOVE_MS : FADE_MS;
+    RC.layers.push(fr);
+    pruneLayers(now);
+}
+const smooth01 = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+function layerFade(l, now) { return l.fadeMs > 0 ? smooth01((now - l.t0) / l.fadeMs) : 1; }
+function layerK(l, cam) { return 3 / (cam.zoom * canvas.height) / l.scale; }
+// Reihenfolge: Schärfe (gekappt bei 1) + exakt-für-genau-diese-Ansicht + Aktualität (Gleichstand: neuer
+// oben). Vorausberechnete Ebenen haben keinen Aktualitätsbonus. Fremder Inhalt: ganz unten.
+function orderLayers(now, cam) {
+    const sig = contentSig(), key = viewKey(cam);
+    const L = RC.layers;
+    const vis = L.filter(l => !l.prefetch && l.sig === sig).sort((a, b) => b.seq - a.seq);
+    for (const l of L) {
+        let s = Math.min(1, layerK(l, cam));
+        if (l.exact && l.key === key) s += 0.05;
+        const r = vis.indexOf(l);
+        if (r >= 0) s += 0.002 * Math.max(0, 4 - r);         // nur Gleichstand entscheiden (neuer oben)
+        if (l.sig !== sig) s -= 10 - 0.01 * Math.min(50, l.seq % 1e6) / 50;
+        l.score = s;
+        l.alpha = layerFade(l, now) * (l.outT ? 1 - smooth01((now - l.outT) / FADE_MOVE_MS) : 1);
+    }
+    return L.slice().sort((a, b) => b.score - a.score || b.seq - a.seq);
+}
+// Welt-Rechteck einer Ebene relativ zur Kamera (Zielpixel)
+function layerRect(l, cam) {
+    const sCam = 3 / (cam.zoom * canvas.height);
+    const cx = HP.toNumber(l.view.cx - cam.cx) / sCam + canvas.width / 2, cy = HP.toNumber(l.view.cy - cam.cy) / sCam + canvas.height / 2;
+    const hw = l.buf.w / 2 * l.scale / sCam, hh = l.buf.h / 2 * l.scale / sCam;
+    return { x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh };
+}
+// Abdeckungsstatistik (Raster gx×gy über die um 'expand' vergrößerte Ansicht): mittlere effektive
+// Schärfe, Anteil grob (< 0.5) / unbedeckt, minimale Schärfe. list = sortierte Ebenen mit alpha.
+function coverage(list, cam, opts) {
+    opts = opts || {};
+    const gx = opts.gx || 12, gy = opts.gy || 24, ex = opts.expand || 1, sig = opts.sig;
+    const W = canvas.width, H = canvas.height;
+    const L = [];
+    for (const l of list) {
+        if (sig && l.sig !== sig) continue;
+        if (opts.opaque ? false : l.alpha <= 0) continue;
+        L.push({ r: layerRect(l, cam), k: Math.min(1, layerK(l, cam)), a: opts.opaque ? 1 : l.alpha, l, n: 0 });
+    }
+    let sum = 0, coarse = 0, unc = 0, minK = 1, low = 0;
+    const kLow = opts.kLow || 0.5, ks = opts.quantile ? [] : null;
+    const bb = opts.bboxK ? { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, n: 0 } : null;
+    for (let j = 0; j < gy; j++) for (let i = 0; i < gx; i++) {
+        const x = W / 2 + ((i + 0.5) / gx - 0.5) * W * ex, y = H / 2 + ((j + 0.5) / gy - 0.5) * H * ex;
+        let T = 1, ke = 0, any = false;
+        for (const e of L) {
+            if (x < e.r.x0 || x > e.r.x1 || y < e.r.y0 || y > e.r.y1) continue;
+            if (T * e.a > 0.01) e.n += (x >= 0 && x <= W && y >= 0 && y <= H) ? 10 : 1;   // Beitrag (im Bild ×10)
+            any = true;
+            ke += T * e.a * e.k; T *= 1 - e.a;
+            if (T < 0.004) break;
+        }
+        if (!any) unc++;
+        sum += ke; if (ke < 0.5) coarse++; if (ke < kLow) low++; if (ks) ks.push(ke);
+        if (bb && ke < opts.bboxK) { bb.n++; bb.x0 = Math.min(bb.x0, x); bb.x1 = Math.max(bb.x1, x); bb.y0 = Math.min(bb.y0, y); bb.y1 = Math.max(bb.y1, y); }
+        if (ke < minK) minK = ke;
+    }
+    const N = gx * gy;
+    let q = null;
+    if (ks) { ks.sort((a, b) => a - b); q = ks[Math.floor(ks.length * opts.quantile)]; }
+    return { kMean: sum / N, coarse: coarse / N, kLow: low / N, unc: unc / N, minK, q, use: L, bb, cell: [W * ex / gx, H * ex / gy] };
+}
+// Ebenen aufräumen: Eine Ebene bleibt, solange sie irgendwo in der 1,4-fach vergrößerten Ansicht
+// (Reserve für Schwenk/Herauszoomen) sichtbar beiträgt; verdeckte (eine schärfere deckt sie ganz) und
+// fremder Inhalt unter gültigem Bild fallen weg. Bei mehr als MAXL Ebenen geht die am wenigsten genutzte.
+// Geschützt: aktuelles Bild (front), Quelle der laufenden Nachrechnung, Ebenen im Einblenden und
+// alles, was unter einer gerade einblendenden Ebene liegt (sonst blendete sie aus dem Nichts ein).
+function pruneLayers(now) {
+    const cam = S.cam;
+    const list = orderLayers(now, cam);
+    const fadingIn = list.some(l => l.alpha < 1);
+    const keep = (l) => l === RC.front || (RC.fix && RC.fix.fr === l) || l.alpha < 1 || fadingIn;
+    // größte gültige Ebene = Reserve gegen schwarze Ränder (Herauszoomen/großer Schwenk): bleibt,
+    // solange sie die Ansicht überhaupt berührt
+    const sig = contentSig();
+    let reserve = null;
+    for (const l of list) if (l.sig === sig && (!reserve || l.buf.w * l.buf.h * l.scale * l.scale > reserve.buf.w * reserve.buf.h * reserve.scale * reserve.scale)) reserve = l;
+    const cov = coverage(list, cam, { gx: 16, gy: 32, expand: 1.4 });
+    const drop = new Set();
+    for (const e of cov.use) if (e.n === 0 && !keep(e.l) && e.l !== reserve) drop.add(e.l);
+    for (const l of list) if (l.alpha <= 0 && !keep(l)) drop.add(l);
+    if (reserve && layerK(reserve, cam) < 1 / 512) drop.add(reserve);
+    let rest = list.filter(l => !drop.has(l) && !l.outT);
+    while (rest.length > MAXL - 1) {
+        const c = coverage(rest, cam, { gx: 16, gy: 32, expand: 1.4 });
+        let worst = null;
+        for (const e of c.use) {
+            if (e.l === RC.front || (RC.fix && RC.fix.fr === e.l) || e.l.seq === RC.layerSeq || e.l === reserve) continue;
+            if (!worst || e.n < worst.n || (e.n === worst.n && e.l.seq < worst.l.seq)) worst = e;
+        }
+        const victim = worst ? worst.l : rest.filter(l => l !== RC.front).sort((a, b) => a.seq - b.seq)[0];
+        drop.add(victim);
+        rest = rest.filter(l => l !== victim);
+    }
+    // Ausblenden statt Wegnehmen (eine verdrängte Ebene kann noch sichtbar sein); fertig ausgeblendete
+    // und solche, die nirgends beitragen, gehen sofort. Höchstens SH.NL Ebenen insgesamt.
+    for (const l of list) if (l.outT && now - l.outT >= FADE_MOVE_MS) drop.add(l);
+    const gone = new Set();
+    for (const l of drop) {
+        const e = cov.use.find(u => u.l === l);
+        if (l.outT ? now - l.outT >= FADE_MOVE_MS : (!e || e.n === 0 || l.alpha <= 0 || !BLEND)) gone.add(l);
+        else if (!l.outT) l.outT = now;
+    }
+    let live = RC.layers.filter(l => !gone.has(l));
+    while (live.length > MAXL) {           // Ausblendende verdrängen, wenn die Plätze nicht reichen
+        const o = live.filter(l => l.outT).sort((a, b) => a.outT - b.outT)[0];
+        if (!o) break;
+        gone.add(o); live = live.filter(l => l !== o);
+    }
+    if (!gone.size) return;
+    for (const l of gone) R.releaseFrame(l);
+    RC.layers = live;
+    if (RC.lastPreview && gone.has(RC.lastPreview)) RC.lastPreview = null;
+}
+
 // ------------------------------------------------------------------ Exakte Nachrechnung (GPU-f32 -> CPU-f64)
 // Der finale GPU-Pass markiert Pixel, deren f32-Fehlerschätzung > 0.7 Iterationen ist. Diese
 // (typisch 0–40 %) rechnet der CPU-Pool in f64 nach; Ergebnis wird in eine Pufferkopie gestreut
-// und per Crossfade übernommen. Danach ist das Bild fertig und ändert sich nicht mehr.
+// und weich eingeblendet. Danach ist das Bild fertig und ändert sich nicht mehr.
 function startFix(fr, now) {
     const fix = { fr, key: fr.key, t0: now, chunks: [], sent: 0, done: 0, total: 0, id: ++RC.jobSeq, buf: null };
     RC.fix = fix;
@@ -539,7 +783,7 @@ function startFix(fr, now) {
         if (!list) { RC.fix = null; return; }
         fix.count = list.length / 2;
         stats.lastFix = { count: fix.count, pct: +(100 * fix.count / (fr.buf.w * fr.buf.h)).toFixed(1) };
-        if (!fix.count) { fr.fixed = true; RC.fix = null; fullDone(fr, performance.now()); return; }
+        if (!fix.count) { fr.fixed = true; fr.exact = true; RC.fix = null; RC.dirty = true; fullDone(fr, performance.now()); return; }
         if (fr.mode === 'perturb') {
             const r = REF.cur;
             if (!r || r.id !== fr.refId || !r.orbit64) { RC.fix = null; fr.stage = 2; return; }   // Referenz gewechselt -> neu rechnen
@@ -554,16 +798,18 @@ function startFix(fr, now) {
         fixFeed();
     });
 }
+function fixMsg(fix, chunk, list) {
+    const fr = fix.fr;
+    return { type: 'pixels', jobId: fix.id, chunk, list, refId: fr.refId, bufW: fr.buf.w, bufH: fr.buf.h, scale: fr.scale,
+             mode: fr.mode, formula: fr.formula, maxIter: fr.maxIter, useBLA: fix.useBLA, offX: fix.off[0], offY: fix.off[1], jx: fr.julia[0], jy: fr.julia[1] };
+}
 function fixFeed() {
     const fix = RC.fix;
     if (!fix || !fix.total) return;
-    const fr = fix.fr;
     for (const w of cpuWorkers) {
         while (w.busy < 2 && fix.sent < fix.total) {
-            const list = fix.chunks[fix.sent];
             w.busy++;
-            w.postMessage({ type: 'pixels', jobId: fix.id, chunk: fix.sent, list, refId: fr.refId, bufW: fr.buf.w, bufH: fr.buf.h, scale: fr.scale,
-                mode: fr.mode, formula: fr.formula, maxIter: fr.maxIter, useBLA: fix.useBLA, offX: fix.off[0], offY: fix.off[1], jx: fr.julia[0], jy: fr.julia[1] });
+            w.postMessage(fixMsg(fix, fix.sent, fix.chunks[fix.sent]));
             fix.sent++;
         }
     }
@@ -571,18 +817,23 @@ function fixFeed() {
 function onFixPixels(m, w) {
     const fix = RC.fix;
     if (!fix || m.jobId !== fix.id) { cpuFeed(); return; }
-    if (m.missingRef) { if (REF.cur && REF.cur.orbit64) sendRefTo(w, REF.cur); w.busy++; w.postMessage(Object.assign({}, { type: 'pixels', jobId: fix.id, chunk: m.chunk, list: m.list, refId: fix.fr.refId, bufW: fix.fr.buf.w, bufH: fix.fr.buf.h, scale: fix.fr.scale, mode: fix.fr.mode, formula: fix.fr.formula, maxIter: fix.fr.maxIter, useBLA: fix.useBLA, offX: fix.off[0], offY: fix.off[1], jx: fix.fr.julia[0], jy: fix.fr.julia[1] })); return; }
+    if (m.missingRef) { if (REF.cur && REF.cur.orbit64) sendRefTo(w, REF.cur); w.busy++; w.postMessage(fixMsg(fix, m.chunk, m.list)); return; }
     R.scatter(fix.buf, m.list, m.values);
     fix.done++;
     if (fix.done >= fix.total) {
         const now = performance.now();
-        const fr = Object.assign({}, fix.fr, { buf: fix.buf, fixed: true });
+        const fr = Object.assign({}, fix.fr, { buf: fix.buf, fixed: true, exact: true });
         stats.lastFix.ms = now - fix.t0;
         RC.fix = null;
-        if (RC.prev) R.releaseFrame(RC.prev);
-        RC.prev = RC.front;
+        if (BLEND) {
+            addLayer(fr, now, false);
+        } else {
+            if (RC.prev) R.releaseFrame(RC.prev);
+            RC.prev = RC.front;
+            RC.fading = true; RC.fadeT0 = now;
+        }
         RC.front = fr;
-        RC.fading = true; RC.fadeT0 = now; RC.dirty = true;
+        RC.dirty = true;
         fullDone(fr, now);
     }
     cpuFeed();
@@ -594,9 +845,79 @@ function cancelFix() {
     if (fix.buf) R.releaseFrame({ buf: fix.buf });
 }
 
-function pumpCtl(moving) { return { moving, dt: RC.dtEMA || 16, vsync: RC.vsync || 16.7 }; }
+function pumpCtl(moving, prefetch) {
+    const vs = RC.vsync || 16.7;
+    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, 8 * vs)) : vs };
+}
 function isMoving(now) {
     return gestures.active() || !!inertia || !!flight || !!wheelAnim || now - RC.lastMoveT < 150 || now - lastParamT < 150;
+}
+function animating() { return !!inertia || !!flight || !!wheelAnim; }
+// Bekanntes Ziel der laufenden Animation (Flug/Tour/Doppeltipp, Schwung) und Restzeit in s
+function animTarget() {
+    if (flight) return { cam: flightCamAt(flight, 1), rest: (1 - (flight.u || 0)) * flight.dur / 1000 / Math.max(0.3, GOV.g) };
+    if (inertia) {
+        const v = Math.hypot(inertia.vx, inertia.vy);
+        const f = INERTIA_TAU;
+        const c = anchoredCam(S.cam, inertia.ax, inertia.ay, inertia.ax + inertia.vx * f, inertia.ay + inertia.vy * f, Math.exp(inertia.vs * f));
+        return { cam: c, rest: INERTIA_TAU * Math.log(Math.max(1, Math.max(v / 8, Math.abs(inertia.vs) / 0.03))) };
+    }
+    return null;
+}
+// Anteil der Pufferfläche eines Jobs, der in der (1,2-fach vergrößerten) Ansicht der Kamera c liegt
+function visibleFrac(job, c) {
+    const r = layerRect({ view: job.view, scale: job.scale, buf: { w: job.w, h: job.h } }, c);
+    const W = canvas.width, H = canvas.height, m = 0.1;
+    const ix = Math.max(0, Math.min(r.x1, W * (1 + m)) - Math.max(r.x0, -W * m)), iy = Math.max(0, Math.min(r.y1, H * (1 + m)) - Math.max(r.y0, -H * m));
+    return ix * iy / Math.max(1, (r.x1 - r.x0) * (r.y1 - r.y0));
+}
+// liegt die Ansicht v (zu weit) neben der Kamera c? (Zoomverhältnis > 2.5 oder Versatz > 45 % des Bildes)
+function farFrom(v, c) {
+    const r = Math.max(v.zoom / c.zoom, c.zoom / v.zoom);
+    const s = worldPerCss(c.zoom);
+    const off = Math.max(Math.abs(HP.toNumber(v.cx - c.cx)) / (cssW * s), Math.abs(HP.toNumber(v.cy - c.cy)) / (cssH * s));
+    return { far: r > 2.5 || off > 0.45, r, off };
+}
+
+// ---------------- Vorausrechnen (Prefetch): nur im Leerlauf, niedrigste Priorität
+// Nach dem exakten Endbild, in dieser Reihenfolge (je ein Job, bei jeder Bewegung sofort abgebrochen):
+//   ref    Referenzorbit für 4× tieferen Zoom (Perturbation) – tiefes Hineinzoomen wartet nicht
+//   wider  1/32 Zoom, 1/4 Auflösung (1/16 der Pixel): Reserve für schnelles Herauszoomen bis ×32
+//   wide   1/4 Zoom, halbe Auflösung: Herauszoomen/große Schwenks ohne schwarzen Rand
+//   ring   gleicher Zoom, 1,6-fache Fläche, halbe Auflösung: Schwenks laufen in scharfes Bild
+//   deep   Bildmitte eine Zoomstufe tiefer (×2) in voller Auflösung – wahrscheinlicher nächster Schritt
+// Akku: nicht bei Auflösung „Akku", nicht im Hintergrund (Hauptschleife ruht), höchstens jedes
+// zweite Frame ein Häppchen (≤ ~50 % GPU) und nur so lange, wie die Jobs zusammen < 3 Vollbilder kosten.
+const PF = { key: null, items: [], busyMs: 0, tick: 0 };
+function planPrefetch(p, key) {
+    const W = canvas.width, H = canvas.height, est = RC.estFull || 300;
+    const z = S.cam.zoom, sCam = 3 / (z * H);
+    const items = [];
+    if (p.mode === 'perturb' && REF.cur && REF.cur.zoom < z * 3.9) items.push({ type: 'ref' });
+    if (z > 8) items.push({ type: 'job', name: 'wider', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: Math.max(0.2, z / 32) }, w: Math.ceil(W / 4), h: Math.ceil(H / 4), scale: sCam * 128, div: 128 });
+    items.push({ type: 'job', name: 'wide', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: Math.max(0.2, z / 4) }, w: Math.ceil(W / 2), h: Math.ceil(H / 2), scale: sCam * 8, div: 8 });
+    if (p.kind === 'gpu' || est < 2500)
+        items.push({ type: 'job', name: 'ring', view: S.cam, w: Math.ceil(W * 1.6 / 2), h: Math.ceil(H * 1.6 / 2), scale: sCam * 2, div: 2 });
+    if (p.kind === 'gpu' && est < 1500 && clampZoom(z * 2) === z * 2)
+        items.push({ type: 'job', name: 'deep', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: z * 2 }, w: W, h: H, scale: sCam / 2, div: 1 });
+    return items;
+}
+function prefetchStep(now, p, key) {
+    if (!PREFETCH || S.quality === 'eco' || document.hidden) return;
+    if (PF.key !== key) { PF.key = key; PF.items = planPrefetch(p, key); PF.busyMs = 0; }
+    if (RC.pjob) {
+        if (++PF.tick % 2) return;                       // Häppchen nur jedes zweite Frame
+        const j = RC.pjob;
+        const done = j.kind === 'gpu' ? (R.maxInflight = 1, R.pump(j, now, pumpCtl(false, true))) : j.done;
+        if (done) { RC.pjob = null; jobFinished(j, now); }
+        return;
+    }
+    if (PF.busyMs > 3 * Math.max(200, RC.estFull || 0)) { PF.items = []; return; }
+    const it = PF.items.shift();
+    if (!it) return;
+    if (it.type === 'ref') { requestRefFor({ cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom * 4 }, key); return; }
+    if (p.mode === 'perturb' && !refUsable(false, true)) return;
+    startJob(key + '|pf:' + it.name, it.div, p, it.view, { prefetch: true, w: it.w, h: it.h, scale: it.scale, baseKey: key });
 }
 
 function schedule(now) {
@@ -610,15 +931,33 @@ function schedule(now) {
     const needRef = p.mode === 'perturb';
     const refOK = needRef ? ensureRef(p, moving) : true;
     if (moving && Q.has('nopreview')) return;
+    if (!BLEND) return scheduleLegacy(now, p, moving, key, needRef, refOK);
 
     if (RC.fix) {
         if (RC.fix.key !== key) cancelFix();
         else return;
     }
+    const sig = contentSig();
+    if (RC.pjob && (moving || RC.pjob.baseKey !== key || RC.pjob.sig !== sig || RC.pjob.kind !== p.kind)) cancelPrefetch();
     let job = RC.job;
-    if (job) {
-        // Veraltete Jobs: Verfeinerung sofort abbrechen, Vorschau darf fertig werden (billig)
-        if (job.key !== key && (job.stage === 1 || job.stage === 2 || job.kind !== p.kind || job.formula !== S.formula || now - job.t0 > 400)) { cancelJob(); job = null; }
+    if (job && job.key !== key) {
+        // Veraltete Jobs: Vorschauen dürfen fertig werden, solange sie die Ansicht noch großteils
+        // treffen (sie füllen Lücken); Verfeinerungen nur, wenn fast fertig und noch nah dran.
+        const stale = job.kind !== p.kind || job.formula !== S.formula || job.sig !== sig || job.mode !== p.mode;
+        const d = farFrom(job.view, S.cam);
+        const vis = visibleFrac(job, S.cam);
+        const prog = jobProgress(job);
+        // zu tief (deckt zu wenig) oder viel zu weit (zu grob) bzw. kaum noch im Bild -> verwerfen
+        const zr = job.view.zoom / S.cam.zoom;
+        let cancel = stale || zr > 2.5 || zr < 1 / 6 || vis < 0.25;
+        if (!job.preview && !job.isTarget && job.stage <= 2 && !(prog > 0.6 && d.r < 1.3 && vis > 0.85)) cancel = true;
+        if (now - job.t0 > 1500 && prog < 0.5) cancel = true;
+        // Zielbild einer Animation: weiterrechnen, solange es zum (neuen) Ziel bzw. auf den Weg passt
+        if (job.isTarget && !stale) {
+            const tg = animTarget();
+            if (tg && (viewKey(tg.cam) === job.key || farFrom(job.view, tg.cam).r < 4.5)) cancel = false;
+        }
+        if (cancel) { cancelJob(); job = null; }
     }
     if (job) {
         const done = job.kind === 'gpu' ? R.pump(job, now, pumpCtl(moving)) : job.done;
@@ -628,8 +967,208 @@ function schedule(now) {
     if (needRef && !refOK) return;
     if (needRef && !moving && !refUsable(true, true)) return;     // finales Bild nur mit frischer Referenz
     const front = RC.front;
+    if (moving) {
+        const est = RC.estFull || 400;
+        const tg = PREDICT ? animTarget() : null;
+        const tKey = tg ? viewKey(tg.cam) : null;
+        const tn = tg ? farFrom(tg.cam, S.cam) : null;
+        if (tg && tg.rest < 1.5 && tn.r <= 4.5 && tn.off <= 0.6 && !(front && front.key === tKey && (!front.preview || front.stage <= (est > 600 ? 2 : 1)))) {
+            // Ziel bekannt und nah (Doppeltipp, Ende einer Tour, auslaufender Schwung): gleich das Zielbild
+            // rechnen – erst eine schnelle Vorschau, falls am Ziel noch Lücken wären
+            const cov = coverage(orderLayers(now, tg.cam), tg.cam, { sig, opaque: true, gx: 8, gy: 16 });
+            const hasPrev = front && front.key === tKey;
+            const div = cov.unc > 0 && !hasPrev ? Math.max(2, RC.previewDiv[p.kind]) : (est > 600 ? 2 : 1);
+            startJob(tKey, div, p, tg.cam).isTarget = true;
+        } else {
+            // Vorschau für die Kamera, an der sie fertig sein wird (bekannte Pfade exakt, Gesten extrapoliert)
+            // Horizont: Rechenzeit + halbe Einblendzeit (dann trägt die neue Ebene zur Hälfte)
+            const view = PREDICT ? predictCam(Math.min(0.3, (RC.estPreviewMs + FADE_MOVE_MS / 2) / 1000)) : S.cam;
+            const pl = STRIPS ? planPreview(now, view, p, sig) : { div: RC.previewDiv[p.kind] };
+            if (pl.skip) return;
+            startJob(viewKey(view) + (pl.rect ? '|r' : ''), pl.div, p, pl.view || view, { preview: true, w: pl.w, h: pl.h, scale: pl.scale }).part = !!pl.rect;
+        }
+    } else if (!front || front.key !== key || front.sig !== sig || RC.foreign) {
+        // Stillstand auf neuer Ansicht: ist das vorhandene Bild schon brauchbar scharf, direkt die
+        // finale Stufe; sonst erst eine Zwischenstufe, bei Lücken eine schnelle Vorschau.
+        const cov = coverage(orderLayers(now, S.cam), S.cam, { sig, opaque: true });
+        const est = RC.estFull || 0;
+        let div = 1;
+        if (cov.unc > 0 && est > 600) div = Math.max(2, Math.min(RC.previewDiv[p.kind], 4));
+        else if (cov.minK < 0.5 && est > 450) div = 2;
+        startJob(key, div, p);
+    } else if (!front.preview && !front.exact) {
+        if (!RC.fix) { if (front.fixed) { front.exact = true; RC.dirty = true; fullDone(front, now); } else startFix(front, now); }
+        return;
+    } else if (front.preview) {
+        const cov = coverage(orderLayers(now, S.cam), S.cam, { sig, opaque: true });
+        const next = (front.stage > 2 && (RC.estFull || 0) > 450 && cov.minK < 0.5) ? 2 : 1;
+        startJob(key, next, p);
+    } else if (front.exact && !RC.fading) {
+        prefetchStep(now, p, key);
+        return;
+    }
+    if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
+}
+
+// Vorschau in Bewegung: rechnet nur, was fehlt. Kachelraster 8×16 über die vorausgesagte Ansicht
+// (+Überhang), Schärfe je Kachel = schlechteste Stichprobe (Pufferpixel pro Bildschirmpixel).
+//  1. Dringend (k < 0,3 oder leer, beim Schwenk der vordere Rand): zusammenhängender Bereich um die
+//     schlechteste Kachel, in der feinsten Auflösung 1/d, die in ~120 ms Rechenzeit passt.
+//  2. Sonst Verbesserung: feinste Stufe, bei der ein Rechteck (gierig um die schlechteste Kachel
+//     gewachsen) im Budget ≥ 70 % der Kacheln mit k < 1/d abdeckt.
+// Fast ganze Fläche -> normale Vorschau der ganzen Ansicht. (Gewinn-pro-Pixel als Kriterium wählte
+// immer grob, ein Rechteck um alle Lücken war bei L-förmigem Bedarf zu groß.)
+const TGX = 8, TGY = 16;
+function planPreview(now, view, p, sig) {
+    const W = canvas.width, H = canvas.height, k = p.kind, ex = OVER_MOVE;
+    // Durchsatz in Bewegung (px/ms): gemessen; Startwert = ein Häppchen pro Frame
+    const rate = RC.pxRate || R.chunkInfo().pxMove / Math.max(RC.vsync || 16.7, RC.dtEMA || 16.7);
+    const budget = rate * 120;
+    const list = orderLayers(now, view);
+    const sCam = 3 / (view.zoom * H);
+    const L = list.filter(l => l.sig === sig).map(l => ({ r: layerRect(l, view), k: Math.min(1, layerK(l, view)) }));
+    const tw = W * ex / TGX, th = H * ex / TGY, X0 = W / 2 - W * ex / 2, Y0 = H / 2 - H * ex / 2;
+    const tk = new Float32Array(TGX * TGY);
+    for (let ty = 0; ty < TGY; ty++) for (let tx = 0; tx < TGX; tx++) {
+        let m = 1;
+        for (let sy = 0; sy < 2; sy++) for (let sx = 0; sx < 2; sx++) {
+            const x = X0 + (tx + 0.25 + 0.5 * sx) * tw, y = Y0 + (ty + 0.25 + 0.5 * sy) * th;
+            let kk = 0;
+            for (const e of L) if (x >= e.r.x0 && x <= e.r.x1 && y >= e.r.y0 && y <= e.r.y1) { kk = e.k; break; }
+            m = Math.min(m, kk);
+        }
+        tk[ty * TGX + tx] = m;
+    }
+    let seed = 0;
+    for (let i = 1; i < tk.length; i++) if (tk[i] < tk[seed]) seed = i;
+    const cost = (r, d) => (r.x1 - r.x0 + 1) * tw * (r.y1 - r.y0 + 1) * th / (d * d);
+    let pick = null;
+    if (tk[seed] < 0.3) {
+        // 1. dringender Bereich: Zusammenhangskomponente (4er-Nachbarschaft) der Kacheln mit k < 0,3
+        const seen = new Uint8Array(tk.length), st = [seed];
+        const r = { x0: seed % TGX, x1: seed % TGX, y0: (seed / TGX) | 0, y1: (seed / TGX) | 0 };
+        seen[seed] = 1;
+        while (st.length) {
+            const i = st.pop(), x = i % TGX, y = (i / TGX) | 0;
+            r.x0 = Math.min(r.x0, x); r.x1 = Math.max(r.x1, x); r.y0 = Math.min(r.y0, y); r.y1 = Math.max(r.y1, y);
+            for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+                if (nx < 0 || ny < 0 || nx >= TGX || ny >= TGY) continue;
+                const j = ny * TGX + nx;
+                if (!seen[j] && tk[j] < 0.3) { seen[j] = 1; st.push(j); }
+            }
+        }
+        for (let d = 1; d <= MAXDIV[k]; d++) if (cost(r, d) <= budget || d === MAXDIV[k]) { pick = { d, r }; break; }
+    } else {
+        // 2. Verbesserung (passt keine Stufe zu ≥ 70 %, dann das beste Teilstück in der feinsten Stufe)
+        let fallback = null;
+        for (let d = 1; d <= MAXDIV[k] && !pick; d++) {
+            const kd = 0.95 / d;
+            let need = 0;
+            for (let i = 0; i < tk.length; i++) if (tk[i] < kd) need++;
+            if (!need) { if (d === 1) continue; else continue; }
+            let s0 = -1;
+            for (let i = 0; i < tk.length; i++) if (tk[i] < kd && (s0 < 0 || tk[i] < tk[s0])) s0 = i;
+            const r = { x0: s0 % TGX, x1: s0 % TGX, y0: (s0 / TGX) | 0, y1: (s0 / TGX) | 0 };
+            if (cost(r, d) > budget) continue;
+            const frac = (x0, x1, y0, y1) => { let n = 0, t = 0; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { t++; if (tk[y * TGX + x] < kd) n++; } return n / t; };
+            for (;;) {
+                const c = [];
+                if (r.x0 > 0) c.push(['x0', -1, frac(r.x0 - 1, r.x0 - 1, r.y0, r.y1)]);
+                if (r.x1 < TGX - 1) c.push(['x1', 1, frac(r.x1 + 1, r.x1 + 1, r.y0, r.y1)]);
+                if (r.y0 > 0) c.push(['y0', -1, frac(r.x0, r.x1, r.y0 - 1, r.y0 - 1)]);
+                if (r.y1 < TGY - 1) c.push(['y1', 1, frac(r.x0, r.x1, r.y1 + 1, r.y1 + 1)]);
+                c.sort((a, b) => b[2] - a[2]);
+                let grown = false;
+                for (const [side, dir, f] of c) {
+                    if (f < 0.5) break;
+                    const r2 = Object.assign({}, r); r2[side] += dir;
+                    if (cost(r2, d) <= budget) { Object.assign(r, r2); grown = true; break; }
+                }
+                if (!grown) break;
+            }
+            let cov = 0;
+            for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) if (tk[y * TGX + x] < kd) cov++;
+            if (cov >= 0.7 * need) pick = { d, r };
+            else if (!fallback) fallback = { d, r };
+        }
+        if (!pick) pick = fallback;
+    }
+    if (!pick) return { skip: true };
+    const d = pick.d, r = pick.r;
+    RC.previewDiv[k] = d;
+    const area = (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
+    if (area >= 0.75 * TGX * TGY) return { div: d };
+    const x0 = X0 + r.x0 * tw, x1 = X0 + (r.x1 + 1) * tw, y0 = Y0 + r.y0 * th, y1 = Y0 + (r.y1 + 1) * th;
+    const w = Math.max(8, Math.ceil((x1 - x0) / d)), h = Math.max(8, Math.ceil((y1 - y0) / d));
+    const cx = (x0 + x1) / 2 - W / 2, cy = (y0 + y1) / 2 - H / 2;
+    return { div: d, rect: true, w, h, scale: sCam * d,
+             view: { cx: view.cx + HP.fromNumber(cx * sCam), cy: view.cy + HP.fromNumber(cy * sCam), zoom: view.zoom } };
+}
+
+// ---------------- Tempo-Bremse („Schärfe-Front")
+// Nur animierte Bewegungen (Flug/Tour/Doppeltipp/Rechteck, Rad, Schwung). Gemessen wird die Schärfe,
+// die das Bild in ~150 ms hätte (Vorhersage + vorhandene Ebenen): fiele das 10-%-Quantil unter
+// 0,4 Pufferpixel pro Bildschirmpixel (?govk=), sinkt das Tempo weich (bis 0,4×, ?govmin=), sonst
+// steigt es wieder auf 1 (Totzone ±10 %, kein Pendeln). Warum 0,4 statt 0,5: Halb-Auflösungs-Vorschauen erreichen mit Vorhersage
+// 0,43–0,5 – eine 0,5-Schwelle bremste auch dann, wenn die Rechnung gut mithält.
+// Pinch/Schieben unter dem Finger bleibt 1:1. Schalter: Mehr → „Tempo an Rechenleistung anpassen".
+function governorUpdate(now, dt) {
+    const on = BLEND && S.governor && Q.get('gov') !== '0';
+    if (!on || !animating()) { GOV.g = Math.min(1, GOV.g + dt * 3); GOV.coarse = 0; return; }
+    const c = predictCam(0.1, false);
+    const cov = coverage(orderLayers(now, c), c, { sig: contentSig(), gx: 10, gy: 20, quantile: 0.1 });
+    // 10-%-Quantil der Schärfe (90 % des Bildes sind mindestens so scharf), Totzone ±10 % um die Schwelle
+    GOV.q = cov.q;
+    const e = (GOV.kmin - cov.q) / GOV.kmin;
+    if (e > 0.1) GOV.g = Math.max(GOV.min, GOV.g - dt * 3 * Math.min(1, e));
+    else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);
+}
+
+// ---------------- Legacy (5.0.1, ?blend=0) – unverändert übernommen zum A/B-Vergleich
+function jobFinishedLegacy(job, now) {
+    const fr = makeFrame(job, now);
+    const moving = isMoving(now);
+    if (RC.prev) R.releaseFrame(RC.prev);
+    RC.prev = RC.front;
+    RC.front = fr;
+    RC.fading = !moving && !!RC.prev;
+    RC.fadeT0 = now;
+    RC.foreign = false;
+    RC.dirty = true;
+    if (job.stage > 1) {
+        RC.lastPreview = fr;
+        const t = fr.ms, k = job.kind;
+        if (moving) {
+            if ((RC.dtEMA > 1.4 * (RC.vsync || 16.7) || t > 90) && RC.previewDiv[k] < MAXDIV[k]) RC.previewDiv[k]++;
+            else if (RC.dtEMA < 1.1 * (RC.vsync || 16.7) && t < 40 && RC.previewDiv[k] > 2) RC.previewDiv[k]--;
+        }
+        RC.estFull = t * job.stage * job.stage;
+    } else {
+        stats.lastJobMs = fr.ms;
+        stats.gpuFullMs = fr.ms;
+        if (fr.fixed) { fr.exact = true; fullDone(fr, now); } else startFix(fr, now);
+        checkInside(fr);
+    }
+}
+function scheduleLegacy(now, p, moving, key, needRef, refOK) {
+    if (RC.fix) {
+        if (RC.fix.key !== key) cancelFix();
+        else return;
+    }
+    let job = RC.job;
+    if (job) {
+        if (job.key !== key && (job.stage === 1 || job.stage === 2 || job.kind !== p.kind || job.formula !== S.formula || now - job.t0 > 400)) { cancelJob(); job = null; }
+    }
+    if (job) {
+        const done = job.kind === 'gpu' ? R.pump(job, now, pumpCtl(moving)) : job.done;
+        if (done) { RC.job = null; jobFinished(job, now); }
+        return;
+    }
+    if (needRef && !refOK) return;
+    if (needRef && !moving && !refUsable(true, true)) return;
+    const front = RC.front;
     if (!front || front.key !== key || RC.foreign) {
-        startJob(key, RC.previewDiv, p);
+        startJob(key, RC.previewDiv[p.kind], p);
     } else if (!moving && front.stage > 1) {
         const next = (front.stage > 2 && (RC.estFull || 0) > 450) ? 2 : 1;
         startJob(key, next, p);
@@ -644,6 +1183,29 @@ function look() {
              particles: S.particles && S.anim, banded: S.banded };
 }
 
+// Ebenenliste + Optionen für den Display-Pass (auch für Screenshot/Thumbnail)
+function presentArgs(now) {
+    if (!BLEND) {
+        let mixB = 1;
+        if (RC.fading) { mixB = Math.min(1, (now - RC.fadeT0) / FADE_MS); if (mixB >= 1) RC.fading = false; }
+        const list = [];
+        if (RC.front) { RC.front.alpha = RC.prev ? mixB : 1; RC.front.cond = true; list.push(RC.front); }
+        if (RC.prev) { RC.prev.alpha = 1; list.push(RC.prev); }
+        return { list, opts: { legacy: true, mixB } };
+    }
+    // Einblenden zählt ab dem ersten gezeigten Frame (ein ausgefallener Frame darf die Blende nicht verschlucken)
+    for (const l of RC.layers) if (!l.shown) { l.shown = true; l.t0 = now; }
+    const list = orderLayers(now, S.cam);
+    RC.fading = list.some(l => l.alpha < 1 && !l.prefetch);   // Vorausberechnetes liegt unter dem fertigen Bild
+    return { list, opts: { feather: FEATHER * dpr, recon: RECON } };
+}
+// blendet gerade eine sichtbare Ebene ein (auch eine, die noch nie gezeigt wurde)?
+function isFading(now) {
+    if (!BLEND) return RC.fading;
+    return RC.layers.some(l => !l.prefetch && (!l.shown || layerFade(l, now) < 1));
+}
+function presentNow() { const a = presentArgs(performance.now()); R.present(a.list, S.cam, look(), null, a.opts); }
+
 let lastPresentKey = '';
 function present(now, camChanged) {
     const p = plan();
@@ -652,15 +1214,26 @@ function present(now, camChanged) {
         return;
     }
     if (p.kind === 'buddha') { buddhaTick(now); return; }
-    let mixB = 1;
-    if (RC.fading) {
-        mixB = Math.min(1, (now - RC.fadeT0) / FADE_MS);
-        if (mixB >= 1) RC.fading = false;
-    }
-    const animating = S.anim || RC.fading;
-    if (!camChanged && !animating && !RC.dirty) return;
+    const wasFading = RC.fading;
+    const a = presentArgs(now);
+    const anim = S.anim || RC.fading || wasFading;
+    if (!camChanged && !anim && !RC.dirty) return;
     RC.dirty = false;
-    R.present(RC.prev, RC.front, mixB, S.cam, look());
+    RC.list = a.list;
+    R.present(a.list, S.cam, look(), null, a.opts);
+    if (FS.on) frameStatsRecord(now, a.list);
+}
+
+// ---------------- Debug-Hook: Pop-Metrik pro Frame (__fraktal.frameStats)
+const FS = { on: false, frames: [], seen: new WeakSet(), hard: 0 };
+function frameStatsRecord(now, list) {
+    const c = coverage(list, S.cam, { gx: 24, gy: 48 });
+    let hard = 0;
+    for (const l of list) if (!FS.seen.has(l)) { FS.seen.add(l); if (list.length > 1 && l === list[0] && l.alpha >= 0.99 && FS.frames.length) { hard++; (FS.hardInfo = FS.hardInfo || []).push({ stage: l.stage, fadeMs: l.fadeMs, age: now - l.t0, prefetch: l.prefetch, exact: l.exact, n: list.length }); } }
+    FS.hard += hard;
+    FS.frames.push({ t: +now.toFixed(1), z: S.cam.zoom, k: +c.kMean.toFixed(3), coarse: +c.coarse.toFixed(3), unc: +c.unc.toFixed(3), n: list.length, hard, g: +GOV.g.toFixed(2), q: GOV.q === undefined || GOV.q === null ? null : +GOV.q.toFixed(2), moving: isMoving(now),
+                     div: RC.previewDiv.gpu, job: RC.job ? RC.job.stage + (RC.job.isTarget ? 't' : '') + ':' + Math.round(jobProgress(RC.job) * 100) : '', est: Math.round(RC.estPreviewMs), dt: +(RC.dtEMA || 0).toFixed(1), vs: +(RC.vsync || 0).toFixed(1), px: R.chunkInfo().pxMove });
+    if (FS.frames.length > 20000) FS.frames.shift();
 }
 
 // ------------------------------------------------------------------ Buddhabrot
@@ -689,8 +1262,8 @@ function buddhaMerge(m) {
 // ------------------------------------------------------------------ Inneres erkannt?
 let insideWarnKey = '';
 function checkInside(fr) {
-    if (S.cam.zoom < 20 || !RC.prev || RC.prev.stage === 1) return;
-    const src = RC.prev;   // Vorschau-Puffer (klein) asynchron lesen
+    const src = BLEND ? RC.lastPreview : RC.prev;   // Vorschau-Puffer (klein) asynchron lesen
+    if (S.cam.zoom < 20 || !src || src.stage === 1 || src.sig !== fr.sig) return;
     if (!src || !src.buf || src.buf.w * src.buf.h > 400000) return;
     const k = fr.key;
     R.readIterAsync(src.buf).then((vals) => {
@@ -736,6 +1309,7 @@ function syncURL(now) {
 
 // ------------------------------------------------------------------ Hauptschleife
 let lastT = performance.now();
+const VS = { buf: new Array(90).fill(0), i: 0 };
 function frame(now) {
     requestAnimationFrame(frame);
     const js0 = performance.now();
@@ -748,10 +1322,29 @@ function frame(now) {
     const camChanged = camDirty;
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
-    // Vsync-Periode schätzen (kürzeste Frame-Zeit, driftet langsam nach oben): 60/90/120-Hz-tauglich
+    // Vsync-Periode schätzen: 25-%-Quantil der letzten 90 Frame-Zeiten, eingerastet auf übliche
+    // Bildraten (120/90/60/30 Hz). 5.0.1 nahm das Minimum (driftend) – einzelne kurze Frames drückten
+    // die Schätzung auf ~8 ms, der Häppchen-Regler schrumpfte dann die Vorschau-Arbeit auf 1024 px/Frame.
     const dms = dt * 1000;
-    if (dms > 4) RC.vsync = RC.vsync === undefined ? dms : Math.min(RC.vsync * 1.002, Math.max(dms, RC.vsync * 0.5));
+    if (dms > 2) { VS.buf[VS.i++ % VS.buf.length] = dms; }
+    if (stats.frames % 10 === 0 || RC.vsync === undefined) {
+        const a = VS.buf.slice(0, Math.min(VS.i, VS.buf.length)).sort((x, y) => x - y);
+        if (a.length >= 8) {
+            const q = a[Math.floor(a.length * 0.25)];
+            let best = 16.67;
+            for (const per of [8.33, 11.11, 16.67, 33.33]) if (per <= q * 1.12) best = per;
+            RC.vsync = best;
+        } else if (RC.vsync === undefined) RC.vsync = 16.67;
+    }
     if (camChanged) RC.lastMoveT = now;
+    // Frame-Zeit ohne Rechenlast (vorheriger Frame ohne GPU-Häppchen): ist schon sie lang (Browser
+    // drosselt, schwaches Display-Budget), darf der Häppchen-Regler deswegen nicht verhungern
+    if (!R.submitted && dms > 2) RC.idleDt = RC.idleDt === undefined ? dms : RC.idleDt * 0.9 + dms * 0.1;
+    R.submitted = 0;
+    const moving = isMoving(now);
+    trackVelocity(now, moving);
+    governorUpdate(now, dt);
+    if (BLEND && (stats.frames % 8 === 0)) pruneLayers(now);
     schedule(now);
     present(now, camChanged);
     stats.frames++;
@@ -763,8 +1356,8 @@ function frame(now) {
     if (js > (stats.jsMax || 0)) stats.jsMax = js;
 }
 
-R.onRestored = () => { gpuPerturbOK = R.selfTest(); RC.front = RC.prev = null; RC.job = null; REF.cur = null; invalidate(); };
-R.onLost = () => { RC.job = null; };
+R.onRestored = () => { gpuPerturbOK = R.selfTest(); RC.front = RC.prev = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate(); };
+R.onLost = () => { RC.job = RC.pjob = null; };
 
 // ------------------------------------------------------------------ Hilfen für UI
 function t(key) { const T = TRANSLATIONS[S.lang] || TRANSLATIONS.de; return T[key] !== undefined ? T[key] : (TRANSLATIONS.en[key] || key); }
@@ -799,7 +1392,7 @@ function toast(msg, ms) { emit({ toast: msg, ms }); }
 // ------------------------------------------------------------------ Screenshot / Teilen
 function captureBlob() {
     return new Promise((resolve) => {
-        R.present(RC.prev, RC.front, 1, S.cam, look());   // frisch zeichnen, dann sofort abgreifen
+        presentNow();   // frisch zeichnen, dann sofort abgreifen
         const out = document.createElement('canvas');
         out.width = canvas.width; out.height = canvas.height;
         const c2 = out.getContext('2d');
@@ -832,7 +1425,7 @@ const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
-    invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt,
+    invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
     goHome() { const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
     goTo(p) {
         if ((p.formula || 0) !== S.formula) setMode(p.formula || 0, true);
@@ -848,6 +1441,17 @@ const API = {
                  iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id };
     },
     isMoving: () => isMoving(performance.now()),
+    // Pop-Metrik: frameStats(true) startet die Aufzeichnung, frameStats() liefert { frames, hard }
+    frameStats(start) {
+        if (start) { FS.on = true; FS.frames = []; FS.hard = 0; FS.seen = new WeakSet(); return true; }
+        return { frames: FS.frames.slice(), hard: FS.hard, hardInfo: FS.hardInfo || [] };
+    },
+    layerInfo() {
+        const now = performance.now(), list = BLEND ? orderLayers(now, S.cam) : presentArgs(now).list;
+        const cov = coverage(list, S.cam, { gx: 24, gy: 48 });
+        return { n: list.length, kMean: cov.kMean, coarse: cov.coarse, unc: cov.unc, gov: GOV.g, pool: R.poolInfo(),
+                 layers: list.map(l => ({ stage: l.stage, k: +layerK(l, S.cam).toFixed(3), alpha: +l.alpha.toFixed(2), score: +(l.score || 0).toFixed(3), exact: !!l.exact, prefetch: !!l.prefetch, w: l.buf.w, h: l.buf.h, front: l === RC.front })) };
+    },
     buddhaInfo: () => ({ max: BUD.max, version: BUD.version, w: BUD.w, h: BUD.h, busy: cpuWorkers.map(w => w.busy) }),
     // --- Test-Hooks
     // GPU-Zeiten per Timer-Query (headless-rAF-FPS sind unbrauchbar): Display-Pass und Vorschau-Jobs
@@ -857,7 +1461,7 @@ const API = {
         const p = plan();
         const timeIt = (fn) => { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); fn(); gl.endQuery(ext.TIME_ELAPSED_EXT); return q; };
         const qs = [];
-        for (let i = 0; i < 5; i++) qs.push(['present', timeIt(() => R.present(RC.prev, RC.front, 1, S.cam, look()))]);
+        for (let i = 0; i < 5; i++) qs.push(['present', timeIt(() => presentNow())]);
         for (const d of divs) {
             const w = Math.ceil(canvas.width * 1.2 / d), h = Math.ceil(canvas.height * 1.2 / d);
             const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
@@ -881,7 +1485,7 @@ const API = {
     status() {
         const f = RC.front;
         return { key: viewKey(), frontKey: f ? f.key : null, stage: f ? f.stage : null, busy: !!RC.job, moving: isMoving(performance.now()),
-                 fading: RC.fading, done: !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !RC.fading, fix: stats.lastFix || null, fixing: !!RC.fix, gpuFullMs: stats.gpuFullMs,
+                 fading: RC.fading, done: !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(performance.now()), fix: stats.lastFix || null, fixing: !!RC.fix, gpuFullMs: stats.gpuFullMs,
                  plan: plan(), ref: REF.cur ? { id: REF.cur.id, method: REF.cur.method, period: REF.cur.period, len: REF.cur.lenA, ms: REF.cur.ms } : null,
                  jsMs: stats.jsMs, jsMax: stats.jsMax, vsync: RC.vsync, dtEMA: RC.dtEMA, chunk: R.chunkInfo(), lastFullMs: stats.lastFullMs, lastJobMs: stats.lastJobMs, fps: stats.fps, useBLA: f ? f.useBLA : null, kind: f ? f.kind : null, previewDiv: RC.previewDiv,
                  canvas: [canvas.width, canvas.height], maxIter: currentMaxIter(), gpuPerturbOK };
