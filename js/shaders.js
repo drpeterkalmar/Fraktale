@@ -306,27 +306,8 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
 // darüber. Vergrößerte Ebenen (Vorschau) werden auf dem Iterationswert interpoliert (Catmull-Rom),
 // nicht auf Farben. u_legacy = 1: Verhalten 5.0.1 (zwei Ebenen, harte Kante, Farbmischung).
 const NL = 8;
-const DISPLAY_FS = `#version 300 es
-${COMMON}
-${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
-uniform vec4 u_xf[${NL}];       // Texel = Zielpixel * xy + zw
-uniform vec2 u_size[${NL}];
-uniform float u_alpha[${NL}];   // Einblendung 0..1
-uniform int u_n;                // Zahl der Ebenen
-uniform int u_legacy;           // 1 = 5.0.1: Ebene 0 = neu (B), Ebene 1 = alt (A), Crossfade u_mixB
-uniform float u_mixB;
-uniform float u_feather;        // Federbreite der Ebenenränder (Zielpixel)
-uniform int u_recon;            // 1 = Vorschau auf dem Iterationswert rekonstruieren
-uniform vec2 u_target;          // Zielgröße in Pixeln
-uniform int u_formula, u_maxIter;
-uniform vec3 u_palA, u_palB, u_palC, u_palD;
-uniform int u_palCustom;
-uniform vec3 u_custom[6];
-uniform float u_cycle, u_density, u_time, u_relief;
-uniform int u_particles, u_banded;
-out vec4 fragColor;
-
-vec3 palette(float t) {
+// Palette, Außenfarbe, Dekodierung – gemeinsam für 2D (DISPLAY_FS) und 3D (js/three.js)
+const PAL_GLSL = `vec3 palette(float t) {
     t = fract(t);
     if (u_palCustom == 1) {
         t *= 6.0;
@@ -366,7 +347,28 @@ float fetchV(usampler2D t, ivec2 c) {
     return v < -1.5 ? -1.0 : v;
 }
 
-vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
+`;
+const DISPLAY_FS = `#version 300 es
+${COMMON}
+${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
+uniform vec4 u_xf[${NL}];       // Texel = Zielpixel * xy + zw
+uniform vec2 u_size[${NL}];
+uniform float u_alpha[${NL}];   // Einblendung 0..1
+uniform int u_n;                // Zahl der Ebenen
+uniform int u_legacy;           // 1 = 5.0.1: Ebene 0 = neu (B), Ebene 1 = alt (A), Crossfade u_mixB
+uniform float u_mixB;
+uniform float u_feather;        // Federbreite der Ebenenränder (Zielpixel)
+uniform int u_recon;            // 1 = Vorschau auf dem Iterationswert rekonstruieren
+uniform vec2 u_target;          // Zielgröße in Pixeln
+uniform int u_formula, u_maxIter;
+uniform vec3 u_palA, u_palB, u_palC, u_palD;
+uniform int u_palCustom;
+uniform vec3 u_custom[6];
+uniform float u_cycle, u_density, u_time, u_relief;
+uniform int u_particles, u_banded;
+out vec4 fragColor;
+
+${PAL_GLSL}vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
     float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
     vec2 g = vec2(mix(h10 - h00, h11 - h01, f.y), mix(h01 - h00, h11 - h10, f.x));
     g /= max(kx, 1e-6);                   // Gradient pro Texel -> pro Zielpixel normieren
@@ -668,5 +670,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, DISPLAY_FS, NL, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, DISPLAY_FS, NL, PAL_GLSL, COMMON, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

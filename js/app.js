@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '5.1.0';
+const APP_VERSION = '6.0.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -36,7 +36,7 @@ const S = {
     iterManual: false, iterValue: 300,
     palette: 0, density: 1, anim: true, speed: 0.15, relief: false, reliefStrength: 0.7, banded: false, particles: true,
     cycle: 0, time: 0,
-    quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true,
+    quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.5,
     chrome: true,
 };
 const listeners = [];
@@ -46,7 +46,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -55,7 +55,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -177,6 +177,14 @@ function updateAnims(now, dt) {
         if (u >= 1) { const cb = flight.onDone; flight = null; if (cb) cb(); }
         return;
     }
+    if (inertia && V3.on) {
+        const dtg = dt * Math.max(0.5, GOV.g), k = Math.exp(-dtg / INERTIA_TAU);
+        const c = ground3d(S.cam, inertia.vx * dtg, inertia.vy * dtg);
+        setCam(c.cx, c.cy, c.zoom * Math.exp(inertia.vs * dtg));
+        inertia.vx *= k; inertia.vy *= k; inertia.vs *= k;
+        if (Math.hypot(inertia.vx, inertia.vy) < 8 && Math.abs(inertia.vs) < 0.03) inertia = null;
+        return;
+    }
     if (inertia) {
         const dtg = dt * Math.max(0.5, GOV.g);
         const k = Math.exp(-dtg / INERTIA_TAU);
@@ -218,7 +226,8 @@ function trackVelocity(now, moving) {
 }
 function predictCam(dt, clamp = true) {
     let c = null;
-    if (flight) c = flightCamAt(flight, Math.min(1, (flight.u || 0) + dt * 1000 * GOV.g / flight.dur));
+    if (FLY.on && !FLY.paused) c = flyStep(S.cam, V3.heading, dt).cam;
+    else if (flight) c = flightCamAt(flight, Math.min(1, (flight.u || 0) + dt * 1000 * GOV.g / flight.dur));
     else if (inertia) {
         const dtg = dt * Math.max(0.5, GOV.g);
         const f = INERTIA_TAU * (1 - Math.exp(-dtg / INERTIA_TAU));
@@ -245,10 +254,11 @@ function predictCam(dt, clamp = true) {
 // ------------------------------------------------------------------ Gesten
 const gestures = self.FKGestures.attach(canvas, {
     rectMode: () => S.rectMode,
-    onStart(ax, ay) { stopAnims(); gestureBase = { cam: S.cam, ax, ay }; },
-    onTransform(ax0, ay0, ax, ay, scale) {
+    onStart(ax, ay) { if (!FLY.on) stopAnims(); gestureBase = { cam: S.cam, ax, ay, tilt: V3.tilt, heading: V3.heading }; FLY.userBase = FLY.user || 0; },
+    onTransform(ax0, ay0, ax, ay, scale, rot, n) {
         if (!gestureBase) return;
         const b = gestureBase;
+        if (V3.on) { gesture3d(b, ax0, ay0, ax, ay, scale, rot || 0, n || 1); return; }
         const c = anchoredCam(b.cam, ax0, ay0, ax, ay, scale);
         setCam(c.cx, c.cy, c.zoom);
     },
@@ -256,14 +266,23 @@ const gestures = self.FKGestures.attach(canvas, {
         gestureBase = null;
         const cap = (v, m) => Math.max(-m, Math.min(m, v));
         vx = cap(vx, 5000); vy = cap(vy, 5000); vs = cap(vs, 7);
+        if (FLY.on) return;
         if (Math.hypot(vx, vy) > 60 || Math.abs(vs) > 0.3)
             inertia = { vx, vy, vs, ax: last ? last.ax : cssW / 2, ay: last ? last.ay : cssH / 2 };
     },
-    onTap() { emit('tap'); },
-    onDoubleTap(x, y) { zoomAt(x, y, 3); },
-    onTwoFingerTap(x, y) { zoomAt(x, y, 1 / 3); },
+    onTap() { if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
+    onDoubleTap(x, y) { if (V3.on) { stopFly(); zoomAt(cssW / 2, cssH / 2, 3); } else zoomAt(x, y, 3); },
+    onTwoFingerTap(x, y) { if (V3.on) { stopFly(); zoomAt(cssW / 2, cssH / 2, 1 / 3); } else zoomAt(x, y, 1 / 3); },
+    onOrbit(dx, dy, phase) {
+        if (!V3.on) return;
+        if (phase === 'start') { gestureBase = { cam: S.cam, tilt: V3.tilt, heading: V3.heading }; return; }
+        if (phase === 'end' || !gestureBase) { gestureBase = null; return; }
+        V3.heading = gestureBase.heading - dx * 0.008;
+        V3.tilt = Math.max(0, Math.min(MAX_TILT, gestureBase.tilt - dy * 0.006));
+        RC.dirty = true;
+    },
     onLongPress(x, y) {
-        if (S.formula !== 0) return;
+        if (S.formula !== 0 || V3.on) return;
         const [ox, oy] = screenOffset(x, y, S.cam.zoom);
         const jx = S.cam.cx + HP.fromNumber(ox), jy = S.cam.cy + HP.fromNumber(oy);
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
@@ -273,6 +292,7 @@ const gestures = self.FKGestures.attach(canvas, {
     },
     onWheel(x, y, f) {
         inertia = null; flight = null;
+        if (V3.on) { stopFly(); x = cssW / 2; y = cssH / 2; }
         if (!wheelAnim || Math.abs(wheelAnim.x - x) + Math.abs(wheelAnim.y - y) > 4) wheelAnim = { x, y, ls: 0 };
         wheelAnim.ls += Math.log(f);
     },
@@ -354,7 +374,7 @@ function plan() {
 }
 function viewKey(cam) {
     const c = cam || S.cam;
-    return `${S.formula}|${c.cx}|${c.cy}|${c.zoom}|${S.iterManual ? S.iterValue : autoIter(c.zoom)}|${S.formula === 1 ? S.julia.x + ',' + S.julia.y : ''}|${canvas.width}x${canvas.height}|${S.renderer}`;
+    return `${S.formula}|${c.cx}|${c.cy}|${c.zoom}|${S.iterManual ? S.iterValue : autoIter(c.zoom)}|${S.formula === 1 ? S.julia.x + ',' + S.julia.y : ''}|${canvas.width}x${canvas.height}|${S.renderer}${V3.on ? '|3d' : ''}`;
 }
 
 // ------------------------------------------------------------------ Referenzorbit (Orbit-Worker)
@@ -394,6 +414,7 @@ function viewHalf() { const s = worldPerCss(S.cam.zoom); return [s * cssW / 2, s
 // Bei Flügen/Touren den Referenzorbit gleich fürs ZIEL rechnen: das Ziel liegt während der
 // ganzen Fahrt im Bild, eine Referenz reicht dann für alle Zwischenbilder.
 function refTarget() {
+    if (FLY.on && FLY.mode === 'place' && FLY.target) return FLY.target;
     if (flight) return flight.anchor ? flightCamAt(flight, 1) : flight.b;
     return S.cam;
 }
@@ -573,7 +594,9 @@ function startJob(key, div, p, view, opts) {
     const w0 = canvas.width, h0 = canvas.height;
     // Vorschau mit Überhang (Schwenks laufen nicht an die Kante); auch volle Auflösung in Bewegung
     const over = opts.preview ? OVER_MOVE : (div > 1 ? OVER : 1);
-    const w = opts.w || Math.max(8, Math.ceil(w0 * over / div)), h = opts.h || Math.max(8, Math.ceil(h0 * over / div));
+    // 3D: quadratische Rechenansicht (Drehen ohne Lücken), gleiche Pixelgröße wie 2D
+    const bw0 = V3.on ? Math.max(w0, h0) : w0, bh0 = V3.on ? Math.max(w0, h0) : h0;
+    const w = opts.w || Math.max(8, Math.ceil(bw0 * over / div)), h = opts.h || Math.max(8, Math.ceil(bh0 * over / div));
     const scale = opts.scale || 3 / (view.zoom * h0) * div;   // Welt pro Pufferpixel
     const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
                   view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
@@ -733,14 +756,15 @@ function pruneLayers(now) {
     const sig = contentSig();
     let reserve = null;
     for (const l of list) if (l.sig === sig && (!reserve || l.buf.w * l.buf.h * l.scale * l.scale > reserve.buf.w * reserve.buf.h * reserve.scale * reserve.scale)) reserve = l;
-    const cov = coverage(list, cam, { gx: 16, gy: 32, expand: 1.4 });
+    const ex = V3.on ? 5 : 1.4;                 // 3D: der Horizont braucht ferne Ebenen
+    const cov = coverage(list, cam, { gx: 16, gy: 32, expand: ex });
     const drop = new Set();
     for (const e of cov.use) if (e.n === 0 && !keep(e.l) && e.l !== reserve) drop.add(e.l);
     for (const l of list) if (l.alpha <= 0 && !keep(l)) drop.add(l);
-    if (reserve && layerK(reserve, cam) < 1 / 512) drop.add(reserve);
+    if (reserve && layerK(reserve, cam) < 1 / 8192) drop.add(reserve);
     let rest = list.filter(l => !drop.has(l) && !l.outT);
     while (rest.length > MAXL - 1) {
-        const c = coverage(rest, cam, { gx: 16, gy: 32, expand: 1.4 });
+        const c = coverage(rest, cam, { gx: 16, gy: 32, expand: ex });
         let worst = null;
         for (const e of c.use) {
             if (e.l === RC.front || (RC.fix && RC.fix.fr === e.l) || e.l.seq === RC.layerSeq || e.l === reserve) continue;
@@ -822,7 +846,7 @@ function onFixPixels(m, w) {
     fix.done++;
     if (fix.done >= fix.total) {
         const now = performance.now();
-        const fr = Object.assign({}, fix.fr, { buf: fix.buf, fixed: true, exact: true });
+        const fr = Object.assign({}, fix.fr, { buf: fix.buf, fixed: true, exact: true, h3d: null, shown: false, outT: 0 });   // eigener Puffer -> eigene 3D-Höhentextur
         stats.lastFix.ms = now - fix.t0;
         RC.fix = null;
         if (BLEND) {
@@ -850,11 +874,12 @@ function pumpCtl(moving, prefetch) {
     return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, 8 * vs)) : vs };
 }
 function isMoving(now) {
-    return gestures.active() || !!inertia || !!flight || !!wheelAnim || now - RC.lastMoveT < 150 || now - lastParamT < 150;
+    return gestures.active() || !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused) || now - RC.lastMoveT < 150 || now - lastParamT < 150;
 }
-function animating() { return !!inertia || !!flight || !!wheelAnim; }
+function animating() { return !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused); }
 // Bekanntes Ziel der laufenden Animation (Flug/Tour/Doppeltipp, Schwung) und Restzeit in s
 function animTarget() {
+    if (FLY.on && !FLY.paused && FLY.mode === 'place' && FLY.target) return { cam: FLY.target, rest: Math.log10(FLY.target.zoom / S.cam.zoom) / Math.max(0.05, S.flySpeed * GOV.g) };
     if (flight) return { cam: flightCamAt(flight, 1), rest: (1 - (flight.u || 0)) * flight.dur / 1000 / Math.max(0.3, GOV.g) };
     if (inertia) {
         const v = Math.hypot(inertia.vx, inertia.vy);
@@ -882,6 +907,7 @@ function farFrom(v, c) {
 // ---------------- Vorausrechnen (Prefetch): nur im Leerlauf, niedrigste Priorität
 // Nach dem exakten Endbild, in dieser Reihenfolge (je ein Job, bei jeder Bewegung sofort abgebrochen):
 //   ref    Referenzorbit für 4× tieferen Zoom (Perturbation) – tiefes Hineinzoomen wartet nicht
+//   widest 1/256 Zoom, 1/8 Auflösung (1/64 der Pixel): Reserve bis ×256 (kostet praktisch nichts)
 //   wider  1/32 Zoom, 1/4 Auflösung (1/16 der Pixel): Reserve für schnelles Herauszoomen bis ×32
 //   wide   1/4 Zoom, halbe Auflösung: Herauszoomen/große Schwenks ohne schwarzen Rand
 //   ring   gleicher Zoom, 1,6-fache Fläche, halbe Auflösung: Schwenks laufen in scharfes Bild
@@ -890,14 +916,17 @@ function farFrom(v, c) {
 // zweite Frame ein Häppchen (≤ ~50 % GPU) und nur so lange, wie die Jobs zusammen < 3 Vollbilder kosten.
 const PF = { key: null, items: [], busyMs: 0, tick: 0 };
 function planPrefetch(p, key) {
-    const W = canvas.width, H = canvas.height, est = RC.estFull || 300;
-    const z = S.cam.zoom, sCam = 3 / (z * H);
+    // 3D: quadratisch (Drehen) und der Ring größer (Boden vor der Kamera liegt bis ~1,7 Bildhälften hinter dem Fokus)
+    const W = V3.on ? Math.max(canvas.width, canvas.height) : canvas.width, H = V3.on ? W : canvas.height, est = RC.estFull || 300;
+    const z = S.cam.zoom, sCam = 3 / (z * canvas.height);
     const items = [];
     if (p.mode === 'perturb' && REF.cur && REF.cur.zoom < z * 3.9) items.push({ type: 'ref' });
+    if (z > 64) items.push({ type: 'job', name: 'widest', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: Math.max(0.2, z / 256) }, w: Math.ceil(W / 8), h: Math.ceil(H / 8), scale: sCam * 2048, div: 2048 });
     if (z > 8) items.push({ type: 'job', name: 'wider', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: Math.max(0.2, z / 32) }, w: Math.ceil(W / 4), h: Math.ceil(H / 4), scale: sCam * 128, div: 128 });
     items.push({ type: 'job', name: 'wide', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: Math.max(0.2, z / 4) }, w: Math.ceil(W / 2), h: Math.ceil(H / 2), scale: sCam * 8, div: 8 });
     if (p.kind === 'gpu' || est < 2500)
-        items.push({ type: 'job', name: 'ring', view: S.cam, w: Math.ceil(W * 1.6 / 2), h: Math.ceil(H * 1.6 / 2), scale: sCam * 2, div: 2 });
+        items.push(V3.on ? { type: 'job', name: 'ring', view: S.cam, w: Math.ceil(W * 2.4 / 3), h: Math.ceil(H * 2.4 / 3), scale: sCam * 3, div: 3 }
+                         : { type: 'job', name: 'ring', view: S.cam, w: Math.ceil(W * 1.6 / 2), h: Math.ceil(H * 1.6 / 2), scale: sCam * 2, div: 2 });
     if (p.kind === 'gpu' && est < 1500 && clampZoom(z * 2) === z * 2)
         items.push({ type: 'job', name: 'deep', view: { cx: S.cam.cx, cy: S.cam.cy, zoom: z * 2 }, w: W, h: H, scale: sCam / 2, div: 1 });
     return items;
@@ -983,6 +1012,14 @@ function schedule(now) {
             // Vorschau für die Kamera, an der sie fertig sein wird (bekannte Pfade exakt, Gesten extrapoliert)
             // Horizont: Rechenzeit + halbe Einblendzeit (dann trägt die neue Ebene zur Hälfte)
             const view = PREDICT ? predictCam(Math.min(0.3, (RC.estPreviewMs + FADE_MOVE_MS / 2) / 1000)) : S.cam;
+            // 3D: jede dritte Vorschau eine ferne Detailstufe (Horizont), jede neunte eine noch weitere
+            RC.farTick = (RC.farTick || 0) + 1;
+            if (V3.on && RC.farTick % 3 === 0) {
+                const far = RC.farTick % 9 === 0 ? 64 : 8, sC = 3 / (view.zoom * canvas.height), sz = Math.max(canvas.width, canvas.height) / (far === 8 ? 2 : 4);
+                startJob(viewKey(view) + '|far' + far, far, p, view, { preview: true, w: Math.ceil(sz), h: Math.ceil(sz), scale: sC * far }).part = true;
+                if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
+                return;
+            }
             const pl = STRIPS ? planPreview(now, view, p, sig) : { div: RC.previewDiv[p.kind] };
             if (pl.skip) return;
             startJob(viewKey(view) + (pl.rect ? '|r' : ''), pl.div, p, pl.view || view, { preview: true, w: pl.w, h: pl.h, scale: pl.scale }).part = !!pl.rect;
@@ -1214,6 +1251,13 @@ function present(now, camChanged) {
         return;
     }
     if (p.kind === 'buddha') { buddhaTick(now); return; }
+    if (V3.on) {
+        // 3D zeichnet bei Bewegung, Übergang, Farbanimation, Einblenden, Flug; sonst ruht es (Akku)
+        const busy = camChanged || S.anim || RC.fading || RC.dirty || V3.dir || (FLY.on && !FLY.paused) || now - V3.probeT > 300;
+        RC.dirty = false;
+        if (busy) present3d(now, camChanged);
+        return;
+    }
     const wasFading = RC.fading;
     const a = presentArgs(now);
     const anim = S.anim || RC.fading || wasFading;
@@ -1236,6 +1280,231 @@ function frameStatsRecord(now, list) {
     if (FS.frames.length > 20000) FS.frames.shift();
 }
 
+// ------------------------------------------------------------------ 3D-Landschaft + Flug (6.0)
+// Die 3D-Ansicht liest nur die fertigen Iterationspuffer (Ebenen-Stapel) – die Rechnung bleibt die
+// gleiche wie in 2D (gleiche Kamera S.cam = Bodenpunkt in der Bildmitte), exakt wie dort. In 3D wird die
+// Rechenansicht quadratisch (Drehen ohne Lücken) und es kommen ferne Detailstufen für den Horizont dazu.
+const T3 = self.FK3D ? self.FK3D.create(R) : null;
+const MAX_TILT = 60 * Math.PI / 180;
+const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null, settleT: 0 };
+const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, steerBase: 0, t0: 0, z0: 1, off0: 0, dir: [0, 1], scoreT: 0 };
+function can3d(f) { return !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
+function set3d(on) {
+    if (on && !can3d()) return;
+    if (on === V3.on && V3.dir === (on ? 1 : -1)) return;
+    if (on) { V3.on = true; V3.dir = 1; V3.heading = 0; if (T3) T3.scale = baseScale3d(); }
+    else { V3.dir = -1; stopFly(); }
+    invalidate(); emit('3d');
+}
+function baseScale3d() { return Q.get('s3d') ? +Q.get('s3d') : (Math.min(screen.width, screen.height) < 700 ? 0.65 : 1); }
+const e3 = (x) => x * x * (3 - 2 * x);
+// Übergang 2D <-> 3D (0,7 s): Neigung/Höhe/Drehung wachsen mit mix; bei mix = 0 ist 3D = 2D-Bild
+function update3d(now, dt) {
+    if (!V3.on) return;
+    if (V3.dir) {
+        V3.mix = Math.max(0, Math.min(1, V3.mix + V3.dir * dt / 0.7));
+        RC.dirty = true;                          // Neigen/Drehen/Höhe sind Darstellung, keine Kamerabewegung
+        if (V3.mix >= 1 && V3.dir > 0) V3.dir = 0;
+        if (V3.mix <= 0 && V3.dir < 0) {
+            V3.dir = 0; V3.on = false; V3.heading = 0;
+            for (const l of RC.layers) T3.free(l);
+            invalidate(); emit('3d');
+            return;
+        }
+    }
+    // Höhen-Normierung weich nachführen
+    if (V3.Lt) {
+        const k = Math.min(1, dt * 2.5);
+        const a = V3.L[0] + (V3.Lt[0] - V3.L[0]) * k, b = V3.L[1] + (V3.Lt[1] - V3.L[1]) * k;
+        if (Math.abs(a - V3.L[0]) + Math.abs(b - V3.L[1]) > 1e-3) { V3.L = [a, b]; RC.dirty = true; }
+        if (V3.cdfT && V3.cdf) for (let i = 0; i < 9; i++) { const d = (V3.cdfT[i] - V3.cdf[i]) * k; if (Math.abs(d) > 1e-4) { V3.cdf[i] += d; RC.dirty = true; } }
+    }
+    if (FLY.on && !FLY.paused) flyUpdate(now, dt);
+    if (V3.northT) {
+        const u = Math.min(1, (now - V3.northT) / 450), e = ease(u);
+        const h0 = V3.northFrom[0] - Math.round(V3.northFrom[0] / (2 * Math.PI)) * 2 * Math.PI;
+        V3.heading = h0 * (1 - e); V3.tilt = V3.northFrom[1] + (42 * Math.PI / 180 - V3.northFrom[1]) * e;
+        RC.dirty = true;
+        if (u >= 1) V3.northT = 0;
+    }
+    // Renderauflösung an die Bildrate anpassen (Ziel: Vsync halten, mind. 50 %)
+    // (nicht unter Testautomation: headless liefert ohnehin nur ~15 fps, das wäre kein Lastsignal)
+    if (navigator.webdriver || Q.get('s3d')) return;
+    const vs = RC.vsync || 16.7;
+    V3.slow = (V3.slow || 0) + ((RC.dtEMA || 16) > 1.3 * vs ? 1 : -0.25);
+    if (V3.slow > 40) { T3.scale = Math.max(0.45, T3.scale * 0.9); V3.slow = 0; }
+    else if (V3.slow < -200) { T3.scale = Math.min(baseScale3d(), T3.scale * 1.05); V3.slow = 0; }
+}
+function view3d() {
+    const em = e3(V3.mix);
+    return { tilt: V3.tilt * em, heading: V3.heading * (V3.dir < 0 ? em : 1), height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time };
+}
+// Ebenen für 3D: gültiger Inhalt, schärfste zuerst, höchstens N3 – die größte (Horizont) immer dabei
+function layers3d(list) {
+    const sig = contentSig();
+    let L = list.filter(l => l.sig === sig && l.alpha > 0).sort((a, b) => a.scale - b.scale || b.seq - a.seq);
+    if (L.length > T3.N3) {
+        let big = L[0];
+        for (const l of L) if (l.buf.w * l.buf.h * l.scale * l.scale > big.buf.w * big.buf.h * big.scale * big.scale) big = l;
+        L = L.slice(0, T3.N3 - 1).concat(L.slice(T3.N3 - 1).includes(big) ? [big] : [L[T3.N3 - 1]]);
+    }
+    return L;
+}
+function present3d(now, camChanged) {
+    const a = presentArgs(now);
+    const v = view3d();
+    const L3 = layers3d(a.list);
+    const alpha = Math.min(1, v.mix / 0.25);
+    if (alpha < 1) R.present(a.list, S.cam, look(), null, a.opts);
+    T3.render(L3, v, look(), alpha < 1 ? alpha : undefined);
+    RC.list = a.list;
+    if (FS.on) frameStatsRecord(now, a.list);
+    // Sonde: Höhenstatistik + Interesse für den Zufallsflug (alle 300 ms, asynchron)
+    if (now - V3.probeT > 300) {
+        V3.probeT = now;
+        const pr = T3.probe(L3, S.cam, 1.5 / S.cam.zoom, 2);
+        if (pr) pr.then((pb) => { if (pb) { V3.probe = pb; heightStats(pb); } });
+    }
+}
+function heightStats(pb) {
+    const hs = [];
+    for (const v of pb.data) if (v >= 0) hs.push(Math.log2(1 + (S.formula === 5 ? v % 1000 : v)));
+    if (hs.length < 40) return;
+    hs.sort((x, y) => x - y);
+    let a = hs[Math.floor(hs.length * 0.02)], b = hs[Math.floor(hs.length * 0.99)];
+    if (b - a < 0.4) { const m = (a + b) / 2; a = m - 0.2; b = m + 0.2; }
+    V3.Lt = [a, b];
+    // Stützstellen der Höhen-Entzerrung (Quantile 2 %, 1/8 … 99 %), streng steigend
+    const cdf = [];
+    for (let i = 0; i <= 8; i++) cdf.push(i === 0 ? a : i === 8 ? b : hs[Math.floor(hs.length * (0.02 + 0.97 * i / 8))]);
+    for (let i = 1; i <= 8; i++) cdf[i] = Math.max(cdf[i], cdf[i - 1] + (b - a) / 64);
+    V3.cdfT = cdf;
+    if (!V3.Lset) { V3.L = [a, b]; V3.cdf = cdf.slice(); V3.Lset = true; }
+}
+
+// ---- Gesten in 3D: 1 Finger schieben (auf dem Boden), 2 Finger zoomen + drehen, gemeinsam hoch/runter = neigen
+function gesture3d(b, ax0, ay0, ax, ay, scale, rot, n) {
+    if (FLY.on) {
+        if (n >= 2) stopFly();
+        else { FLY.user = FLY.userBase + (ax - ax0) / cssW * 1.6; return; }   // Wischen lenkt
+    }
+    if (n >= 2) {
+        setCam(b.cam.cx, b.cam.cy, b.cam.zoom * scale);
+        V3.heading = b.heading - rot;
+        V3.tilt = Math.max(0, Math.min(MAX_TILT, b.tilt - (ay - ay0) * 0.006));
+    } else {
+        const c = ground3d(b.cam, ax - ax0, ay - ay0);
+        setCam(c.cx, c.cy, c.zoom);
+    }
+    RC.dirty = true;
+}
+// Bildschirm-Verschiebung (CSS px) -> neue Kamera: der Boden folgt dem Finger (Neigung gestaucht)
+function ground3d(cam, dx, dy) {
+    const k = 2 / cssH, t = V3.tilt * e3(V3.mix);
+    const gx = dx * k, gy = dy * k / Math.max(0.35, Math.cos(t));
+    const h = V3.heading, f = [Math.sin(h), Math.cos(h)], r = [Math.cos(h), -Math.sin(h)];
+    const u = 1.5 / cam.zoom;
+    return { cx: cam.cx + HP.fromNumber((-gx * r[0] + gy * f[0]) * u), cy: cam.cy + HP.fromNumber((-gx * r[1] + gy * f[1]) * u), zoom: cam.zoom };
+}
+
+// ---- Flug: Zoom + Vorwärtsflug. Gezoomt wird um einen Punkt knapp vor dem Fokus (Blickrichtung) -> die
+// Kamera gleitet vorwärts und taucht tiefer; Berge wirken in jeder Tiefe gleich hoch (lokale Einheiten).
+// Zufallsflug: Kurs zum interessantesten Randbereich voraus (hohe Iteration + Detail, nicht ins Schwarze).
+// Ziel-Flug: Start im Gesamtbild (wie ▶ Tour), gerade auf den Ort zu, Ankunft exakt am Ort.
+const FLY_AHEAD = 0.55;
+function startFly(place) {
+    if (!can3d(place && place.formula !== undefined ? place.formula : S.formula)) return;
+    stopAnims();
+    if (place) {
+        setMode(place.formula || 0, true);
+        if (place.jx) setJulia(HP.fromString(place.jx), HP.fromString(place.jy));
+        const home = MODE_HOME[S.formula];
+        setCam(HP.fromString(home[0]), HP.fromString(home[1]), home[2]);
+        S.iterManual = false;
+        const T = { cx: HP.fromString(place.cx), cy: HP.fromString(place.cy), zoom: +place.zoom };
+        const u = 1.5 / S.cam.zoom;
+        const ox = HP.toNumber(T.cx - S.cam.cx) / u, oy = HP.toNumber(T.cy - S.cam.cy) / u;
+        const d = Math.hypot(ox, oy);
+        FLY.mode = 'place'; FLY.target = T; FLY.z0 = S.cam.zoom; FLY.off0 = d;
+        FLY.dir = d > 1e-9 ? [ox / d, oy / d] : [0, 1];
+        V3.heading = Math.atan2(FLY.dir[0], FLY.dir[1]);
+    } else { FLY.mode = 'random'; FLY.target = null; }
+    set3d(true);
+    FLY.on = true; FLY.paused = false; FLY.hdgT = V3.heading; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0; FLY.t0 = performance.now();
+    emit('fly');
+}
+// Ausrichten: Drehung weich auf Norden, Neigung auf den Standard
+function north3d() { V3.northT = performance.now(); V3.northFrom = [V3.heading, V3.tilt]; stopFly(); }
+function stopFly() { if (!FLY.on) return; FLY.on = false; FLY.paused = false; camDirty = true; emit('fly'); }
+function pauseFly(p) { if (!FLY.on) return; FLY.paused = p === undefined ? !FLY.paused : p; emit('fly'); }
+// ein Flugschritt (rein rechnerisch, auch für die Vorhersage): liefert { cam, heading }
+function flyStep(cam, heading, dt) {
+    const g = GOV.g, dec = S.flySpeed * dt * g;
+    if (FLY.mode === 'place' && FLY.target) {
+        const T = FLY.target;
+        const z1 = Math.min(T.zoom, cam.zoom * Math.pow(10, dec));
+        const p = Math.min(1, Math.log(z1 / FLY.z0) / Math.max(1e-9, Math.log(T.zoom / FLY.z0)));
+        const off = FLY.off0 * Math.pow(1 - p, 1.5), u = 1.5 / z1;
+        return { cam: { cx: T.cx - HP.fromNumber(FLY.dir[0] * off * u), cy: T.cy - HP.fromNumber(FLY.dir[1] * off * u), zoom: z1 }, heading, done: z1 >= T.zoom };
+    }
+    // über einer leeren Ebene "verloren": kaum noch tiefer, dafür seitlich zum nächsten Rand gleiten
+    const lost = Math.min(1, FLY.lost || 0);
+    const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.85 * lost)));
+    const u = 1.5 / cam.zoom, f = [Math.sin(heading), Math.cos(heading)];
+    const ax = f[0] * FLY_AHEAD * u, ay = f[1] * FLY_AHEAD * u;          // Zoompunkt vor dem Fokus
+    const k = 1 - cam.zoom / z1, lat = lost * 0.7 * dt * g * u;
+    return { cam: { cx: cam.cx + HP.fromNumber(ax * k + f[0] * lat), cy: cam.cy + HP.fromNumber(ay * k + f[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28 };
+}
+function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+function flyUpdate(now, dt) {
+    if (FLY.mode === 'random') {
+        if (now - FLY.scoreT > 300 && V3.probe) { FLY.scoreT = now; flySteer(); }
+        const d = angDiff(FLY.hdgT + (FLY.user || 0), V3.heading);
+        V3.heading += Math.max(-0.9 * dt, Math.min(0.9 * dt, d));
+        FLY.user = (FLY.user || 0) * Math.exp(-dt / 2.5); FLY.userBase = (FLY.userBase || 0) * Math.exp(-dt / 2.5);
+    }
+    const st = flyStep(S.cam, V3.heading, dt);
+    setCam(st.cam.cx, st.cam.cy, st.cam.zoom);
+    if (st.done) { stopFly(); if (FLY.mode === 'random') toast(t('fly_max')); }
+}
+// Kurswahl aus der Sonde (alle 300 ms): Kandidaten bis ±150° um den aktuellen Kurs, Wertung entlang des
+// Strahls (0,3–1,3 Bildhälften, nahe stärker): Randnähe + Detail positiv, leere Ebene negativ, Inneres
+// (Schwarz) stark negativ, Abweichung vom Kurs leicht negativ. Ist alles voraus flach: "verloren".
+function flySteer() {
+    const pb = V3.probe;
+    if (!pb) return;
+    const at = (x, y) => {
+        const i = Math.floor((x / pb.win * 0.5 + 0.5) * pb.w), j = Math.floor((y / pb.win * 0.5 + 0.5) * pb.h);
+        if (i < 1 || j < 1 || i >= pb.w - 1 || j >= pb.h - 1) return null;
+        return [pb.data[j * pb.w + i], pb.data[j * pb.w + i + 1], pb.data[(j + 1) * pb.w + i], pb.data[j * pb.w + i - 1], pb.data[(j - 1) * pb.w + i]];
+    };
+    const L0 = V3.L[0], inv = 1 / Math.max(0.3, V3.L[1] - V3.L[0]);
+    const hn = (v) => v < 0 ? -1 : (Math.log2(1 + (S.formula === 5 ? v % 1000 : v)) - L0) * inv;
+    let best = null;
+    const h0 = V3.heading;
+    for (const da of [0, -0.3, 0.3, -0.65, 0.65, -1.0, 1.0, -1.5, 1.5, -2.1, 2.1, -2.6, 2.6]) {
+        const h = h0 + da;
+        let sc = -Math.abs(da) * 0.35, n = 0, flat = 0;
+        for (const [r, w] of [[0.3, 1.4], [0.55, 1.6], [0.85, 1.0], [1.25, 0.6]]) {
+            const s5 = at(Math.sin(h) * r, Math.cos(h) * r);
+            if (!s5 || s5.some(Number.isNaN)) continue;
+            n++;
+            const a0 = hn(s5[0]);
+            if (a0 < 0) { sc -= 3 * w; continue; }
+            let det = 0;
+            for (let q = 1; q < 5; q++) det += Math.abs(a0 - Math.max(-0.2, hn(s5[q])));
+            det = Math.min(1, det * 1.5);
+            if (det < 0.08 && a0 < 0.35) flat++;
+            sc += w * (det + 0.6 * a0 - 0.45);
+        }
+        if (!n) continue;
+        if (!best || sc > best.sc) best = { sc, h, flat: flat >= n - 1 };
+    }
+    if (!best) return;
+    FLY.hdgT = best.h;
+    const here = best.flat && Math.abs(angDiff(best.h, h0)) < 0.7;
+    FLY.lost = Math.max(0, Math.min(1.5, (FLY.lost || 0) + (here ? 0.25 : -0.4)));
+}
 // ------------------------------------------------------------------ Buddhabrot
 const BUD = { hist: null, w: 0, h: 0, max: 0, version: 0, camKey: '' };
 function buddhaReset() { BUD.hist = null; BUD.version++; }
@@ -1309,6 +1578,7 @@ function syncURL(now) {
 
 // ------------------------------------------------------------------ Hauptschleife
 let lastT = performance.now();
+const PROF = Q.has('prof') ? [] : null;   // Test: Frames > 25 ms JS mit Teilzeiten
 const VS = { buf: new Array(90).fill(0), i: 0 };
 function frame(now) {
     requestAnimationFrame(frame);
@@ -1319,6 +1589,8 @@ function frame(now) {
     S.time += dt;
     if (S.anim) S.cycle += dt * S.speed;
     updateAnims(now, dt);
+    update3d(now, dt);
+    if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
     const camChanged = camDirty;
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
@@ -1345,8 +1617,11 @@ function frame(now) {
     trackVelocity(now, moving);
     governorUpdate(now, dt);
     if (BLEND && (stats.frames % 8 === 0)) pruneLayers(now);
+    const tS = performance.now();
     schedule(now);
+    const tP = performance.now();
     present(now, camChanged);
+    if (PROF) { const tE = performance.now(); if (tE - js0 > 25) PROF.push({ t: Math.round(now), pre: +(tS - js0).toFixed(1), sched: +(tP - tS).toFixed(1), present: +(tE - tP).toFixed(1), job: RC.job ? RC.job.key.slice(-12) : '', n: RC.layers.length }); }
     stats.frames++;
     if (now - stats.fpsT > 1000) { stats.fps = Math.round(stats.frames * 1000 / (now - stats.fpsT)); stats.frames = 0; stats.fpsT = now; }
     syncURL(now);
@@ -1392,7 +1667,7 @@ function toast(msg, ms) { emit({ toast: msg, ms }); }
 // ------------------------------------------------------------------ Screenshot / Teilen
 function captureBlob() {
     return new Promise((resolve) => {
-        presentNow();   // frisch zeichnen, dann sofort abgreifen
+        if (V3.on) present3d(performance.now(), true); else presentNow();   // frisch zeichnen, dann sofort abgreifen
         const out = document.createElement('canvas');
         out.width = canvas.width; out.height = canvas.height;
         const c2 = out.getContext('2d');
@@ -1426,6 +1701,20 @@ const API = {
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
+    V3, FLY, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT,
+    // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
+    // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
+    prewarm3d() { if (T3 && !T3.warm) { T3.warm = true; T3.prewarm(); } },
+    layers3dInfo() { const now = performance.now(); return layers3d(orderLayers(now, S.cam)).map(l => ({ stage: l.stage, scale: l.scale / (3 / (S.cam.zoom * canvas.height)), alpha: +l.alpha.toFixed(2), w: l.buf.w, h: l.buf.h, h3d: !!l.h3d, out: !!l.outT, front: l === RC.front })); },
+    view3dInfo() { return { on: V3.on, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode }, gpu: T3 ? T3.info() : null }; },
+    bench3d(n = 5) {
+        const gl = R.gl, ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+        if (!ext || !V3.on) return Promise.resolve(null);
+        const qs = [];
+        for (let i = 0; i < n; i++) { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); present3d(performance.now(), true); gl.endQuery(ext.TIME_ELAPSED_EXT); qs.push(q); }
+        return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
+            const ms = qs.map(q => gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); qs.forEach(q => gl.deleteQuery(q)); res({ min: +Math.min(...ms).toFixed(2), max: +Math.max(...ms).toFixed(2), scale: T3.scale }); }; poll(); });
+    },
     goHome() { const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
     goTo(p) {
         if ((p.formula || 0) !== S.formula) setMode(p.formula || 0, true);
@@ -1441,6 +1730,7 @@ const API = {
                  iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id };
     },
     isMoving: () => isMoving(performance.now()),
+    prof: () => PROF,
     // Pop-Metrik: frameStats(true) startet die Aufzeichnung, frameStats() liefert { frames, hard }
     frameStats(start) {
         if (start) { FS.on = true; FS.frames = []; FS.hard = 0; FS.seen = new WeakSet(); return true; }

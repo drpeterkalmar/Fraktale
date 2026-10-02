@@ -28,13 +28,33 @@ function create(canvas) {
         }
         return s;
     }
-    function program(key, fsSrc) {
-        if (programs[key]) return programs[key];
+    // Vorab übersetzen ohne Statusabfrage: der Treiber übersetzt parallel (KHR_parallel_shader_compile),
+    // erst program() fragt den Status ab -> kein Ruckler beim ersten Einschalten (3D-Shader sind groß)
+    const pending = {};
+    gl.getExtension('KHR_parallel_shader_compile');
+    function startProgram(fsSrc, vsSrc) {
         const p = gl.createProgram();
-        gl.attachShader(p, compile(gl.VERTEX_SHADER, SH.VS));
-        gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSrc));
+        const mk = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); gl.attachShader(p, sh); return sh; };
+        const vs = mk(gl.VERTEX_SHADER, vsSrc || SH.VS), fs = mk(gl.FRAGMENT_SHADER, fsSrc);
         gl.linkProgram(p);
-        if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost()) throw new Error('Link: ' + gl.getProgramInfoLog(p));
+        return { p, vs, fs };
+    }
+    R.prewarm = function (key, fsSrc, vsSrc) { if (!programs[key] && !pending[key]) pending[key] = startProgram(fsSrc, vsSrc); };
+    function program(key, fsSrc, vsSrc) {
+        if (programs[key]) return programs[key];
+        let p;
+        if (pending[key]) {
+            const pd = pending[key]; delete pending[key];
+            p = pd.p;
+            if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost())
+                throw new Error('Link: ' + gl.getShaderInfoLog(pd.vs) + gl.getShaderInfoLog(pd.fs) + gl.getProgramInfoLog(p));
+        } else {
+            p = gl.createProgram();
+            gl.attachShader(p, compile(gl.VERTEX_SHADER, vsSrc || SH.VS));
+            gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSrc));
+            gl.linkProgram(p);
+            if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost()) throw new Error('Link: ' + gl.getProgramInfoLog(p));
+        }
         const loc = {};
         const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
         for (let i = 0; i < n; i++) {
@@ -48,7 +68,9 @@ function create(canvas) {
 
     function initGL() {
         programs = {};
+        for (const k in pending) delete pending[k];
         vao = gl.createVertexArray();
+        R.vao = vao;
         gl.bindVertexArray(vao);
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.BLEND);
@@ -318,7 +340,10 @@ function create(canvas) {
         job.done = true;
         job.cancelled = true;
     };
-    R.releaseFrame = function (fr) { if (fr && fr.buf) release(fr.buf); };
+    R.releaseFrame = function (fr) {
+        if (fr && fr.buf) release(fr.buf);
+        if (fr && fr.h3d && R.onReleaseFrame) R.onReleaseFrame(fr);   // 3D-Höhentextur (js/three.js)
+    };
 
     // ------------------------------------------------ Display
     // layer: { buf, view:{cx,cy}, scale }  cam: { cx, cy, zoom }  target: {w,h,fbo?}
@@ -371,6 +396,9 @@ function create(canvas) {
         if (target) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
     R.xfFor = xfFor;
+    R.program = program;
+    R.setPalette = (L, look) => setPalette(L, look);
+    R.dummyU = () => dummyU();
     function setPalette(L, look) {
         const p = look.pal;
         gl.uniform3fv(L.u_palA, p.a); gl.uniform3fv(L.u_palB, p.b); gl.uniform3fv(L.u_palC, p.c); gl.uniform3fv(L.u_palD, p.d);

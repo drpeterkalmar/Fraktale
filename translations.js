@@ -245,7 +245,10 @@ const TRANSLATIONS_UI = {
         f_mandel_z3: "z³ + c", f_newton: "z − (z³ − 1)/(3z²)", f_mandelbulb: "3D, Raymarching", f_buddhabrot: "Orbit-Dichte",
         words_thousand: "Tausend", zoom_words: "Wörter", zoom_sci: "10er-Potenz",
         precise: "Exakte Nachrechnung (CPU f64)", precise_hint: "Die GPU rechnet schnell in f32 und schätzt pro Pixel den Rundungsfehler; unsichere Pixel rechnet die CPU exakt in f64 nach. Aus = schneller, aber in sehr dichten Tiefen leicht verrauscht.", fixing: "Präzision…",
-        governor: "Tempo an Rechenleistung anpassen", governor_hint: "Tour, Doppeltipp, Mausrad und Schwung werden kurz langsamer, wenn das Bild sonst grob würde. Die Finger-Gesten bleiben immer 1:1."
+        governor: "Tempo an Rechenleistung anpassen", governor_hint: "Tour, Doppeltipp, Mausrad und Schwung werden kurz langsamer, wenn das Bild sonst grob würde. Die Finger-Gesten bleiben immer 1:1.",
+        d3_title: "3D-Landschaft", fly: "Flug", fly_stop: "Stopp", height: "Höhe", fly_speed: "Tempo", north: "Ausrichten", fly_place: "Flug",
+        fly_paused: "Flug pausiert – tippen zum Weiterfliegen", fly_on: "Weiter geht's", fly_max: "Tiefste Flughöhe erreicht", d3_hint: "3D: zwei Finger hoch/runter neigen, drehen dreht, spreizen zoomt",
+        d3_na: "Diese Welt ist schon 3D bzw. hat keine Landschaft", g_3d: "3D-Landschaft (⛰ oben rechts): ein Finger schiebt, zwei Finger spreizen = zoomen, drehen = drehen, gemeinsam hoch/runter = neigen. ✈ Flug: tippen = Pause, nach links/rechts wischen = lenken."
     },
     en: {
         lang_name: "English",
@@ -279,7 +282,10 @@ const TRANSLATIONS_UI = {
         f_mandel_z3: "z³ + c", f_newton: "z − (z³ − 1)/(3z²)", f_mandelbulb: "3D, ray marching", f_buddhabrot: "orbit density",
         words_thousand: "thousand", zoom_words: "words", zoom_sci: "power of ten",
         precise: "Exact refinement (CPU f64)", precise_hint: "The GPU renders fast in f32 and estimates the rounding error per pixel; uncertain pixels are recomputed exactly in f64 on the CPU. Off = faster, but slightly noisy in very dense depths.", fixing: "Refining…",
-        governor: "Match speed to computing power", governor_hint: "Tour, double tap, mouse wheel and fling slow down briefly when the image would otherwise turn coarse. Finger gestures always stay 1:1."
+        governor: "Match speed to computing power", governor_hint: "Tour, double tap, mouse wheel and fling slow down briefly when the image would otherwise turn coarse. Finger gestures always stay 1:1.",
+        d3_title: "3D landscape", fly: "Fly", fly_stop: "Stop", height: "Height", fly_speed: "Speed", north: "Reset view", fly_place: "Fly",
+        fly_paused: "Flight paused – tap to continue", fly_on: "Off we go", fly_max: "Deepest flight level reached", d3_hint: "3D: two fingers up/down tilt, twist rotates, pinch zooms",
+        d3_na: "This world is already 3D or has no landscape", g_3d: "3D landscape (⛰ top right): one finger pans, pinch = zoom, twist = rotate, two fingers up/down = tilt. ✈ Fly: tap = pause, swipe left/right = steer."
     },
     hu: { lang_name: "Magyar" }, es: { lang_name: "Español" }, fr: { lang_name: "Français" }, pt: { lang_name: "Português" },
     zh: { lang_name: "中文" }, ja: { lang_name: "日本語" }, ko: { lang_name: "한국어" }

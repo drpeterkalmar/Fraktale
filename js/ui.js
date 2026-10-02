@@ -164,10 +164,11 @@ A.on((w) => {
         else if (!$('hud-details').hidden) { $('hud-details').hidden = true; $('hud-pill').setAttribute('aria-expanded', 'false'); }
         else setChrome(!S.chrome);
     } else if (w === 'frame') hudUpdate(false);
-    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; }
+    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); }
     else if (w === 'julia') { updateJuliaPanel(); }
     else if (w === 'iter') hudUpdate(true);
     else if (w === 'settings') syncControls();
+    else if (w === '3d' || w === 'fly') sync3d();
     else if (w && w.toast) toast(w.toast, w.ms);
 });
 
@@ -193,6 +194,7 @@ function updateJuliaPanel() {
 function updateJuliaChip() {
     const c = $('julia-chip');
     c.hidden = S.formula !== 1;
+    document.body.classList.toggle('julia-on', !c.hidden);
     if (!c.hidden) $('julia-chip-text').textContent = 'c = ' + A.fmtC(S.julia.x, S.julia.y);
 }
 $('julia-chip').addEventListener('click', () => { openSheet('worlds'); setTimeout(() => $('julia-panel').scrollIntoView({ block: 'start', behavior: 'smooth' }), 380); });
@@ -356,10 +358,12 @@ function placeCard(p, opts) {
     const thumb = opts.thumb ? `url('${opts.thumb}')` : 'none';
     c.innerHTML = `<button class="place-main"><span class="thumb" style="background-image:${thumb}"></span>
         <span class="meta"><span class="name"></span><span class="zoom mono">${A.fmtZoom(+p.zoom, 'sci')}</span></span></button>
-        <div class="place-actions"><button class="chip tour">▶ ${t('tour')}</button>${opts.onDelete ? `<button class="chip del" aria-label="${t('delete')}">✕</button>` : ''}</div>`;
+        <div class="place-actions"><button class="chip tour">▶ ${t('tour')}</button>${A.can3d(p.formula || 0) ? `<button class="chip fly">✈ ${t('fly_place')}</button>` : ''}${opts.onDelete ? `<button class="chip del" aria-label="${t('delete')}">✕</button>` : ''}</div>`;
     c.querySelector('.name').textContent = name;
     c.querySelector('.place-main').addEventListener('click', () => { A.goTo(p); if (innerWidth < 700) closeSheet(); });
     c.querySelector('.tour').addEventListener('click', () => { A.startTour(p); closeSheet(); });
+    const fb = c.querySelector('.fly');
+    if (fb) fb.addEventListener('click', () => { A.startFly(p); closeSheet(); });
     if (opts.onDelete) c.querySelector('.del').addEventListener('click', opts.onDelete);
     return c;
 }
@@ -436,7 +440,7 @@ $('btn-install').addEventListener('click', async () => { if (!installEvt) return
 function openModal(kind) {
     const b = $('modal-body');
     const g = `<div class="info-section"><h3>${t('gestures_title')}</h3><ul class="gest">
-        <li>${t('g_pan')}</li><li>${t('g_pinch')}</li><li>${t('g_dtap')}</li><li>${t('g_2tap')}</li><li>${t('g_long')}</li><li>${t('g_tap')}</li><li>${t('g_desk')}</li></ul>
+        <li>${t('g_pan')}</li><li>${t('g_pinch')}</li><li>${t('g_dtap')}</li><li>${t('g_2tap')}</li><li>${t('g_long')}</li><li>${t('g_tap')}</li><li>${t('g_3d')}</li><li>${t('g_desk')}</li></ul>
         <p class="hint">${t('deep_note')}</p></div>`;
     if (kind === 'gestures') b.innerHTML = g;
     else {
@@ -461,6 +465,11 @@ window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;
+    if (A.V3.on && e.shiftKey && k.startsWith('Arrow')) {      // 3D: Shift+Pfeile drehen/neigen
+        if (k === 'ArrowLeft' || k === 'ArrowRight') A.V3.heading += (k === 'ArrowLeft' ? 1 : -1) * 0.12;
+        else A.V3.tilt = Math.max(0, Math.min(A.MAX_TILT, A.V3.tilt + (k === 'ArrowUp' ? 0.07 : -0.07)));
+        A.RC.dirty = true; return;
+    }
     const pan = (dx, dy) => { const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
     switch (k) {
         case 'ArrowLeft': pan(-1, 0); break; case 'ArrowRight': pan(1, 0); break;
@@ -482,6 +491,8 @@ window.addEventListener('keydown', (e) => {
                 case 'h': case '?': openModal('help'); break;
                 case 'l': { const ks = Object.keys(TRANSLATIONS); S.lang = ks[(ks.indexOf(S.lang) + 1) % ks.length]; $('sel-lang').value = S.lang; A.saveSettings(); applyI18n(); break; }
                 case 'escape': closeSheet(); closeModal(); break;
+                case 'd': toggle3d(); break;
+                case 'v': if (A.FLY.on) A.stopFly(); else A.startFly(); break;
             }
     }
 });
@@ -498,11 +509,43 @@ if ('serviceWorker' in navigator && !new URLSearchParams(location.search).has('n
     });
 }
 
+// ------------------------------------------------------------------ 3D-Landschaft + Flug
+let hint3d = false;
+function toggle3d() {
+    if (!A.can3d()) { toast(t('d3_na')); return; }
+    const on = !(A.V3.on && A.V3.dir >= 0);
+    A.set3d(on);
+    if (on && !hint3d) { hint3d = true; toast(t('d3_hint'), 3800); }
+}
+$('btn-3d').addEventListener('click', toggle3d);
+$('btn-3d').addEventListener('pointerdown', () => A.prewarm3d());
+$('btn-fly').addEventListener('click', () => { if (A.FLY.on) A.stopFly(); else A.startFly(); });
+$('btn-north').addEventListener('click', () => A.north3d());
+$('r-height').addEventListener('input', (e) => { S.h3d = +e.target.value; A.RC.dirty = true; });
+$('r-height').addEventListener('change', () => A.saveSettings());
+$('r-speed').addEventListener('input', (e) => { S.flySpeed = +e.target.value; });
+$('r-speed').addEventListener('change', () => A.saveSettings());
+function sync3d() {
+    const can = A.can3d(), on = A.V3.on && A.V3.dir >= 0, fly = A.FLY.on;
+    $('btn-3d').hidden = !can;
+    $('btn-3d').classList.toggle('on', on);
+    $('btn-3d').setAttribute('aria-pressed', String(on));
+    $('bar3d').hidden = !on;
+    $('btn-fly').classList.toggle('on', fly);
+    $('fly-icon').textContent = fly ? '■' : '✈';
+    $('fly-label').textContent = t(fly ? 'fly_stop' : 'fly');
+    $('lbl-height').hidden = fly;
+    $('lbl-speed').hidden = !fly;
+    $('r-height').value = S.h3d;
+    $('r-speed').value = S.flySpeed;
+}
+
 // ------------------------------------------------------------------ Start
 buildPalettes();
 syncControls();
 applyI18n();
 updateJuliaPanel();
+sync3d();
 $('info-version').textContent = A.APP_VERSION;
 $('version-line').textContent = A.APP_VERSION;
 document.body.classList.add('ready');

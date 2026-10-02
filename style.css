@@ -80,6 +80,18 @@ body:not(.ready) .chrome { opacity: 0; }
 #julia-chip { position: fixed; z-index: 19; left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-h) + 22px + var(--sa-b)); height: 48px; padding: 0 16px; border-radius: 999px; font-size: 13px; white-space: nowrap; }
 body.immersive #julia-chip { transform: translateX(-50%) translateY(24px); }
 
+/* ---------- 3D-Leiste ---------- */
+#btn-3d.on { background: rgba(167, 139, 250, 0.35); border-color: rgba(167, 139, 250, 0.8); box-shadow: 0 0 18px rgba(167, 139, 250, .45); }
+#bar3d { position: fixed; z-index: 19; left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-h) + 22px + var(--sa-b)); display: flex; align-items: center; gap: 8px;
+    padding: 4px 6px; border-radius: 999px; width: min(460px, calc(100vw - 20px)); }
+body.julia-on #bar3d { bottom: calc(var(--dock-h) + 80px + var(--sa-b)); }
+body.immersive #bar3d { transform: translateX(-50%) translateY(24px); }
+.fly-btn { flex: none; min-width: 96px; font-size: 14px; color: #fff; background: rgba(167, 139, 250, 0.22); border-color: rgba(167, 139, 250, 0.55); }
+.fly-btn.on { background: rgba(244, 114, 182, 0.3); border-color: rgba(244, 114, 182, 0.7); }
+.bar-slider { flex: 1; display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 4px; }
+.bar-slider input { flex: 1; min-width: 60px; accent-color: #a78bfa; height: 48px; }
+.place-actions .chip.fly { margin-left: 4px; }
+
 /* ---------- Dock ---------- */
 #dock { position: fixed; z-index: 30; left: 50%; bottom: calc(10px + var(--sa-b)); transform: translateX(-50%);
     display: flex; gap: 2px; padding: 6px; border-radius: 24px; width: min(460px, calc(100vw - 20px)); justify-content: space-between; }
@@ -222,6 +234,9 @@ label.select select { background: rgba(255, 255, 255, .07); color: var(--text); 
     #sheet-tabs { padding-top: 10px; }
     #corner { right: calc(92px + var(--sa-r)); flex-direction: row-reverse; align-items: flex-start; }
     #julia-chip { bottom: calc(12px + var(--sa-b)); }
+    #bar3d { left: calc(12px + var(--sa-l)); transform: none; bottom: calc(12px + var(--sa-b)); width: min(380px, 46vw); }
+    body.immersive #bar3d { transform: translateY(24px); }
+    body.julia-on #bar3d { bottom: calc(70px + var(--sa-b)); }
     #toast, #share-pop { bottom: calc(16px + var(--sa-b)); }
     #share-pop { left: auto; right: calc(96px + var(--sa-r)); transform: none; }
 }

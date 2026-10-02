@@ -15,9 +15,9 @@ function attach(el, h) {
     const now = () => performance.now();
     const anchor = () => {
         const a = [...pts.values()];
-        if (a.length === 1) return { ax: a[0].x, ay: a[0].y, d: 1 };
+        if (a.length === 1) return { ax: a[0].x, ay: a[0].y, d: 1, ang: 0 };
         const ax = (a[0].x + a[1].x) / 2, ay = (a[0].y + a[1].y) / 2;
-        return { ax, ay, d: Math.max(10, Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y)) };
+        return { ax, ay, d: Math.max(10, Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y)), ang: Math.atan2(a[1].y - a[0].y, a[1].x - a[0].x) };
     };
     const rebase = () => {
         if (!pts.size) { base = null; return; }
@@ -27,7 +27,14 @@ function attach(el, h) {
     };
     const clearLong = () => { if (longTimer) { clearTimeout(longTimer); longTimer = 0; } };
 
+    let orbit = null;                 // rechte Maustaste: Drehen/Neigen (3D)
     el.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button === 2 && h.onOrbit) {
+            orbit = { x: e.clientX, y: e.clientY, id: e.pointerId };
+            el.setPointerCapture && el.setPointerCapture(e.pointerId);
+            h.onOrbit(0, 0, 'start');
+            return;
+        }
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         el.setPointerCapture && el.setPointerCapture(e.pointerId);
         pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -52,6 +59,7 @@ function attach(el, h) {
     });
 
     el.addEventListener('pointermove', (e) => {
+        if (orbit && e.pointerId === orbit.id) { h.onOrbit(e.clientX - orbit.x, e.clientY - orbit.y, 'move'); return; }
         const p = pts.get(e.pointerId);
         if (!p) return;
         p.x = e.clientX; p.y = e.clientY;
@@ -61,13 +69,16 @@ function attach(el, h) {
         if (!base) return;
         const a = anchor();
         const scale = pts.size >= 2 ? a.d / base.d : 1;
-        h.onTransform && h.onTransform(base.ax, base.ay, a.ax, a.ay, scale);
+        let rot = pts.size >= 2 ? a.ang - base.ang : 0;
+        if (rot > Math.PI) rot -= 2 * Math.PI; else if (rot < -Math.PI) rot += 2 * Math.PI;
+        h.onTransform && h.onTransform(base.ax, base.ay, a.ax, a.ay, scale, rot, pts.size);
         const t = now();
         samples.push({ t, ax: a.ax, ay: a.ay, ls: Math.log(scale) });
         while (samples.length > 2 && t - samples[0].t > 120) samples.shift();
     });
 
     const up = (e) => {
+        if (orbit && e.pointerId === orbit.id) { orbit = null; h.onOrbit(0, 0, 'end'); return; }
         if (!pts.has(e.pointerId)) return;
         pts.delete(e.pointerId);
         clearLong();
