@@ -26,16 +26,33 @@ vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y *
 `;
 
 // ---------------------------------------------------------------- COMPUTE
-function computeFS(formula, mode, err) {
+function computeFS(formula, mode, err, de) {
     const F = formula | 0;
     const common = `#version 300 es
 #define F ${F}
 #define ERR ${err && F !== 5 ? 1 : 0}
+#define DE ${de && F !== 5 ? 1 : 0}
+#define DT (ERR == 1 || DE == 1)
 ${COMMON}
 uniform vec2 u_res;        // Puffergröße
 uniform float u_scale;     // Weltbreite pro Pufferpixel
 uniform int u_maxIter;
 layout(location = 0) out uint o_it;
+layout(location = 1) out vec4 o_de;   // R8: Distanzschätzung (6.1), Kodierung siehe encDE
+
+// ---- Distanzschätzung (6.1): DE = |z| ln|z| / |dz/dPixel| = Abstand zur Menge in Pufferpixeln. Die Ableitung
+// Dt = dz/dPixel läuft mit (Rebase lässt sie unverändert: z selbst springt nicht; BLA: Dt' = A·Dt + B·Pixel).
+// Gespeichert als log2 in 8 bit: code = (log2 DE + 8)·16 (1..255, also 1/256 … 245 Pufferpixel, Stufe 4,4 %),
+// 0 = keine Angabe (innen, Newton). Ohne Fehlerschätzung wird Dt gegen Überlauf umskaliert (dex = log2-Versatz).
+float encDE(vec2 z, vec2 Dt, float dex) {
+    float m = max(abs(Dt.x), abs(Dt.y));
+    if (!(m < 3.0e38)) return 1.0 / 255.0;      // Überlauf/NaN: verschwindend kleiner Abstand
+    if (m == 0.0) return 1.0;                   // Ableitung unterlaufen: sehr weit draußen
+    vec2 u = Dt / m;
+    float r = length(z);
+    float e = (log2(r * log(r)) - log2(m) - 0.5 * log2(dot(u, u)) - dex + 8.0) * 16.0;
+    return clamp(floor(e + 0.5), 1.0, 255.0) / 255.0;
+}
 
 // ---- Fehlerschätzung (nur finale Stufe, ERR=1): Ableitung Dt = dz/dPixel wird mitgeführt,
 // q = Rundungsfehler / |Dt| ist der äquivalente Positionsfehler in PIXELN (RMS-Summe E2).
@@ -86,21 +103,38 @@ void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res;
     vec2 pos = u_center + p * u_scale;
     float result = -1.0;
+    o_de = vec4(0.0);
 #if F == 5
     result = newton(pos);
 #else
+    float dex = 0.0;
+    bool skip = false;
 #if F == 1
     vec2 z = pos, c = u_julia;
     vec2 Dt = vec2(u_scale, 0.0);
-    if (dot(z, z) > 256.0) result = smoothI(0, z);
+    if (dot(z, z) > 256.0) {
+        result = smoothI(0, z);
+#if DE
+        o_de = vec4(encDE(z, Dt, 0.0));
+#endif
+    }
 #else
     vec2 z = vec2(0.0), c = pos;
     vec2 Dt = vec2(0.0);
 #endif
+#if F == 0
+    // Hauptkardioide und Periode-2-Kreis: mathematisch innen, keine Iteration nötig (6.1; Sicherheitsabstand
+    // ~1e-5 zum Rand, dort wird wie bisher iteriert -> f32-Rundung der Position spielt keine Rolle)
+    {
+        float xq = pos.x - 0.25, q = xq * xq + pos.y * pos.y;
+        vec2 b = pos + vec2(1.0, 0.0);
+        if (q * (q + xq) < 0.25 * pos.y * pos.y - 1e-5 || dot(b, b) < 0.0625 - 1e-5) skip = true;
+    }
+#endif
     float E2 = 0.0;
     bool unsure = false;
-    if (result < 0.0) for (int n = 1; n <= u_maxIter; n++) {
-#if ERR
+    if (result < 0.0 && !skip) for (int n = 1; n <= u_maxIter; n++) {
+#if DT
 #if F == 4
         Dt = 3.0 * cmul(cmul(z, z), Dt);
 #else
@@ -109,7 +143,11 @@ void main() {
 #if F != 1
         Dt.x += u_scale;
 #endif
+#if ERR
         { float q = EPS * (dot(z, z) + length(c) * (n == 1 ? 2.0 : 1.0)) / max(length(Dt), 1e-30); E2 += q * q; }
+#else
+        if ((n & 7) == 0 && max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; dex += 60.0; }   // ≤ 32×/Schritt: alle 8 reicht
+#endif
 #endif
 #if F == 2
         z = vec2(z.x * z.x - z.y * z.y, abs(2.0 * z.x * z.y)) + c;
@@ -124,6 +162,9 @@ void main() {
             result = smoothI(n, z);
 #if ERR
             unsure = unsureEsc(E2, Dt, z);
+#endif
+#if DE
+            o_de = vec4(encDE(z, Dt, dex));
 #endif
             break;
         }
@@ -172,20 +213,28 @@ void main() {
     int base = u_baseA, len = u_lenA, o = 0;
     vec2 Zc = orb(base);
     float result = -1.0;
+    o_de = vec4(0.0);
 #if F == 1
     vec2 dz = dc, c = vec2(0.0);
-    { vec2 z0 = Zc + dz; if (dot(z0, z0) > 256.0) { o_it = floatBitsToUint(smoothI(0, z0)); return; } }
+    { vec2 z0 = Zc + dz; if (dot(z0, z0) > 256.0) { o_it = floatBitsToUint(smoothI(0, z0));
+#if DE
+      o_de = vec4(encDE(z0, vec2(u_scale, 0.0), 0.0));
+#endif
+      return; } }
 #else
     vec2 dz = vec2(0.0), c = dc;
 #endif
     int m = 0, n = 0;
     int bwait = 0, bback = 1;       // BLA-Backoff (spart Texturzugriffe, wenn dz zu groß ist)
-#if ERR
+#if DT
 #if F == 1
     vec2 Dt = vec2(u_scale, 0.0);
 #else
     vec2 Dt = vec2(0.0);
 #endif
+    float dex = 0.0;
+#endif
+#if ERR
     float E2 = 0.0;
     bool unsure = false;
     float mc = magn(c);
@@ -210,12 +259,18 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             else {
                 bback = 1;
                 vec4 ab = texelFetch(u_blaAB, ivec2(bestE & 2047, bestE >> 11), 0);
-#if ERR
+#if DT
                 {
                     vec2 nD = cmul(ab.xy, Dt) + ab.zw * u_scale;
+#if ERR
                     float den = max(magn(nD), 1e-37);
                     float q = 2.0 * EPS * (length(ab.xy) * (magn(dz) / den) + length(ab.zw) * (mc / den));
-                    E2 += q * q; Dt = nD;
+                    E2 += q * q;
+#endif
+                    Dt = nD;
+#if !ERR
+                    if (max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; dex += 60.0; }
+#endif
                 }
 #endif
                 dz = cmul(ab.xy, dz) + cmul(ab.zw, c);
@@ -230,6 +285,9 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
 #if ERR
                     unsure = unsureEsc(E2, Dt, z);
 #endif
+#if DE
+                    o_de = vec4(encDE(z, Dt, dex));
+#endif
                     break;
                 }
                 if (m >= len - 1 || lessMag(z, dz)) {
@@ -242,7 +300,7 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             }
         }` : ''}
         vec2 Z = Zc;
-#if ERR
+#if DT
         {
             vec2 zf = Z + dz;
 #if F == 4
@@ -253,10 +311,14 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
 #if F != 1
             Dt.x += u_scale;
 #endif
+#if ERR
             float den = max(magn(Dt), 1e-37);
             float rd = magn(dz) / den;
             float q = EPS * (2.0 * length(Z) * rd + magn(dz) * rd + mc / den);
             E2 += q * q;
+#else
+            if ((n & 7) == 0 && max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; dex += 60.0; }   // ≤ 32×/Schritt: alle 8 reicht
+#endif
         }
 #endif
 #if F == 2
@@ -280,6 +342,9 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             result = smoothI(n, z);
 #if ERR
             unsure = unsureEsc(E2, Dt, z);
+#endif
+#if DE
+            o_de = vec4(encDE(z, Dt, dex));
 #endif
             break;
         }
@@ -347,10 +412,27 @@ float fetchV(usampler2D t, ivec2 c) {
     return v < -1.5 ? -1.0 : v;
 }
 
+// 6.1 Distanzschätzung (R8, Kodierung siehe computeFS/encDE): Abstand zur Menge in Pufferpixeln.
+// Innen = 0, keine Angabe (Newton, alte Ebene) = weit weg.
+float fetchDE(sampler2D t, ivec2 c, float v) {
+    if (v < 0.0) return 0.0;
+    float e = texelFetch(t, c, 0).r * 255.0;
+    return e < 0.5 ? 1e4 : exp2(e * 0.0625 - 8.0);
+}
+// Mengen-Anteil eines Bildpunkts aus der bilinear interpolierten Distanz (in Zielpixeln): weicher Saum
+// über ~1 Pixel – die Menge wird eine geschlossene Fläche mit kantengeglätteter Kontur (wie Video-Renderer)
+float deMask(float d00, float d10, float d01, float d11, vec2 f, float pxPerTexel, vec2 lohi) {
+    float d = mix(mix(d00, d10, f.x), mix(d01, d11, f.x), f.y) * pxPerTexel;
+    return 1.0 - smoothstep(lohi.x, lohi.y, d);
+}
+
 `;
 const DISPLAY_FS = `#version 300 es
 ${COMMON}
 ${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
+${Array.from({ length: NL }, (_, i) => `uniform sampler2D u_d${i};`).join('\n')}
+uniform int u_deOn;             // 6.1: Menge glatt (Distanzschätzung)
+uniform vec2 u_deLH;            // Saum: voll Mengenfarbe unter lo, Außenfarbe ab hi (Zielpixel)
 uniform vec4 u_xf[${NL}];       // Texel = Zielpixel * xy + zw
 uniform vec2 u_size[${NL}];
 uniform float u_alpha[${NL}];   // Einblendung 0..1
@@ -432,8 +514,9 @@ vec4 cubicW(float t) {
     return 0.5 * vec4(-t3 + 2.0 * t2 - t, 3.0 * t3 - 5.0 * t2 + 2.0, -3.0 * t3 + 4.0 * t2 + t, t3 - t2);
 }
 
-// Probe einer Ebene (neu): gefedert; vergrößerte Ebenen (Vorschau) auf dem Iterationswert rekonstruiert
-vec3 sampleLayerN(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w) {
+// Probe einer Ebene (neu): gefedert; vergrößerte Ebenen (Vorschau) auf dem Iterationswert rekonstruiert;
+// 6.1: Mengen-Saum aus der Distanzschätzung (dtex) pro Zielpixel
+vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidCol, out float w) {
     vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
     w = coverage(tc, size, xf);
     if (w <= 0.0) return vec3(0.0);
@@ -444,7 +527,10 @@ vec3 sampleLayerN(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w)
     ivec2 mx = ivec2(size) - 1;
     ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
     float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
-    if (u_recon == 0 || xf.x >= 0.9) return shade4(v00, v10, v01, v11, f, xf.x, voidCol);
+    float dm = 0.0;
+    if (u_deOn == 1)
+        dm = deMask(fetchDE(dtex, i0, v00), fetchDE(dtex, ivec2(i1.x, i0.y), v10), fetchDE(dtex, ivec2(i0.x, i1.y), v01), fetchDE(dtex, i1, v11), f, 1.0 / xf.x, u_deLH);
+    if (u_recon == 0 || xf.x >= 0.9) return mix(shade4(v00, v10, v01, v11, f, xf.x, voidCol), voidCol, dm);
     // Innen/Außen getrennt: Außenwerte untereinander interpolieren, Innenanteil weich-scharf darüber
     vec4 v = vec4(v00, v10, v01, v11);
     vec4 wb = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
@@ -482,7 +568,7 @@ vec3 sampleLayerN(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w)
         col = c / wo;
     }
     if (u_relief > 0.0 && u_formula != 5 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
-    if (inside > 0.0) col = mix(col, voidCol, smoothstep(0.15, 0.85, inside));
+    col = mix(col, voidCol, max(dm, smoothstep(0.15, 0.85, inside)));
     return col;
 }
 
@@ -522,7 +608,7 @@ void main() {
         // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
         vec3 acc = vec3(0.0);
         float T = 1.0;
-${Array.from({ length: NL }, (_, i) => `        if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_size[${i}], u_xf[${i}], vc, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
+${Array.from({ length: NL }, (_, i) => `        if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
         col = acc + T * col;
     }
     // Sättigung, Vignette, Gamma wie v4
@@ -649,8 +735,10 @@ void main() {
 const COPY_FS = `#version 300 es
 ${COMMON}
 uniform usampler2D u_src;
-out uint o_v;
-void main() { o_v = texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).r; }`;
+uniform sampler2D u_srcD;
+layout(location = 0) out uint o_v;
+layout(location = 1) out vec4 o_d;
+void main() { o_v = texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).r; o_d = texelFetch(u_srcD, ivec2(gl_FragCoord.xy), 0); }`;
 
 // Nachgerechnete Pixel als Punkte in den Puffer schreiben
 const SCATTER_VS = `#version 300 es

@@ -325,6 +325,8 @@ const toggles = [
     bindToggle('t-rect', () => S.rectMode, (v) => { S.rectMode = v; }),
     bindToggle('t-precise', () => S.precise, (v) => { S.precise = v; }),
     bindToggle('t-governor', () => S.governor, (v) => { S.governor = v; }),
+    bindToggle('t-deon', () => S.deOn, (v) => { S.deOn = v; }),
+    bindToggle('t-aa', () => S.aa, (v) => { S.aa = v; }),
 ];
 function bindSeg(id, get, set) {
     const g = $(id);

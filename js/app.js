@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.0.0';
+const APP_VERSION = '6.1.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -37,8 +37,17 @@ const S = {
     palette: 0, density: 1, anim: true, speed: 0.15, relief: false, reliefStrength: 0.7, banded: false, particles: true,
     cycle: 0, time: 0,
     quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.5,
+    deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
     chrome: true,
 };
+// 6.1 „glatt wie Video": A/B-Regler per URL
+//   ?aa=0     Verhalten 6.0.0 komplett (keine Distanzschätzung, 3D-Ufer/Licht wie 6.0, keine Mittelung)
+//   ?aa=N     Zahl der gemittelten 3D-Bilder im Stillstand (Standard 8, Akku 4)
+//   ?de=0     nur die Distanzschätzung aus        ?dew=W  Saumbreite in Pixeln (Standard 1)
+const AA0 = Q.get('aa') === '0';
+const DEW = Q.has('dew') ? Math.max(0.05, +Q.get('dew') || 1) : 1;
+function deActive() { return !AA0 && S.deOn && Q.get('de') !== '0' && S.formula !== 5; }
+function aaFrames() { if (AA0 || !S.aa) return 0; const n = Q.has('aa') ? +Q.get('aa') : (S.quality === 'eco' ? 4 : 8); return Math.max(0, Math.min(64, n | 0)); }
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
 
@@ -46,7 +55,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -55,7 +64,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -514,7 +523,7 @@ function onCpuMessage(e) {
     const job = RC.job && RC.job.id === m.jobId ? RC.job : (RC.pjob && RC.pjob.id === m.jobId ? RC.pjob : null);
     if (!job || job.kind !== 'cpu' || job.done) { cpuFeed(); return; }
     if (m.missingRef) { if (REF.cur && REF.cur.orbit64) sendRefTo(w, REF.cur); job.tiles.push({ x: m.x, y: m.y, w: m.w, h: m.h }); cpuFeed(); return; }
-    R.uploadTile(job, m.x, m.y, m.w, m.h, m.data);
+    R.uploadTile(job, m.x, m.y, m.w, m.h, m.data, m.de);
     job.tilesDone++;
     if (job.tilesDone >= job.tilesTotal) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; }
     cpuFeed();
@@ -530,7 +539,7 @@ function cpuFeed() {
             const tl = job.tiles.shift();
             w.busy++;
             w.postMessage(Object.assign({ type: 'tile', jobId: job.id, refId: job.refId, bufW: job.w, bufH: job.h, scale: job.scale,
-                mode: job.mode, formula: job.formula, maxIter: job.maxIter, useBLA: job.useBLA,
+                mode: job.mode, formula: job.formula, maxIter: job.maxIter, useBLA: job.useBLA, de: job.de,
                 offX: job.cpuOff[0], offY: job.cpuOff[1], jx: job.julia[0], jy: job.julia[1] }, tl));
         }
     }
@@ -584,7 +593,7 @@ function cancelJob() {
 function cancelPrefetch() { if (RC.pjob) { R.cancelJob(RC.pjob); RC.pjob = null; } }
 // Inhalt eines Bildes: was es zeigt (unabhängig von Ansicht/Auflösung). Ebenen mit anderem Inhalt
 // (andere Welt, anderes Julia-c, manuelle Iterationen) liegen ganz unten und werden ausgeblendet.
-function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a'); }
+function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : ''); }
 function maxIterFor(zoom) { return S.iterManual ? S.iterValue : autoIter(zoom); }
 
 // view: Kamera, für die gerechnet wird (Standard: aktuelle). opts: { prefetch, w, h, scale }
@@ -600,7 +609,7 @@ function startJob(key, div, p, view, opts) {
     const scale = opts.scale || 3 / (view.zoom * h0) * div;   // Welt pro Pufferpixel
     const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
                   view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
-                  julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now() };
+                  julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive() };
     if (opts.prefetch) RC.pjob = job; else RC.job = job;
     if (p.kind === 'gpu') {
         job.err = div === 1 && !opts.prefetch && !opts.preview && S.precise && S.formula !== 5;     // finale Stufe mit Fehlerschätzung
@@ -631,7 +640,7 @@ function makeFrame(job, now) {
     job.buf && (job.kept = true);
     return { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
              kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs,
-             sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false };
+             sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de };
 }
 
 function jobFinished(job, now) {
@@ -1234,7 +1243,7 @@ function presentArgs(now) {
     for (const l of RC.layers) if (!l.shown) { l.shown = true; l.t0 = now; }
     const list = orderLayers(now, S.cam);
     RC.fading = list.some(l => l.alpha < 1 && !l.prefetch);   // Vorausberechnetes liegt unter dem fertigen Bild
-    return { list, opts: { feather: FEATHER * dpr, recon: RECON } };
+    return { list, opts: { feather: FEATHER * dpr, recon: RECON, de: deActive() ? [0.25 * DEW, 1.25 * DEW] : null } };
 }
 // blendet gerade eine sichtbare Ebene ein (auch eine, die noch nie gezeigt wurde)?
 function isFading(now) {
@@ -1253,7 +1262,7 @@ function present(now, camChanged) {
     if (p.kind === 'buddha') { buddhaTick(now); return; }
     if (V3.on) {
         // 3D zeichnet bei Bewegung, Übergang, Farbanimation, Einblenden, Flug; sonst ruht es (Akku)
-        const busy = camChanged || S.anim || RC.fading || RC.dirty || V3.dir || (FLY.on && !FLY.paused) || now - V3.probeT > 300;
+        const busy = camChanged || S.anim || RC.fading || RC.dirty || V3.dir || (FLY.on && !FLY.paused) || now - V3.probeT > 300 || V3.accPending;
         RC.dirty = false;
         if (busy) present3d(now, camChanged);
         return;
@@ -1286,7 +1295,8 @@ function frameStatsRecord(now, list) {
 // Rechenansicht quadratisch (Drehen ohne Lücken) und es kommen ferne Detailstufen für den Horizont dazu.
 const T3 = self.FK3D ? self.FK3D.create(R) : null;
 const MAX_TILT = 60 * Math.PI / 180;
-const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null, settleT: 0 };
+const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null, settleT: 0,
+             accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null };
 const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, steerBase: 0, t0: 0, z0: 1, off0: 0, dir: [0, 1], scoreT: 0 };
 function can3d(f) { return !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
 function set3d(on) {
@@ -1308,6 +1318,7 @@ function update3d(now, dt) {
         if (V3.mix <= 0 && V3.dir < 0) {
             V3.dir = 0; V3.on = false; V3.heading = 0;
             for (const l of RC.layers) T3.free(l);
+            T3.freeStill(); V3.accKey = null; V3.accPending = false;
             invalidate(); emit('3d');
             return;
         }
@@ -1329,7 +1340,7 @@ function update3d(now, dt) {
     }
     // Renderauflösung an die Bildrate anpassen (Ziel: Vsync halten, mind. 50 %)
     // (nicht unter Testautomation: headless liefert ohnehin nur ~15 fps, das wäre kein Lastsignal)
-    if (navigator.webdriver || Q.get('s3d')) return;
+    if (navigator.webdriver || Q.get('s3d') || V3.accKey) return;   // Stillstands-Bilder sind kein Lastsignal für die Bewegungs-Auflösung
     const vs = RC.vsync || 16.7;
     V3.slow = (V3.slow || 0) + ((RC.dtEMA || 16) > 1.3 * vs ? 1 : -0.25);
     if (V3.slow > 40) { T3.scale = Math.max(0.45, T3.scale * 0.9); V3.slow = 0; }
@@ -1350,13 +1361,50 @@ function layers3d(list) {
     }
     return L;
 }
-function present3d(now, camChanged) {
+// 6.1 Glatte Kanten in 3D: im Stillstand wird das Bild in voller Auflösung mit Subpixel-Versatz gezeichnet und
+// gemittelt (aaFrames() Bilder, Standard 8, Akku 4); danach ruht die GPU (bei Farbanimation: weiter mitteln,
+// jedes zweite Frame). Stillstand = nichts außer Farbzyklus/Zeit hat sich seit 120 ms geändert.
+// harter Schlüssel: Kamera/Blick/Größe/Farbwahl – Änderung = neu mitteln. Weicher Schlüssel: Ebenen, Höhen-
+// Normierung – Änderung = weitermitteln mit dem bisherigen Bild als erstem Beitrag (kein kurzes Aufflackern
+// ungeglätteter Kanten, wenn im Stillstand eine vorausgerechnete Ebene einblendet)
+function still3dKey(L3, v, lk) {
+    const c = S.cam;
+    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on].join('|');
+}
+function still3dSoft(L3, v, lk) {
+    return [v.L[0].toFixed(3), v.L[1].toFixed(3), (v.cdf || []).map(x => x.toFixed(3)).join(','), L3.map(l => l.seq + ':' + l.alpha.toFixed(2)).join(','), lk.maxIter].join('|');
+}
+function present3d(now, camChanged, force) {
     const a = presentArgs(now);
     const v = view3d();
     const L3 = layers3d(a.list);
     const alpha = Math.min(1, v.mix / 0.25);
-    if (alpha < 1) R.present(a.list, S.cam, look(), null, a.opts);
-    T3.render(L3, v, look(), alpha < 1 ? alpha : undefined);
+    const lk = look();
+    const N = V3.testStill ? V3.testStill.N : aaFrames();
+    const o = { smooth: !AA0, de: [0.25 * DEW, 1.25 * DEW] };
+    let drawn = true;
+    const key = N > 0 && alpha >= 1 && !V3.dir && !(FLY.on && !FLY.paused) && !gestures.active() ? still3dKey(L3, v, lk) : null;
+    if (key !== V3.accKey) { V3.accKey = key; V3.accN = 0; V3.keyT = now; }
+    const soft = key ? still3dSoft(L3, v, lk) : null;
+    if (soft !== V3.accSoft) { V3.accSoft = soft; V3.accN = Math.min(V3.accN, 1); }
+    const still = key && !isMoving(now) && now - V3.keyT > 120;
+    if (still) {
+        if (V3.accN >= N && (!S.anim || (++V3.animTick & 1))) { drawn = false; if (force) T3.present(); }
+        else {
+            const mix2 = V3.moved && V3.accN < 3 ? 1 - (V3.accN + 1) / 4 : 0;
+            const scale = V3.testStill ? V3.testStill.scale : (Q.get('s3d') ? +Q.get('s3d') : 1);
+            T3.render(L3, v, lk, undefined, Object.assign(o, { still: { n: V3.accN, N, mix2, scale } }));
+            if (V3.accN === 0) V3.accT0 = now;
+            V3.accN++;
+            if (V3.accN === N) { V3.accMs = now - V3.accT0; V3.moved = false; }
+        }
+    } else {
+        if (alpha < 1) R.present(a.list, S.cam, lk, null, a.opts);
+        T3.render(L3, v, lk, alpha < 1 ? alpha : undefined, o);
+        V3.moved = true;
+        if (V3.accKey) V3.accN = 0;
+    }
+    V3.accPending = !!key && V3.accN < N;
     RC.list = a.list;
     if (FS.on) frameStatsRecord(now, a.list);
     // Sonde: Höhenstatistik + Interesse für den Zufallsflug (alle 300 ms, asynchron)
@@ -1667,7 +1715,7 @@ function toast(msg, ms) { emit({ toast: msg, ms }); }
 // ------------------------------------------------------------------ Screenshot / Teilen
 function captureBlob() {
     return new Promise((resolve) => {
-        if (V3.on) present3d(performance.now(), true); else presentNow();   // frisch zeichnen, dann sofort abgreifen
+        if (V3.on) present3d(performance.now(), false, true); else presentNow();   // frisch zeichnen, dann sofort abgreifen
         const out = document.createElement('canvas');
         out.width = canvas.width; out.height = canvas.height;
         const c2 = out.getContext('2d');
@@ -1697,7 +1745,7 @@ function init() {
 
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
-    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX,
+    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, AA0,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
@@ -1707,11 +1755,16 @@ const API = {
     prewarm3d() { if (T3 && !T3.warm) { T3.warm = true; T3.prewarm(); } },
     layers3dInfo() { const now = performance.now(); return layers3d(orderLayers(now, S.cam)).map(l => ({ stage: l.stage, scale: l.scale / (3 / (S.cam.zoom * canvas.height)), alpha: +l.alpha.toFixed(2), w: l.buf.w, h: l.buf.h, h3d: !!l.h3d, out: !!l.outT, front: l === RC.front })); },
     view3dInfo() { return { on: V3.on, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode }, gpu: T3 ? T3.info() : null }; },
-    bench3d(n = 5) {
+    // still = true: Bilder der Stillstands-Mittelung (volle Auflösung) statt Bewegungsbilder
+    bench3d(n = 5, still = false, smooth) {
         const gl = R.gl, ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
         if (!ext || !V3.on) return Promise.resolve(null);
         const qs = [];
-        for (let i = 0; i < n; i++) { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); present3d(performance.now(), true); gl.endQuery(ext.TIME_ELAPSED_EXT); qs.push(q); }
+        const L3 = layers3d(orderLayers(performance.now(), S.cam)), v = view3d(), lk = look();
+        for (let i = 0; i < n; i++) { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
+            T3.render(L3, v, lk, undefined, { smooth: smooth === undefined ? !AA0 : !!smooth, de: [0.25 * DEW, 1.25 * DEW], still: still ? { n: i, N: 8, mix2: 0 } : null });
+            gl.endQuery(ext.TIME_ELAPSED_EXT); qs.push(q); }
+        V3.accKey = null;
         return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
             const ms = qs.map(q => gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); qs.forEach(q => gl.deleteQuery(q)); res({ min: +Math.min(...ms).toFixed(2), max: +Math.max(...ms).toFixed(2), scale: T3.scale }); }; poll(); });
     },
@@ -1730,6 +1783,18 @@ const API = {
                  iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id };
     },
     isMoving: () => isMoving(performance.now()),
+    // Test/Messung: aktuelles Bild frisch auf den Canvas (2D: Display-Pass; 3D: gemitteltes Bild bzw. neu zeichnen)
+    snapshot() { if (V3.on) present3d(performance.now(), false, true); else presentNow(); },
+    // Test: 3D-Mittelung sofort abschließen (alle Bilder in einem Rutsch)
+    // o = { N, scale }: Messreferenz (z. B. 48 Bilder in doppelter Auflösung) statt der Standard-Mittelung
+    settle3d(o) {
+        if (!V3.on) return 0;
+        if (o || V3.testStill) { V3.testStill = o || null; V3.accKey = null; }
+        let k = 0;
+        while (k < 200) { V3.keyT = -1e9; present3d(performance.now(), false, true); k++; if (!V3.accKey || !V3.accPending) break; }
+        return { frames: k, accN: V3.accN, N: V3.testStill ? V3.testStill.N : aaFrames() };
+    },
+    still3dInfo: () => ({ key: !!V3.accKey, n: V3.accN, N: aaFrames(), pending: V3.accPending, ms: V3.accMs }),
     prof: () => PROF,
     // Pop-Metrik: frameStats(true) startet die Aufzeichnung, frameStats() liefert { frames, hard }
     frameStats(start) {
@@ -1740,7 +1805,7 @@ const API = {
         const now = performance.now(), list = BLEND ? orderLayers(now, S.cam) : presentArgs(now).list;
         const cov = coverage(list, S.cam, { gx: 24, gy: 48 });
         return { n: list.length, kMean: cov.kMean, coarse: cov.coarse, unc: cov.unc, gov: GOV.g, pool: R.poolInfo(),
-                 layers: list.map(l => ({ stage: l.stage, k: +layerK(l, S.cam).toFixed(3), alpha: +l.alpha.toFixed(2), score: +(l.score || 0).toFixed(3), exact: !!l.exact, prefetch: !!l.prefetch, w: l.buf.w, h: l.buf.h, front: l === RC.front })) };
+                 layers: list.map(l => ({ stage: l.stage, k: +layerK(l, S.cam).toFixed(3), alpha: +l.alpha.toFixed(2), score: +(l.score || 0).toFixed(3), exact: !!l.exact, prefetch: !!l.prefetch, w: l.buf.w, h: l.buf.h, front: l === RC.front, de: l.de, sig: l.sig, maxIter: l.maxIter, key: l.key.slice(-40) })) };
     },
     buddhaInfo: () => ({ max: BUD.max, version: BUD.version, w: BUD.w, h: BUD.h, busy: cpuWorkers.map(w => w.busy) }),
     // --- Test-Hooks
@@ -1755,7 +1820,7 @@ const API = {
         for (const d of divs) {
             const w = Math.ceil(canvas.width * 1.2 / d), h = Math.ceil(canvas.height * 1.2 / d);
             const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
-                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise };
+                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: deActive() };
             if (d === 1) { job.w = canvas.width; job.h = canvas.height; }
             R.beginJob(job);
             qs.push(['div' + d + '_' + job.w + 'x' + job.h, timeIt(() => { R.maxInflight = 1e9; while (job.row < job.h) R.pump(job, 0); })]);
@@ -1771,6 +1836,28 @@ const API = {
             };
             poll();
         });
+    },
+    // Test: Rechenzeit eines Puffers synchron (GPU-Warteschlange vorher leeren, danach auf das Ergebnis warten) – robuster als
+    // Timer-Queries, die unter ANGLE/Metal vorher eingereihte Hintergrundarbeit mitzählen. de: Distanzschätzung an/aus
+    benchCompute(divs, reps = 3, de) {
+        const gl = R.gl, p = plan(), out = {};
+        if (p.kind !== 'gpu') return null;
+        for (const d of divs) for (let r = 0; r < reps; r++) {
+            const w = d === 1 ? canvas.width : Math.ceil(canvas.width * 1.2 / d), h = d === 1 ? canvas.height : Math.ceil(canvas.height * 1.2 / d);
+            const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
+                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: de === undefined ? deActive() : !!de };
+            const sync = (b) => { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, b ? b.fbo : null); gl.readPixels(0, 0, 1, 1, b ? gl.RGBA_INTEGER : gl.RGBA, b ? gl.UNSIGNED_INT : gl.UNSIGNED_BYTE, b ? new Uint32Array(4) : new Uint8Array(4)); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); };
+            sync(null);                                   // gl.finish blockiert in Chrome nicht – readPixels schon
+            const t0 = performance.now();
+            R.beginJob(job); const mi = R.maxInflight; R.maxInflight = 1e9;
+            while (job.row < job.h) R.pump(job, 0);
+            sync(job.buf);
+            const t = performance.now() - t0;
+            R.maxInflight = mi; R.cancelJob(job);
+            const k = 'div' + d + '_' + w + 'x' + h;
+            out[k] = Math.min(out[k] || 1e9, +t.toFixed(2));
+        }
+        return out;
     },
     status() {
         const f = RC.front;
@@ -1790,6 +1877,8 @@ const API = {
                  values: px.map(([i, j]) => all[(h - 1 - j) * w + i]) };
     },
     readFront() { const f = RC.front; if (!f) return null; return { w: f.buf.w, h: f.buf.h, data: Array.from(R.readIterSync(f.buf)), scale: f.scale, cx: HP.toString(f.view.cx, 60), cy: HP.toString(f.view.cy, 60), zoom: f.view.zoom }; },
+    // Test: DE-Codes des fertigen Bildes (Uint8, Zeile 0 = unten) als Array
+    readFrontDE() { const f = RC.front; if (!f) return null; const d = R.readDESync(f.buf); return d ? { w: f.buf.w, h: f.buf.h, data: Array.from(d) } : null; },
 };
 self.__fraktal = API;
 init();

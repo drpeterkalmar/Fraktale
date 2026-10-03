@@ -4,7 +4,8 @@
 // Rechnung bleibt unberührt. Aufbau:
 //  * Höhe = log2(1 + geglättete Iteration), pro Ansicht auf [L0, L1] normiert (Quantile aus einer
 //    kleinen Sonde, weich nachgeführt). Die Menge selbst ist ein See, der Rand bildet die Kämme.
-//  * Pro Ebene eine Höhentextur (halbe Auflösung, RG16F: Höhe, Innen-Anteil) MIT Mipmaps: Geometrie
+//  * Pro Ebene eine Höhentextur (halbe Auflösung, RGBA16F: Höhe, Innen-Anteil, 6.1: Mengen-Anteil inkl.
+//    Distanz-Saum) MIT Mipmaps: Geometrie
 //    und Licht lesen sie passend zur Bildschirm-Größe des Gitters/Pixels -> keine Treppen, kein Flimmern.
 //  * Geometrie: Gitter im Bildraum ("projected grid"): jeder Gitterpunkt = Strahl der Kamera, trifft
 //    den Boden, wird um die Höhe angehoben (Vertex-Texture-Fetch, WebGL2). Gleichmäßige Dichte auf dem
@@ -35,6 +36,7 @@ const LAYERS = (iter) => `
 const float LAKE = 0.08;
 ${rep(N3, i => `uniform sampler2D u_h${i};`)}
 ${iter ? rep(N3, i => `uniform usampler2D u_i${i};`) : ''}
+uniform int u_smooth;     // 6.1: Ufer/Menge aus der Distanzschätzung (0 = Verhalten 6.0)
 uniform vec4 u_lt[${N3}];
 uniform vec4 u_ls[${N3}];
 uniform vec2 u_lh[${N3}];
@@ -42,20 +44,22 @@ uniform int u_n3;
 uniform vec3 u_hn;        // L0, 1/(L1-L0), Höhenmaßstab (lokal)
 uniform float u_cdf[9];   // Höhen-Entzerrung: log2(1+mu) an den Quantilen 0, 1/8 … 1 (h8: normiert)
 uniform int u_h8;         // 1 = 8-bit-Ersatzformat (Höhe schon normiert)
-vec3 hLayer(sampler2D t, vec4 lt, vec4 ls, vec2 lh, vec2 P, float foot) {
+vec4 hLayer(sampler2D t, vec4 lt, vec4 ls, vec2 lh, vec2 P, float foot) {
     vec2 tc = P * lt.x + lt.yz;
-    if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec3(0.0);
+    if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
     float e = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
     float cov = clamp(e / 10.0, 0.0, 1.0) * lt.w;
     float lod = log2(max(foot / (2.0 * ls.w), 1.0));
-    vec2 v = textureLod(t, tc / lh, lod).rg;
-    return vec3(v.r + ls.z, v.g, cov);
+    vec3 v = textureLod(t, tc / lh, lod).rgb;
+    return vec4(v.r + ls.z, v.g, v.b, cov);
 }
+float hSet = 0.0;   // 6.1: Mengen-Anteil inkl. Saum (B) aus der letzten heightAt2-Abfrage – ohne eigene Texturabfrage
 // Höhe (lokal) und Innen-Anteil am Bodenpunkt P; foot = Größe des Bodenstücks (lokal) für die Mip-Stufe.
 // shore = Innen-Anteil auf gröberer Stufe (< 0: wie inside): das Ufer fällt sanft zum See ab statt als Wand.
 vec2 heightAt2(vec2 P, float foot, float shore) {
-    float T = 1.0, h = 0.0, g = 0.0;
-${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec3 r = hLayer(u_h${i}, u_lt[${i}], u_ls[${i}], u_lh[${i}], P, foot); h += T * r.z * r.x; g += T * r.z * r.y; T *= 1.0 - r.z; }`)}
+    float T = 1.0, h = 0.0, g = 0.0, b = 0.0;
+${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec4 r = hLayer(u_h${i}, u_lt[${i}], u_ls[${i}], u_lh[${i}], P, foot); h += T * r.w * r.x; g += T * r.w * r.y; b += T * r.w * r.z; T *= 1.0 - r.w; }`)}
+    hSet = T < 0.999 ? b / (1.0 - T) : 0.0;
     // Histogramm-Entzerrung: jede Achtel-Stufe der Höhe bekommt gleich viel Fläche -> Relief auch dort,
     // wo fast alles nahe am Rand liegt (dichte Tiefen); fehlende Daten = tiefste Stufe
     float r = h + T * u_cdf[0];
@@ -73,7 +77,7 @@ ${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec3 r = hLayer(u_h${i}, u_lt
 vec2 heightAt(vec2 P, float foot) { return heightAt2(P, foot, -1.0); }
 float insideAt(vec2 P, float foot) {
     float T = 1.0, g = 0.0;
-${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec3 r = hLayer(u_h${i}, u_lt[${i}], u_ls[${i}], u_lh[${i}], P, foot); g += T * r.z * r.y; T *= 1.0 - r.z; }`)}
+${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec4 r = hLayer(u_h${i}, u_lt[${i}], u_ls[${i}], u_lh[${i}], P, foot); g += T * r.w * r.y; T *= 1.0 - r.w; }`)}
     return T < 0.999 ? g / (1.0 - T) : 0.0;
 }
 `;
@@ -101,10 +105,11 @@ uniform vec2 u_yr;        // NDC-y unten/oben (oben = knapp unter dem Horizont)
 uniform vec2 u_depth;
 uniform float u_far, u_rows;
 uniform vec3 u_sun;
+uniform vec2 u_jit;
 ${LAYERS(false)}
 out vec2 v_P;
 out float v_z, v_in, v_sh, v_shore;
-out vec3 v_V;
+out vec3 v_V, v_N;
 void main() {
     float x = mix(-1.08, 1.08, a_uv.x), y = mix(u_yr.x, u_yr.y, a_uv.y);
     vec3 d = normalize(u_fwd + x * u_tan.x * u_rt + y * u_tan.y * u_up);
@@ -127,6 +132,17 @@ void main() {
     vec2 hf = heightAt2(P, max(foot * 1.5, 0.008), shore);
     vec2 hz = vec2(0.55 * hc.x + 0.45 * hf.x, hf.y);
     v_shore = shore;
+    // 6.1: Flächennormale der gezeichneten Geometrie pro Gitterpunkt (gleiche Höhenfunktion, Nachbarpunkte im
+    // Abstand einer Gitterzelle) -> über die Dreiecke interpoliert: Felsfarbe an Steilhängen ohne Facetten
+    v_N = vec3(0.0, 0.0, 1.0);
+    if (u_smooth == 1) {
+        float e = max(foot, 0.002);
+        vec2 Px = P + vec2(e, 0.0), Py = P + vec2(0.0, e);
+        float sx = insideAt(Px, 0.25), sy = insideAt(Py, 0.25);   // Absenken zum See gehört zur Hangneigung
+        // nur die Großform (wie hc): halb so viele Höhenabfragen, die Feinneigung liefert das Licht pro Pixel
+        float hx = heightAt2(Px, gf, sx).x, hy = heightAt2(Py, gf, sy).x;
+        v_N = vec3(hc.x - hx, hc.x - hy, e);
+    }
     // weiche Schatten pro Gitterpunkt: Strahl zur Sonne durchs (grob werdende) Höhenfeld
     float sh = 1.0;
     for (int i = 1; i <= 6; i++) {
@@ -138,7 +154,7 @@ void main() {
     vec3 Q = vec3(P, hz.x);
     vec3 v = Q - u_cam;
     float zc = dot(v, u_fwd);
-    gl_Position = vec4(dot(v, u_rt) / u_tan.x, dot(v, u_up) / u_tan.y, u_depth.x * zc + u_depth.y, zc);
+    gl_Position = vec4(dot(v, u_rt) / u_tan.x + u_jit.x * zc, dot(v, u_up) / u_tan.y + u_jit.y * zc, u_depth.x * zc + u_depth.y, zc);
     v_P = P; v_z = hz.x; v_in = hz.y; v_V = v;
 }`;
 
@@ -157,11 +173,13 @@ ${CAM}
 ${UNI}
 uniform float u_fog, u_mix, u_time;
 uniform int u_particles;
+uniform int u_dbg;        // Messung: 1 = Wassermaske, 2 = Mengen-Anteil (tests/measure_smooth.py)
+uniform vec2 u_jit;       // Subpixel-Versatz (NDC) der Mittelung im Stillstand
 ${SKYCOL}
 ${LAYERS(true)}
 in vec2 v_P;
 in float v_z, v_in, v_sh, v_shore;
-in vec3 v_V;
+in vec3 v_V, v_N;
 out vec4 fragColor;
 ${SH.PAL_GLSL}
 // Farbe einer Ebene: bilinear eingefärbt (wie 2D), Deckkraft = gefederter Rand × Einblendung
@@ -179,16 +197,40 @@ vec4 cLayer(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
     vec3 c01 = v01 < 0.0 ? lakeCol : exteriorColor(v01), c11 = v11 < 0.0 ? lakeCol : exteriorColor(v11);
     return vec4(mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y), cov);
 }
+// 6.1: Außenfarben nur untereinander interpoliert, Mengen-Anteil pro Bildschirmpixel aus der bilinear
+// interpolierten Distanzschätzung (wie 2D) -> runde, kantengeglättete Ufer auch nah am Boden. Ebenen ohne
+// DE-Sampler (die fernsten): Innen-Anteil der 4 Texel, weich.
+// 6.1: Außenfarben nur untereinander interpoliert (kein Farbmischen mit der Seefarbe pro Texel -> keine Pixeltreppe);
+// die Menge legt main() pro Bildschirmpixel aus dem B-Kanal der Höhentextur darüber. Alle 4 Texel innen: Seefarbe.
+vec4 cLayerS(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
+    vec2 tc = P * lt.x + lt.yz;
+    if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
+    float e0 = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
+    float cov = clamp(e0 / 10.0, 0.0, 1.0) * lt.w;
+    vec2 q = tc - 0.5;
+    vec2 fl = floor(q), f = q - fl;
+    ivec2 mx = ivec2(ls.xy) - 1;
+    ivec2 i0 = clamp(ivec2(fl), ivec2(0), mx), i1 = clamp(ivec2(fl) + 1, ivec2(0), mx);
+    vec4 v = vec4(fetchV(t, i0), fetchV(t, ivec2(i1.x, i0.y)), fetchV(t, ivec2(i0.x, i1.y)), fetchV(t, i1));
+    vec4 wb = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+    float wo = dot(wb, step(0.0, v));
+    vec3 c = vec3(0.0);
+    if (v.x >= 0.0) c += wb.x * exteriorColor(v.x);
+    if (v.y >= 0.0) c += wb.y * exteriorColor(v.y);
+    if (v.z >= 0.0) c += wb.z * exteriorColor(v.z);
+    if (v.w >= 0.0) c += wb.w * exteriorColor(v.w);
+    return vec4(wo > 0.0 ? c / wo : lakeCol, cov);
+}
 bool covers(vec4 lt, vec4 ls, vec2 P) { vec2 tc = P * lt.x + lt.yz; return tc.x >= 0.0 && tc.y >= 0.0 && tc.x <= ls.x && tc.y <= ls.y; }
 // Farbe am Bodenpunkt: schärfste Ebene oben; zu feine Ebenen (Texel << Pixel, flimmern) treten zurück,
-// wenn darunter eine gröbere die Stelle deckt
+// wenn darunter eine gröbere die Stelle deckt. setOut: Mengen-Anteil (6.1, für die Wassermaske pro Pixel)
 vec3 colorAt(vec2 P, float foot, vec3 lakeCol, vec3 noData) {
     bool cv[${N3}];
 ${rep(N3, i => `    cv[${i}] = u_n3 > ${i} && covers(u_lt[${i}], u_ls[${i}], P);`)}
     vec3 acc = vec3(0.0);
     float T = 1.0;
 ${rep(N3, i => `    if (cv[${i}] && T > 0.01) {
-        vec4 c = cLayer(u_i${i}, u_lt[${i}], u_ls[${i}], P, lakeCol);
+        vec4 c = u_smooth == 1 ? cLayerS(u_i${i}, u_lt[${i}], u_ls[${i}], P, lakeCol) : cLayer(u_i${i}, u_lt[${i}], u_ls[${i}], P, lakeCol);
         bool below = false;
         ${rep(N3, j => j > i ? `below = below || cv[${j}];` : '')}
         if (below) c.a *= smoothstep(0.1, 0.3, u_ls[${i}].w / max(foot, 1e-9));
@@ -200,17 +242,29 @@ ${POST}
 void main() {
     float foot = max(max(length(dFdx(v_P)), length(dFdy(v_P))), 1e-6);
     float dl = max(foot * 1.5, 0.004);
-    float h0 = heightAt(v_P, dl).x;
+    vec2 h0v = heightAt(v_P, dl);
+    float h0 = h0v.x, setB = hSet;          // Mengen-Anteil: dieselbe Abfrage wie die Lichtnormale
     float hx1 = heightAt(v_P + vec2(dl, 0.0), dl).x, hy1 = heightAt(v_P + vec2(0.0, dl), dl).x;
     vec3 n = normalize(vec3(h0 - hx1, h0 - hy1, dl));
-    float water = smoothstep(0.45, 0.6, v_in) * smoothstep(0.35, 0.6, v_shore);
+    // 6.1: Mengen-Anteil pro Pixel (x: inkl. Saum -> Farbe, y: nur Menge -> Wasser), leicht nachgeschärft
+    vec2 setPx = vec2(0.0);
+    if (u_smooth == 1) setPx = vec2(smoothstep(0.15, 0.85, setB), smoothstep(0.3, 0.7, h0v.y));
     // steile Flächen des Netzes (Ufer, Kammflanken): Felsfarbe statt senkrecht gestreckter Bodentextur
-    vec3 gn = normalize(cross(dFdx(v_V), dFdy(v_V)));
+    vec3 gn = u_smooth == 1 ? normalize(v_N) : normalize(cross(dFdx(v_V), dFdy(v_V)));
     float steep = smoothstep(0.55, 0.2, abs(gn.z));
     vec3 lakeCol = mix(vec3(0.015, 0.025, 0.06), u_zenith, 0.5);
     vec3 alb = colorAt(v_P, foot, lakeCol, u_haze);
+    if (u_smooth == 1) alb = mix(alb, lakeCol, setPx.x);
+    // Wasser: 6.0 pro Gitterpunkt (v_in interpoliert), 6.1 pro Bildschirmpixel aus der Distanzschätzung
+    float water = (u_smooth == 1 ? setPx.y : smoothstep(0.45, 0.6, v_in)) * smoothstep(0.35, 0.6, v_shore);
+    // an fast senkrechten Wänden (> ~80°) Fels statt gestreckter Ufermaske; die Seeschüssel selbst bleibt spiegelnd
+    if (u_smooth == 1) water *= smoothstep(0.08, 0.22, abs(gn.z));
+    if (u_dbg == 1) { fragColor = vec4(vec3(water), 1.0); return; }
+    if (u_dbg == 3) { fragColor = vec4(steep, setPx.x, smoothstep(0.35, 0.6, v_shore), 1.0); return; }   // Messhilfe: Fels/Menge/See
+    if (u_dbg == 2) { float sm = u_smooth == 1 ? setPx.x : colorAt(v_P, foot, vec3(1.0), vec3(0.0)).g - colorAt(v_P, foot, vec3(0.0), vec3(0.0)).g; fragColor = vec4(vec3(sm), 1.0); return; }
     // Fels: einfarbig (Palette gedämpft) mit leichter Schichtung nach Höhe – keine gestreckte Bodentextur
-    vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (0.55 + 0.12 * sin(v_z / max(u_hn.z, 1e-4) * 40.0));
+    // (6.1: Schichtung gröber und schwächer – an den nun glatt schattierten Steilwänden flimmerte das feine Muster)
+    vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (u_smooth == 1 ? 0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0) : 0.55 + 0.12 * sin(v_z / max(u_hn.z, 1e-4) * 40.0));
     alb = mix(alb, rock, steep * u_mix);
     float sh = v_sh;
     float dif = max(dot(n, u_sun), 0.0);
@@ -234,26 +288,36 @@ ${CAM}
 ${SKYCOL}
 ${POST}
 out vec4 fragColor;
+uniform vec2 u_jit;
 void main() {
-    vec2 ndc = gl_FragCoord.xy / u_target * 2.0 - 1.0;
+    vec2 ndc = gl_FragCoord.xy / u_target * 2.0 - 1.0 - u_jit;
     vec3 d = normalize(u_fwd + ndc.x * u_tan.x * u_rt + ndc.y * u_tan.y * u_up);
     fragColor = vec4(post(skyColor(d)), 1.0);
 }`;
 
 const BLIT_FS = `#version 300 es
 precision highp float;
-uniform sampler2D u_src;
+uniform sampler2D u_src, u_src2;
 uniform vec2 u_target;
-uniform float u_alpha;
+uniform float u_alpha, u_mix2;    // u_mix2 > 0: Überblendung vom Bewegungsbild (u_src2) zum gemittelten Bild
 out vec4 fragColor;
-void main() { fragColor = vec4(texture(u_src, gl_FragCoord.xy / u_target).rgb, u_alpha); }`;
+void main() {
+    vec2 uv = gl_FragCoord.xy / u_target;
+    vec3 c = texture(u_src, uv).rgb;
+    if (u_mix2 > 0.0) c = mix(c, texture(u_src2, uv).rgb, u_mix2);
+    fragColor = vec4(c, u_alpha);
+}`;
 
 // Höhentextur einer Ebene (halbe Auflösung, 2×2 gemittelt): R = log2(1+mu) - Basis (innen: log2(maxIter)),
 // G = Innen-Anteil. Newton: Höhe aus der Schrittzahl innerhalb des Beckens.
+// (6.1 geprüft und verworfen: Höhe am Rand per Distanzschätzung auf die Innenhöhe rampen – macht jedes Filament
+// zur senkrechten Wand; G aus der DE inkl. Saum – macht dichte Zonen in der Ferne zu Seen. Die Distanzschätzung
+// wirkt in 3D deshalb pro Bildschirmpixel auf Farbe und Wassermaske, die Geometrie bleibt wie 6.0.)
 const HBUILD_FS = `#version 300 es
 ${SH.COMMON}
 ${UNI}
 uniform usampler2D u_src;
+uniform sampler2D u_srcD;     // 6.1: Distanzschätzung -> B = Mengen-Anteil inkl. Saum (Saum 0,25–1,25 Pixel wie 2D)
 uniform vec2 u_srcSize;
 uniform float u_base, u_inH;
 uniform int u_h8;
@@ -263,14 +327,15 @@ ${SH.PAL_GLSL}
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy) * 2;
     ivec2 mx = ivec2(u_srcSize) - 1;
-    float h = 0.0, g = 0.0;
+    float h = 0.0, g = 0.0, b = 0.0;
     for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
-        float v = fetchV(u_src, min(p + ivec2(i, j), mx));
-        if (v < 0.0) { h += u_inH; g += 1.0; }
-        else h += log2(1.0 + (u_formula == 5 ? mod(v, 1000.0) : v));
+        ivec2 c = min(p + ivec2(i, j), mx);
+        float v = fetchV(u_src, c);
+        if (v < 0.0) { h += u_inH; g += 1.0; b += 1.0; }
+        else { h += log2(1.0 + (u_formula == 5 ? mod(v, 1000.0) : v)); b += 1.0 - smoothstep(0.25, 1.25, fetchDE(u_srcD, c, v)); }
     }
-    h *= 0.25; g *= 0.25;
-    o = u_h8 == 1 ? vec4(clamp((h - u_L.x) * u_L.y, 0.0, 1.0), g, 0.0, 1.0) : vec4(h - u_base, g, 0.0, 1.0);
+    h *= 0.25; g *= 0.25; b *= 0.25;
+    o = u_h8 == 1 ? vec4(clamp((h - u_L.x) * u_L.y, 0.0, 1.0), g, b, 1.0) : vec4(h - u_base, g, b, 1.0);
 }`;
 
 // Sonde: PW×PH Stichproben (Iterationswert der schärfsten Ebene) in einem Fenster ±u_win um den Fokus
@@ -313,7 +378,7 @@ function create(R) {
             if (l.h3d) free(l);
             const tex = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_2D, tex);
-            gl.texStorage2D(gl.TEXTURE_2D, levels, T.h8 ? gl.RGBA8 : gl.RG16F, w, h);
+            gl.texStorage2D(gl.TEXTURE_2D, levels, T.h8 ? gl.RGBA8 : gl.RGBA16F, w, h);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -328,6 +393,7 @@ function create(R) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, l.h3d.fb);
         gl.viewport(0, 0, w, h);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, l.buf.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, l.buf.de || R.dummyD()); gl.uniform1i(U.u_srcD, 1);
         gl.uniform2f(U.u_srcSize, l.buf.w, l.buf.h);
         const base = L ? L[0] : 0;
         gl.uniform1f(U.u_base, base);
@@ -399,6 +465,7 @@ function create(R) {
                 gl.uniform1i(U['u_i' + i], unit++);
             }
         }
+
         gl.uniform4fv(U.u_lt, ltB); gl.uniform4fv(U.u_ls, lsB);
         if (U.u_lh) gl.uniform2fv(U.u_lh, lhB);
         gl.uniform1i(U.u_n3, Math.min(N3, list.length));
@@ -442,10 +509,34 @@ function create(R) {
     }
     function terrainProgram() { return R.program('t3terr', TERRAIN_FS, TERRAIN_VS); }
 
-    // ---------------- Offscreen-Ziel (Farbe + Tiefe), skaliert
+    // ---------------- Offscreen-Ziele (Farbe + Tiefe): fbo = Bewegung (skaliert), fboS = Stillstand (volle
+    // Auflösung, Subpixel-Versatz), acc = gemitteltes Bild (6.1)
+    let fboS = null, acc = null;
     function target(w, h) {
         if (fbo && fbo.w === w && fbo.h === h) return fbo;
         if (fbo) { gl.deleteFramebuffer(fbo.fb); gl.deleteTexture(fbo.tex); gl.deleteRenderbuffer(fbo.rb); }
+        fbo = makeTarget(w, h, true);
+        return fbo;
+    }
+    function targetS(w, h) {
+        if (fboS && fboS.w === w && fboS.h === h) return fboS;
+        if (fboS) { gl.deleteFramebuffer(fboS.fb); gl.deleteTexture(fboS.tex); gl.deleteRenderbuffer(fboS.rb); }
+        fboS = makeTarget(w, h, true);
+        return fboS;
+    }
+    function accTarget(w, h) {
+        if (acc && acc.w === w && acc.h === h) return acc;
+        if (acc) { gl.deleteFramebuffer(acc.fb); gl.deleteTexture(acc.tex); }
+        acc = makeTarget(w, h, false);
+        return acc;
+    }
+    // Speicher der Stillstands-Ziele freigeben (beim Verlassen von 3D)
+    T.freeStill = function () {
+        if (fboS) { gl.deleteFramebuffer(fboS.fb); gl.deleteTexture(fboS.tex); gl.deleteRenderbuffer(fboS.rb); fboS = null; }
+        if (acc) { gl.deleteFramebuffer(acc.fb); gl.deleteTexture(acc.tex); acc = null; }
+    };
+    function makeTarget(w, h, depth) {
+        let fbo;
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
@@ -453,13 +544,16 @@ function create(R) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        const rb = gl.createRenderbuffer();
-        gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
-        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+        let rb = null;
+        if (depth) {
+            rb = gl.createRenderbuffer();
+            gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+            gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+        }
         const fb = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+        if (rb) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         fbo = { fb, tex, rb, w, h };
         return fbo;
@@ -474,15 +568,26 @@ function create(R) {
 
     // ---------------- Zeichnen
     // list: Ebenen (schärfste zuerst, max. N3) · v: { tilt, heading, height, mix, focus{cx,cy}, u, L[2], time }
-    T.render = function (list, v, look, alpha) {
+    // o (6.1): { smooth, de:[lo,hi], still:{ n, N, mix2 } | null }. still = Mittelung im Stillstand: Bild n wird
+    // in voller Auflösung mit Subpixel-Versatz (Halton 2,3) gezeichnet und gleitend gemittelt (Gewicht 1/(n+1),
+    // ab N 1/N – nur nötig, solange sich die Farben animieren); mix2 = Restanteil des letzten Bewegungsbilds
+    // (weiche Überblendung statt hartem Wechsel auf die volle Auflösung).
+    const halton = (i, b) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
+    T.render = function (list, v, look, alpha, o) {
+        o = o || {};
         const W = R.canvas.width, H = R.canvas.height;
-        const sw = Math.max(16, Math.round(W * T.scale)), shh = Math.max(16, Math.round(H * T.scale));
+        const still = o.still || null;
+        const ss = still ? (still.scale || 1) : T.scale;
+        const sw = Math.max(16, Math.round(W * ss)), shh = Math.max(16, Math.round(H * ss));
+        const sm = !!o.smooth;
         list = list.slice(0, N3);
         for (const l of list) if (!l.h3d || (T.h8 && (!l.h3d.L || Math.abs(l.h3d.L[0] - v.L[0]) + Math.abs(l.h3d.L[1] - v.L[1]) > 0.05 * (v.L[1] - v.L[0])))) buildHeight(l, look, v.L);
         layerUniforms(list, v.focus, v.u);
         const c = T.camera(v, W, H);
         T.lastCam = c;
-        const tg = target(sw, shh);
+        const tg = still ? targetS(sw, shh) : target(sw, shh);
+        let jit = [0, 0];
+        if (still && still.N > 1) { const k = still.n % 64 + 1; jit = [(halton(k, 2) - 0.5) * 2 / sw, (halton(k, 3) - 0.5) * 2 / shh]; }
         gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
         gl.viewport(0, 0, sw, shh);
         const sunAz = 2.35, sunEl = 0.5;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief)
@@ -495,6 +600,7 @@ function create(R) {
         gl.useProgram(pr.p);
         camUniforms(U, c, sw, shh);
         gl.uniform3fv(U.u_sun, sun); gl.uniform3fv(U.u_haze, haze); gl.uniform3fv(U.u_zenith, zenith);
+        gl.uniform2fv(U.u_jit, jit);
         gl.disable(gl.DEPTH_TEST);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         // Gelände
@@ -503,6 +609,7 @@ function create(R) {
         pr = terrainProgram(); U = pr.loc;
         gl.useProgram(pr.p);
         camUniforms(U, c, sw, shh);
+        gl.uniform2fv(U.u_jit, jit);
         const cols = Math.max(48, Math.min(200, Math.round(W / ((T.mobile ? 8 : 6) * Math.max(1, W / 900))))), rows = Math.max(64, Math.min(300, Math.round(cols * H / W * 1.3)));
         const g = makeGrid(cols, rows);
         gl.uniform2f(U.u_yr, -2.1, c.yTop);   // weit unter den Bildrand: hohe Berge vorn heben die unterste Reihe an
@@ -518,6 +625,7 @@ function create(R) {
         gl.uniform1f(U.u_fog, 9);
         gl.uniform1f(U.u_mix, v.mix);
         gl.uniform1f(U.u_time, v.time || 0);
+        gl.uniform1i(U.u_smooth, sm ? 1 : 0);
         R.setPalette(U, look);
         gl.uniform1f(U.u_density, look.density);
         gl.uniform1i(U.u_formula, look.formula);
@@ -528,18 +636,46 @@ function create(R) {
         gl.drawElements(gl.TRIANGLES, g.n, gl.UNSIGNED_SHORT, 0);
         gl.bindVertexArray(R.vao);
         gl.disable(gl.DEPTH_TEST);
+        let src = tg, src2 = null, mix2 = 0;
+        if (still) {
+            // gleitender Mittelwert im Akkumulationsziel (Blending mit konstantem Gewicht)
+            const ac = accTarget(sw, shh);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, ac.fb);
+            gl.viewport(0, 0, sw, shh);
+            const w = still.n === 0 ? 1 : 1 / Math.min(still.n + 1, Math.max(1, still.N));
+            gl.enable(gl.BLEND); gl.blendColor(0, 0, 0, w); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
+            pr = R.program('t3blit', BLIT_FS); U = pr.loc;
+            gl.useProgram(pr.p);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src, 0);
+            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src2, 1);
+            gl.uniform2f(U.u_target, sw, shh); gl.uniform1f(U.u_alpha, 1); gl.uniform1f(U.u_mix2, 0);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.disable(gl.BLEND);
+            src = ac;
+            if (still.mix2 > 0 && fbo) { src2 = fbo; mix2 = still.mix2; }
+        }
         // auf den Canvas (lineare Hochskalierung), alpha < 1 = Überblendung mit dem 2D-Bild
+        T.present(src, src2, mix2, alpha);
+    };
+    // gemitteltes bzw. letztes Bild auf den Canvas (ohne neu zu zeichnen)
+    T.present = function (src, src2, mix2, alpha) {
+        src = src || acc || fbo;
+        if (!src) return;
+        const W = R.canvas.width, H = R.canvas.height;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, W, H);
-        pr = R.program('t3blit', BLIT_FS); U = pr.loc;
+        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
         gl.useProgram(pr.p);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, (src2 || src).tex); gl.uniform1i(U.u_src2, 1);
         gl.uniform2f(U.u_target, W, H);
         gl.uniform1f(U.u_alpha, alpha === undefined ? 1 : alpha);
+        gl.uniform1f(U.u_mix2, src2 ? mix2 : 0);
         if (alpha !== undefined && alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.disable(gl.BLEND);
     };
+    T.hasAcc = () => !!acc;
 
     // ---------------- Sonde (asynchron): Iterationswerte im Fenster ±win um den Fokus
     const PW = 48, PH = 48;
@@ -547,7 +683,7 @@ function create(R) {
     T.probe = function (list, focus, u, win) {
         if (probeBusy) return null;
         list = list.slice(0, N3);
-        if (!probeBuf) probeBuf = R.acquireBuffer(PW, PH);
+        if (!probeBuf) probeBuf = R.acquireBuffer(PW, PH, true);
         layerUniforms(list, focus, u);
         const pr = R.program('t3probe', PROBE_FS), U = pr.loc;
         gl.useProgram(pr.p);
@@ -580,7 +716,7 @@ function create(R) {
         R.prewarm('t3hb', HBUILD_FS); R.prewarm('t3probe', PROBE_FS);
     };
     // GPU-Zeit-Messung (Test-Hook)
-    T.info = () => ({ h8: T.h8, scale: T.scale, grid: grid ? [grid.cols, grid.rows] : null, target: fbo ? [fbo.w, fbo.h] : null });
+    T.info = () => ({ h8: T.h8, scale: T.scale, grid: grid ? [grid.cols, grid.rows] : null, target: fbo ? [fbo.w, fbo.h] : null, still: fboS ? [fboS.w, fboS.h] : null });
     return T;
 }
 

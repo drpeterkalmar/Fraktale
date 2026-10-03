@@ -12,4 +12,5 @@ run python3 tests/test_ui.py
 run python3 tests/test_features.py
 run python3 tests/test_blend.py
 run python3 tests/test_3d.py
+run python3 tests/test_smooth.py
 exit $fail

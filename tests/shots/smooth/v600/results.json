@@ -1,0 +1,180 @@
+{
+ "label": "v600",
+ "de": null,
+ "views": {
+  "ganz": {
+   "maxIter": 300,
+   "dev16": 3.62,
+   "dev16_gt30": 0.0431,
+   "dev1": 0.0,
+   "noise_app": 0.1304,
+   "noise_ref16": 0.0562,
+   "dark_app": 0.7788,
+   "dark_ref16": 0.768,
+   "ref_inside": 0.7689,
+   "ref_near05": 0.0458,
+   "doneS": 1.15,
+   "benchGPU": {
+    "present": 1.27,
+    "div1_824x1678": 15.36,
+    "div2_495x1007": 17.4,
+    "div4_248x504": 18.34
+   }
+  },
+  "seepferd_300": {
+   "maxIter": 307,
+   "dev16": 16.93,
+   "dev16_gt30": 0.1991,
+   "dev1": 0.02,
+   "noise_app": 0.1233,
+   "noise_ref16": 0.0498,
+   "dark_app": 0.1391,
+   "dark_ref16": 0.0768,
+   "ref_inside": 0.0503,
+   "ref_near05": 0.185,
+   "doneS": 1.06,
+   "benchGPU": {
+    "present": 1.36,
+    "div1_824x1678": 23.85,
+    "div2_495x1007": 28.33,
+    "div4_248x504": 24.9
+   }
+  },
+  "seepferd_300_it3000": {
+   "maxIter": 3000,
+   "dev16": 17.38,
+   "dev16_gt30": 0.2121,
+   "dev1": 0.02,
+   "noise_app": 0.1674,
+   "noise_ref16": 0.0437,
+   "dark_app": 0.0941,
+   "dark_ref16": 0.066,
+   "ref_inside": 0.0003,
+   "ref_near05": 0.235,
+   "doneS": 0.94,
+   "benchGPU": {
+    "present": 1.6,
+    "div1_824x1678": 63.07,
+    "div2_495x1007": 74.99,
+    "div4_248x504": 65.83
+   }
+  },
+  "minibrot_3e6": {
+   "maxIter": 2097,
+   "dev16": 1.08,
+   "dev16_gt30": 0.013,
+   "dev1": 0.0,
+   "noise_app": 0.0184,
+   "noise_ref16": 0.0121,
+   "dark_app": 0.3336,
+   "dark_ref16": 0.3303,
+   "ref_inside": 0.0,
+   "ref_near05": 0.0182,
+   "doneS": 1.35,
+   "benchGPU": {
+    "present": 0.93,
+    "div1_824x1678": 40.89,
+    "div2_495x1007": 59.76,
+    "div4_248x504": 45.36
+   }
+  },
+  "rand_1e9": {
+   "maxIter": 4050,
+   "dev16": 32.69,
+   "dev16_gt30": 0.4013,
+   "dev1": 6.1,
+   "noise_app": 0.3334,
+   "noise_ref16": 0.0824,
+   "dark_app": 0.1088,
+   "dark_ref16": 0.0553,
+   "ref_inside": 0,
+   "ref_near05": 0.4495,
+   "doneS": 1.35,
+   "benchGPU": {
+    "present": 1.39,
+    "div1_824x1678": 116.62,
+    "div2_495x1007": 170.99,
+    "div4_248x504": 132.17
+   }
+  }
+ },
+ "views3d": {
+  "ganz": {
+   "bench3d": {
+    "min": 2.91,
+    "max": 10.53,
+    "scale": 0.65
+   },
+   "bench3dStill": null,
+   "flick": 0.991,
+   "flickSettled": 0.75,
+   "shoreLen": 1230.7,
+   "jag": 1.019,
+   "water": 0.0865,
+   "stairWater": 0.106,
+   "setLen": 5759.4,
+   "jagSet": 1.366,
+   "setFrac": 0.1578,
+   "stairSet": 0.353
+  },
+  "seepferd_300": {
+   "bench3d": {
+    "min": 3.55,
+    "max": 15.61,
+    "scale": 0.65
+   },
+   "bench3dStill": null,
+   "flick": 7.499,
+   "flickSettled": 7.174,
+   "shoreLen": 1943.4,
+   "jag": 1.058,
+   "water": 0.1196,
+   "stairWater": 0.129,
+   "setLen": 70094.5,
+   "jagSet": 3.134,
+   "setFrac": 0.2249,
+   "stairSet": 0.494
+  },
+  "minibrot_3e6": {
+   "bench3d": {
+    "min": 2.57,
+    "max": 16.67,
+    "scale": 0.65
+   },
+   "bench3dStill": null,
+   "flick": 1.828,
+   "flickSettled": 1.98,
+   "shoreLen": 205.9,
+   "jag": 1.017,
+   "water": 0.0013,
+   "stairWater": 0.072,
+   "setLen": 226.8,
+   "jagSet": 1.029,
+   "setFrac": 0.0013,
+   "stairSet": 0.115
+  },
+  "rand_1e9": {
+   "bench3d": {
+    "min": 2.96,
+    "max": 17.42,
+    "scale": 0.65
+   },
+   "bench3dStill": null,
+   "flick": 12.805,
+   "flickSettled": 13.375,
+   "shoreLen": 0.0,
+   "jag": 0.0,
+   "water": 0.0,
+   "stairWater": null,
+   "setLen": 0.0,
+   "jagSet": 0.0,
+   "setFrac": 0.0,
+   "stairSet": null
+  }
+ },
+ "flick2d": {
+  "meanAbs": 20.883,
+  "gt30": 0.168
+ },
+ "errors": []
+}

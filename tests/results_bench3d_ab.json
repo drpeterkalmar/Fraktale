@@ -1,0 +1,78 @@
+{
+ "ganz": {
+  "6.0": {
+   "min": 3.13,
+   "median": 3.27
+  },
+  "6.1": {
+   "min": 3.27,
+   "median": 3.3
+  },
+  "6.1still": {
+   "min": 6.24,
+   "median": 6.26
+  },
+  "mehr_pct_min": 4.5
+ },
+ "seepferd_300": {
+  "6.0": {
+   "min": 3.77,
+   "median": 3.81
+  },
+  "6.1": {
+   "min": 3.93,
+   "median": 3.96
+  },
+  "6.1still": {
+   "min": 7.39,
+   "median": 7.51
+  },
+  "mehr_pct_min": 4.2
+ },
+ "minibrot_3e6": {
+  "6.0": {
+   "min": 3.46,
+   "median": 3.47
+  },
+  "6.1": {
+   "min": 3.61,
+   "median": 3.64
+  },
+  "6.1still": {
+   "min": 6.99,
+   "median": 7.11
+  },
+  "mehr_pct_min": 4.3
+ },
+ "rand_1e9": {
+  "6.0": {
+   "min": 3.99,
+   "median": 4.02
+  },
+  "6.1": {
+   "min": 4.16,
+   "median": 4.21
+  },
+  "6.1still": {
+   "min": 7.56,
+   "median": 7.67
+  },
+  "mehr_pct_min": 4.3
+ },
+ "gpu": {
+  "h8": false,
+  "scale": 0.65,
+  "grid": [
+   103,
+   273
+  ],
+  "target": [
+   536,
+   1091
+  ],
+  "still": [
+   824,
+   1678
+  ]
+ }
+}

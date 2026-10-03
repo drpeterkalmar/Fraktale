@@ -29,16 +29,20 @@ function tile(q) {
         return;
     }
     const useBLA = perturb && q.useBLA && ref.bla;
+    // 6.1: Distanzschätzung (Code wie GPU) als zweiter Kanal
+    const deS = q.de ? scale : 0, de = q.de ? new Uint8Array(w * h) : null;
     for (let j = 0; j < h; j++) {
         const py = -((y + j) + 0.5 - bufH / 2) * scale;
         for (let i = 0; i < w; i++) {
             const px = ((x + i) + 0.5 - bufW / 2) * scale;
-            out[(h - 1 - j) * w + i] = perturb   // GL-Zeilenfolge (unten zuerst)
-                ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA)
-                : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy);
+            const k = (h - 1 - j) * w + i;          // GL-Zeilenfolge (unten zuerst)
+            out[k] = perturb
+                ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, deS)
+                : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy, deS);
+            if (de) de[k] = C.OUT.de;
         }
     }
-    self.postMessage({ type: 'tile', jobId: q.jobId, x, y, w, h, data: out }, [out.buffer]);
+    self.postMessage({ type: 'tile', jobId: q.jobId, x, y, w, h, data: out, de }, de ? [out.buffer, de.buffer] : [out.buffer]);
 }
 
 // Einzelne (von der GPU als unsicher markierte) Pixel exakt in f64 nachrechnen

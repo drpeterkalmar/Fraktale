@@ -81,39 +81,52 @@ function create(canvas) {
     }
 
     // ------------------------------------------------ Iterationspuffer
+    // 6.1: Rechenpuffer haben einen zweiten Kanal (R8, COLOR_ATTACHMENT1) mit der Distanzschätzung –
+    // der Iterationspuffer (R32UI) selbst bleibt bitgenau wie bisher. 5 Byte pro Pixel.
     const pool = [];
-    function makeBuffer(w, h) {
-        const tex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R32UI, w, h);
+    function texture(fmt, w, h) {
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, fmt, w, h);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        return t;
+    }
+    function makeBuffer(w, h, plain) {
+        const tex = texture(gl.R32UI, w, h);
+        const de = plain ? null : texture(gl.R8, w, h);
         const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        return { tex, fbo, w, h, inUse: false, id: Math.random() };
-    }
-    // Puffer holen (wiederverwenden, wenn gleiche Größe frei)
-    function acquire(w, h) {
-        for (const b of pool) if (!b.inUse && b.w === w && b.h === h) { b.inUse = true; return b; }
-        // unbenutzte Puffer verwerfen, wenn der Pool sein Speicherbudget überschreitet (älteste zuerst)
-        let bytes = w * h * 4;
-        for (const b of pool) bytes += b.w * b.h * 4;
-        for (let i = 0; i < pool.length && bytes > R.poolBudget; ) {
-            if (!pool[i].inUse) { bytes -= pool[i].w * pool[i].h * 4; freeBuffer(pool[i]); pool.splice(i, 1); } else i++;
+        if (de) {
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, de, 0);
+            gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         }
-        const b = makeBuffer(w, h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { tex, de, fbo, w, h, plain: !!plain, inUse: false, id: Math.random() };
+    }
+    const bpp = (b) => b.plain ? 4 : 5;
+    // Puffer holen (wiederverwenden, wenn gleiche Größe frei); plain = ohne DE-Kanal (Hilfspuffer)
+    function acquire(w, h, plain) {
+        plain = !!plain;
+        for (const b of pool) if (!b.inUse && b.w === w && b.h === h && b.plain === plain) { b.inUse = true; return b; }
+        // unbenutzte Puffer verwerfen, wenn der Pool sein Speicherbudget überschreitet (älteste zuerst)
+        let bytes = w * h * (plain ? 4 : 5);
+        for (const b of pool) bytes += b.w * b.h * bpp(b);
+        for (let i = 0; i < pool.length && bytes > R.poolBudget; ) {
+            if (!pool[i].inUse) { bytes -= pool[i].w * pool[i].h * bpp(pool[i]); freeBuffer(pool[i]); pool.splice(i, 1); } else i++;
+        }
+        const b = makeBuffer(w, h, plain);
         b.inUse = true;
         pool.push(b);
         return b;
     }
     function release(b) { if (b) b.inUse = false; }
     R.poolBudget = 48 * 1024 * 1024;  // Iterationspuffer gesamt (Bytes); app.js setzt es je nach Gerät
-    R.poolInfo = () => { let used = 0, free = 0; for (const b of pool) { if (b.inUse) used += b.w * b.h * 4; else free += b.w * b.h * 4; } return { n: pool.length, usedMB: +(used / 1048576).toFixed(1), freeMB: +(free / 1048576).toFixed(1) }; };
-    function freeBuffer(b) { gl.deleteTexture(b.tex); gl.deleteFramebuffer(b.fbo); }
+    R.poolInfo = () => { let used = 0, free = 0; for (const b of pool) { if (b.inUse) used += b.w * b.h * bpp(b); else free += b.w * b.h * bpp(b); } return { n: pool.length, usedMB: +(used / 1048576).toFixed(1), freeMB: +(free / 1048576).toFixed(1) }; };
+    function freeBuffer(b) { gl.deleteTexture(b.tex); if (b.de) gl.deleteTexture(b.de); gl.deleteFramebuffer(b.fbo); }
 
     // ------------------------------------------------ Referenzorbit / BLA
     function tex2D(internal, format, type, data, comps) {
@@ -208,7 +221,7 @@ function create(canvas) {
     };
 
     function drawCompute(job, y0, rows) {
-        const pr = program('c' + job.formula + job.mode + (job.err ? 'e' : ''), SH.computeFS(job.formula, job.mode, job.err));
+        const pr = program('c' + job.formula + job.mode + (job.err ? 'e' : '') + (job.de ? 'd' : ''), SH.computeFS(job.formula, job.mode, job.err, job.de));
         const L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, job.buf.fbo);
@@ -248,12 +261,16 @@ function create(canvas) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
-    // CPU-Kachel in einen Job-Puffer hochladen (Float32 -> uint-Bits)
-    R.uploadTile = function (job, x, y, w, h, f32) {
+    // CPU-Kachel in einen Job-Puffer hochladen (Float32 -> uint-Bits); de8: DE-Codes (Uint8) oder null
+    R.uploadTile = function (job, x, y, w, h, f32, de8) {
         const u32 = new Uint32Array(f32.buffer, f32.byteOffset, w * h);
         gl.bindTexture(gl.TEXTURE_2D, job.buf.tex);
         // Kachel-y zählt von oben; Worker liefert die Zeilen bereits in GL-Reihenfolge (unten zuerst)
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, job.h - y - h, w, h, gl.RED_INTEGER, gl.UNSIGNED_INT, u32);
+        if (job.buf.de) {
+            gl.bindTexture(gl.TEXTURE_2D, job.buf.de);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, x, job.h - y - h, w, h, gl.RED, gl.UNSIGNED_BYTE, de8 || new Uint8Array(w * h));
+        }
     };
 
     // ------------------------------------------------ Präzisions-Korrektur
@@ -261,7 +278,7 @@ function create(canvas) {
     // Rückgabe: Int32Array [x, yVonOben, ...]
     R.findUnsure = function (buf) {
         const pw = Math.ceil(buf.w / 32), ph = buf.h;
-        const tmp = acquire(pw, ph);
+        const tmp = acquire(pw, ph, true);
         const pr = program('flagpack', SH.FLAGPACK_FS), L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, tmp.fbo);
@@ -296,6 +313,7 @@ function create(canvas) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, b.fbo);
         gl.viewport(0, 0, buf.w, buf.h);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, buf.tex); gl.uniform1i(pr.loc.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, buf.de || dummyD()); gl.uniform1i(pr.loc.u_srcD, 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         return b;
@@ -324,8 +342,10 @@ function create(canvas) {
         gl.useProgram(scatterProg.p);
         gl.uniform2f(scatterProg.size, buf.w, buf.h);
         gl.bindFramebuffer(gl.FRAMEBUFFER, buf.fbo);
+        if (buf.de) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]);   // DE-Kanal behält die GPU-Schätzung
         gl.viewport(0, 0, buf.w, buf.h);
         gl.drawArrays(gl.POINTS, 0, n);
+        if (buf.de) gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindVertexArray(vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -372,6 +392,9 @@ function create(canvas) {
             gl.activeTexture(gl.TEXTURE0 + i);
             gl.bindTexture(gl.TEXTURE_2D, l ? l.buf.tex : dummyU());
             gl.uniform1i(L['u_t' + i], i);
+            gl.activeTexture(gl.TEXTURE0 + SH.NL + i);
+            gl.bindTexture(gl.TEXTURE_2D, l && l.buf.de ? l.buf.de : dummyD());
+            gl.uniform1i(L['u_d' + i], SH.NL + i);
             if (l) {
                 xfBuf.set(xfFor(l, cam, tw, th), 4 * i);
                 sizeBuf[2 * i] = l.buf.w; sizeBuf[2 * i + 1] = l.buf.h;
@@ -384,6 +407,8 @@ function create(canvas) {
         gl.uniform1f(L.u_mixB, opts.mixB === undefined ? 1 : opts.mixB);
         gl.uniform1f(L.u_feather, opts.feather || 0);
         gl.uniform1i(L.u_recon, opts.recon ? 1 : 0);
+        gl.uniform1i(L.u_deOn, opts.de ? 1 : 0);
+        if (opts.de) gl.uniform2f(L.u_deLH, opts.de[0], opts.de[1]);
         gl.uniform1i(L.u_formula, look.formula);
         gl.uniform1i(L.u_maxIter, look.maxIter);
         setPalette(L, look);
@@ -399,6 +424,7 @@ function create(canvas) {
     R.program = program;
     R.setPalette = (L, look) => setPalette(L, look);
     R.dummyU = () => dummyU();
+    R.dummyD = () => dummyD();
     function setPalette(L, look) {
         const p = look.pal;
         gl.uniform3fv(L.u_palA, p.a); gl.uniform3fv(L.u_palB, p.b); gl.uniform3fv(L.u_palC, p.c); gl.uniform3fv(L.u_palD, p.d);
@@ -410,6 +436,13 @@ function create(canvas) {
     function nearest() {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    }
+    let _dummyD = null;
+    function dummyD() {       // DE-Platzhalter: Code 0 = keine Angabe
+        if (_dummyD) return _dummyD;
+        _dummyD = texture(gl.R8, 1, 1);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+        return _dummyD;
     }
     let _dummy = null;
     function dummyU() {
@@ -507,6 +540,22 @@ function create(canvas) {
             return f;
         });
     };
+    // Nur für Tests: DE-Codes eines Puffers (Uint8, Zeile 0 = unten)
+    // (eigener Hilfs-Framebuffer: readBuffer(ATTACHMENT1) am Rechenpuffer selbst ließ unter ANGLE/Metal spätere
+    // Schreibzugriffe auf dessen Iterationskanal ins Leere laufen)
+    R.readDESync = function (buf) {
+        if (!buf.de) return null;
+        const u = new Uint8Array(buf.w * buf.h * 4);
+        const fb = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb);
+        gl.framebufferTexture2D(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, buf.de, 0);
+        gl.readPixels(0, 0, buf.w, buf.h, gl.RGBA, gl.UNSIGNED_BYTE, u);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.deleteFramebuffer(fb);
+        const out = new Uint8Array(buf.w * buf.h);
+        for (let i = 0; i < out.length; i++) out[i] = u[4 * i];
+        return out;
+    };
     // Nur für Tests: synchrones Auslesen
     R.readIterSync = function (buf) {
         const u = new Uint32Array(buf.w * buf.h * 4);
@@ -527,7 +576,7 @@ function create(canvas) {
 
     // Kurzer Selbsttest: kompilieren die Perturbations-Shader auf diesem Gerät?
     R.selfTest = function () {
-        try { program('c0perturb', SH.computeFS(0, 'perturb')); program('c0direct', SH.computeFS(0, 'direct')); program('display', SH.DISPLAY_FS); return true; }
+        try { program('c0perturbd', SH.computeFS(0, 'perturb', false, true)); program('c0directd', SH.computeFS(0, 'direct', false, true)); program('display', SH.DISPLAY_FS); return true; }
         catch (e) { console.warn('GPU-Selbsttest:', e.message); return false; }
     };
 
