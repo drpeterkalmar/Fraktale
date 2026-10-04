@@ -18,6 +18,7 @@
 (function (root) {
 'use strict';
 const SH = root.FKShaders, HP = root.FKHP;
+const SH_LUM = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
 const N3 = 6;                 // Ebenen im 3D-Pass (2 Sampler je Ebene: Iteration + Höhe)
 const FOV = 50 * Math.PI / 180;
 
@@ -44,6 +45,8 @@ uniform int u_n3;
 uniform vec3 u_hn;        // L0, 1/(L1-L0), Höhenmaßstab (lokal)
 uniform float u_cdf[9];   // Höhen-Entzerrung: log2(1+mu) an den Quantilen 0, 1/8 … 1 (h8: normiert)
 uniform int u_h8;         // 1 = 8-bit-Ersatzformat (Höhe schon normiert)
+uniform int u_alpine;     // 6.2 Alpin-Look: 0 aus, 1 Wald, 2 See, 3 Wiese im Tal
+const float ALP_W = 0.1;  // Wasserspiegel des Talsees (relative Höhe)
 vec4 hLayer(sampler2D t, vec4 lt, vec4 ls, vec2 lh, vec2 P, float foot) {
     vec2 tc = P * lt.x + lt.yz;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
@@ -131,6 +134,8 @@ void main() {
     vec2 hc = heightAt2(P, gf, shore);
     vec2 hf = heightAt2(P, max(foot * 1.5, 0.008), shore);
     vec2 hz = vec2(0.55 * hc.x + 0.45 * hf.x, hf.y);
+    // 6.2 Alpin + See: Talboden unter dem Wasserspiegel wird flache Wasserfläche (nicht in der Menge selbst)
+    if (u_alpine == 2) hz.x = mix(hz.x, max(hz.x, ALP_W * u_hn.z), 1.0 - smoothstep(0.15, 0.45, shore));
     v_shore = shore;
     // 6.1: Flächennormale der gezeichneten Geometrie pro Gitterpunkt (gleiche Höhenfunktion, Nachbarpunkte im
     // Abstand einer Gitterzelle) -> über die Dreiecke interpoliert: Felsfarbe an Steilhängen ohne Facetten
@@ -167,7 +172,10 @@ vec3 skyColor(vec3 d) {
     return c;
 }`;
 
-const TERRAIN_FS = `#version 300 es
+// ALP = 0 Standard, 1 + Schnee (helle Menge), 2 + Alpin-Look: die Standardvariante enthält den neuen Code nicht
+// (ungenutzte Zweige kosteten sonst ~40 % Bildzeit – der Compiler plant Register für den schlimmsten Fall)
+const TERRAIN_FS_SRC = (alp) => `#version 300 es
+#define ALP ${alp}
 ${SH.COMMON}
 ${CAM}
 ${UNI}
@@ -175,8 +183,37 @@ uniform float u_fog, u_mix, u_time;
 uniform int u_particles;
 uniform int u_dbg;        // Messung: 1 = Wassermaske, 2 = Mengen-Anteil (tests/measure_smooth.py)
 uniform vec2 u_jit;       // Subpixel-Versatz (NDC) der Mittelung im Stillstand
+uniform vec3 u_setCol;    // 6.2 Farbe der Menge
+uniform vec2 u_noff[4];   // 6.2 Welt-verankertes Rauschen: Versatz je Oktave (Fokus / Wellenlänge, mod 256)
+uniform float u_nfr;      // Bruchteil von log2(lokale Einheit) – Oktaven-Überblendung beim Zoomen
 ${SKYCOL}
 ${LAYERS(true)}
+// Rauschen, das an der Welt (dem Fraktal) haftet und beim Zoomen nicht schwimmt: 4 Oktaven, Wellenlänge der Oktave
+// j = 2^-(u_nfr+j+3) Bildhälften; beim Tieferzoomen gleitet jede Oktave eine Stufe weiter (Gewicht sin², Summe
+// konstant), zu feine Oktaven blenden aus. Das Rauschen selbst liegt in einer kachelbaren Textur (u_noise, 256
+// Zellen pro Kachel, R/G = zwei unabhängige Gradientenrauschen, B = doppelt so fein) mit Mipmaps: ein Zugriff pro
+// Oktave statt Rechnen im Shader (das kostete im Alpin-Look ~90 % Bildzeit), Mipmaps glätten in der Ferne.
+uniform sampler2D u_noise;
+// (full = false: nur x – für Schnee ohne Alpin-Look; y nur aus den groben Oktaven)
+vec2 nDx, nDy;    // Bildschirm-Ableitungen von v_P (in main() außerhalb von Verzweigungen bestimmt) -> Mip-Stufe
+vec3 wnoise(vec2 P, float foot, bool full) {
+    vec3 acc = vec3(0.0); vec3 ws = vec3(0.0);
+    for (int j = 0; j < 4; j++) {
+        float sc = exp2(u_nfr + float(j) + 3.0);
+        float t = float(j) + u_nfr;
+        float w = sin(0.785398 * t); w *= w;
+        w *= 1.0 - smoothstep(0.35, 0.9, foot * sc);
+        if (w <= 0.02) continue;
+        float k = sc * (1.0 / 256.0);
+        vec3 q = textureGrad(u_noise, (u_noff[j] + P * sc) * (1.0 / 256.0), nDx * k, nDy * k).rgb;
+        acc.x += w * q.r; ws.x += w;
+        if (!full) continue;
+        if (j < 3) { acc.y += w * q.g; ws.y += w; }
+        float wf = w * smoothstep(1.0, 2.5, t); acc.z += wf * q.r; ws.z += wf;
+        if (j == 3) { acc.z += 1.5 * w * q.b; ws.z += 1.5 * w; }
+    }
+    return vec3(ws.x > 0.0 ? acc.x / ws.x : 0.5, ws.y > 0.0 ? acc.y / ws.y : 0.5, ws.z > 0.0 ? acc.z / ws.z : 0.5);
+}
 in vec2 v_P;
 in float v_z, v_in, v_sh, v_shore;
 in vec3 v_V, v_N;
@@ -240,7 +277,8 @@ ${rep(N3, i => `    if (cv[${i}] && T > 0.01) {
 }
 ${POST}
 void main() {
-    float foot = max(max(length(dFdx(v_P)), length(dFdy(v_P))), 1e-6);
+    nDx = dFdx(v_P); nDy = dFdy(v_P);
+    float foot = max(max(length(nDx), length(nDy)), 1e-6);
     float dl = max(foot * 1.5, 0.004);
     vec2 h0v = heightAt(v_P, dl);
     float h0 = h0v.x, setB = hSet;          // Mengen-Anteil: dieselbe Abfrage wie die Lichtnormale
@@ -253,33 +291,126 @@ void main() {
     vec3 gn = u_smooth == 1 ? normalize(v_N) : normalize(cross(dFdx(v_V), dFdy(v_V)));
     float steep = smoothstep(0.55, 0.2, abs(gn.z));
     vec3 lakeCol = mix(vec3(0.015, 0.025, 0.06), u_zenith, 0.5);
+    // 6.2 Farbe der Menge: Schwarz = See wie bisher; dunkle Farben = getöntes Wasser; helle (Weiß) = matte Schnee-/
+    // Gletscherfläche (keine Wellen, keine Himmelsspiegelung, bläuliche Schatten, sanfter Glanz)
+    float setL = dot(u_setCol, vec3(0.299, 0.587, 0.114));
+    float snowSet = smoothstep(0.35, 0.6, setL);
+    if (setL > 0.02) lakeCol = mix(mix(u_setCol, u_zenith, 0.3), u_setCol * 0.86, snowSet);
     vec3 alb = colorAt(v_P, foot, lakeCol, u_haze);
+    // Alpin-Look: Höhenzonen statt Palette (relative Höhe im Bild -> funktioniert bei jedem Zoom)
+    float snowAlp = 0.0, lakeAlp = 0.0, canopy = 1.0;
+    vec3 nz = vec3(0.5);
+#if ALP >= 2
+    if (u_alpine > 0) nz = wnoise(v_P, foot, true);
+    if (u_alpine > 0) {
+        float zr = u_hn.z > 1e-4 ? h0 / u_hn.z : 0.5;
+        float jn = nz.x - 0.5;
+        float slope = 1.0 - n.z;
+        float zV = 0.17 + 0.07 * jn, zM = 0.46 + 0.12 * jn, zS = 0.64 + 0.12 * jn;
+        vec3 meadow = mix(vec3(0.24, 0.38, 0.11), vec3(0.44, 0.47, 0.19), smoothstep(0.3, 0.7, nz.y));
+        vec3 rockA = mix(vec3(0.31, 0.29, 0.27), vec3(0.47, 0.45, 0.42), smoothstep(0.25, 0.75, nz.y)) * (0.9 + 0.1 * sin(zr * 40.0 + jn * 6.0));
+        vec3 valley = meadow * 1.08;
+        if (u_alpine == 1) {
+            // Wald: dunkle Baumkronen mit Lichtpunkten (feines Rauschen), zur Baumgrenze hin aufgelockert
+            float crown = smoothstep(0.45, 0.75, nz.z);
+            vec3 forest = mix(vec3(0.03, 0.08, 0.035), vec3(0.10, 0.21, 0.07), crown);
+            float dens = 1.0 - smoothstep(zV - 0.06, zV + 0.04, zr + 0.06 * (nz.y - 0.5));
+            dens *= smoothstep(0.2, 0.5, nz.y + 0.3 * dens);
+            valley = mix(meadow, forest, clamp(dens * 1.3, 0.0, 1.0));
+            canopy = mix(1.0, 0.75 + 0.5 * crown, dens);
+        }
+        float steepR = max(steep, smoothstep(0.35, 0.65, slope));
+        float tV = smoothstep(zV - 0.03, zV + 0.03, zr);
+        float tR = smoothstep(zM - 0.05, zM + 0.05, zr);
+        snowAlp = smoothstep(zS - 0.04, zS + 0.04, zr) * (1.0 - smoothstep(0.3, 0.55, slope)) * (1.0 - steep);
+        vec3 zc = mix(valley, meadow, u_alpine == 1 ? 0.0 : tV);
+        if (u_alpine == 1) zc = mix(valley, meadow, tV * smoothstep(zV, zV + 0.08, zr));
+        zc = mix(zc, rockA, max(tR, steepR * tV));
+        zc = mix(zc, vec3(0.92, 0.94, 0.99), snowAlp);
+        if (u_alpine == 2) lakeAlp = (1.0 - smoothstep(ALP_W - 0.008, ALP_W + 0.002, zr)) * (1.0 - setPx.x) * (1.0 - smoothstep(0.3, 0.6, v_shore));
+        alb = zc;
+    }
+#endif
     if (u_smooth == 1) alb = mix(alb, lakeCol, setPx.x);
+    else if (u_alpine > 0) alb = mix(alb, lakeCol, smoothstep(0.45, 0.6, v_in));
     // Wasser: 6.0 pro Gitterpunkt (v_in interpoliert), 6.1 pro Bildschirmpixel aus der Distanzschätzung
     float water = (u_smooth == 1 ? setPx.y : smoothstep(0.45, 0.6, v_in)) * smoothstep(0.35, 0.6, v_shore);
     // an fast senkrechten Wänden (> ~80°) Fels statt gestreckter Ufermaske; die Seeschüssel selbst bleibt spiegelnd
     if (u_smooth == 1) water *= smoothstep(0.08, 0.22, abs(gn.z));
+    float snowM = (u_smooth == 1 ? setPx.x : smoothstep(0.45, 0.6, v_in)) * snowSet;   // Schneefläche der Menge
+    water *= 1.0 - snowSet;
     if (u_dbg == 1) { fragColor = vec4(vec3(water), 1.0); return; }
     if (u_dbg == 3) { fragColor = vec4(steep, setPx.x, smoothstep(0.35, 0.6, v_shore), 1.0); return; }   // Messhilfe: Fels/Menge/See
     if (u_dbg == 2) { float sm = u_smooth == 1 ? setPx.x : colorAt(v_P, foot, vec3(1.0), vec3(0.0)).g - colorAt(v_P, foot, vec3(0.0), vec3(0.0)).g; fragColor = vec4(vec3(sm), 1.0); return; }
     // Fels: einfarbig (Palette gedämpft) mit leichter Schichtung nach Höhe – keine gestreckte Bodentextur
     // (6.1: Schichtung gröber und schwächer – an den nun glatt schattierten Steilwänden flimmerte das feine Muster)
     vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (u_smooth == 1 ? 0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0) : 0.55 + 0.12 * sin(v_z / max(u_hn.z, 1e-4) * 40.0));
-    alb = mix(alb, rock, steep * u_mix);
+    if (u_alpine == 0) alb = mix(alb, rock, steep * u_mix * (1.0 - snowM));
     float sh = v_sh;
     float dif = max(dot(n, u_sun), 0.0);
     vec3 V = normalize(v_V);
     vec3 lit = alb * (0.30 + 0.95 * dif * mix(0.35, 1.0, sh)) + alb * 0.14 * (0.5 + 0.5 * n.z);
+    lit *= canopy;
+    // Schnee (Menge und Gipfel): matt, Schatten bläulich (Himmelslicht), sanfter Glanz statt Spiegelung,
+    // leichte Struktur aus dem Welt-Rauschen
+#if ALP
+    float snowAll = max(snowM, snowAlp * (1.0 - setPx.x));
+    if (snowAll > 0.0) {
+        if (u_alpine == 0) nz.x = wnoise(v_P, foot, false).x;
+        // Gletscher (Menge) liegt flach auf Seehöhe: Normale beruhigen (sonst zeigen ferne Flächen Gitterfacetten)
+        vec3 ns = normalize(mix(n, vec3(0.0, 0.0, 1.0), 0.6 * snowM));
+        float difS = max(dot(ns, u_sun), 0.0), shS = mix(0.55, 1.0, sh);
+        vec3 salb = alb * (0.95 + 0.08 * (nz.x - 0.5));
+        vec3 sl = salb * (vec3(0.60, 0.645, 0.72) * (0.7 + 0.3 * ns.z) + vec3(1.0, 0.97, 0.92) * 0.55 * difS * mix(0.35, 1.0, shS));
+        sl += vec3(1.0, 0.97, 0.92) * pow(max(dot(reflect(V, ns), u_sun), 0.0), 18.0) * 0.1 * shS;
+        lit = mix(lit, sl, snowAll);
+    }
+#endif
     // See: Himmel spiegeln (Fresnel) + Sonnenglanz, leichte Wellen
     vec3 wn = normalize(vec3(0.012 * sin(v_P.x * 90.0 + u_time * 1.3) , 0.012 * cos(v_P.y * 80.0 + u_time), 1.0));
     vec3 R = reflect(V, wn);
     float fr = 0.12 + 0.88 * pow(1.0 - max(dot(-V, wn), 0.0), 4.0);
     vec3 wcol = mix(lakeCol, skyColor(R), fr) + vec3(1.0, 0.9, 0.7) * pow(max(dot(R, u_sun), 0.0), 120.0) * sh * 0.8;
     lit = mix(lit, wcol, water);
+#if ALP >= 2
+    if (lakeAlp > 0.0) {      // Talsee (Alpin): Wasser-Shader, etwas grünlich-tief
+        // Wellen nur im Nahbereich (in der Ferne würden sie zum Moiré), Spiegelung des klaren Himmels
+        float wa = 0.012 * (1.0 - smoothstep(0.0015, 0.006, foot));
+        vec3 wn2 = normalize(vec3(wa * sin(v_P.x * 90.0 + u_time * 1.3), wa * cos(v_P.y * 80.0 + u_time), 1.0));
+        vec3 R2 = reflect(V, wn2);
+        float fr2 = 0.12 + 0.88 * pow(1.0 - max(dot(-V, wn2), 0.0), 4.0);
+        vec3 lc = mix(vec3(0.02, 0.07, 0.08), u_zenith, 0.35);
+        lit = mix(lit, mix(lc, skyColor(R2), fr2) + vec3(1.0, 0.95, 0.85) * pow(max(dot(R2, u_sun), 0.0), 120.0) * sh * 0.7, lakeAlp);
+    }
+#endif
     vec3 col = mix(alb, lit, u_mix);
     float fog = 1.0 - exp(-pow(length(v_V) / u_fog, 2.0));
     col = mix(col, skyColor(V), fog * u_mix);
     fragColor = vec4(post(col), 1.0);
+}`;
+
+const TERRAIN_FS = TERRAIN_FS_SRC(0), TERRAIN_FS_S = TERRAIN_FS_SRC(1), TERRAIN_FS_X = TERRAIN_FS_SRC(2);
+
+// Rauschtextur (einmalig, 512×512 = 2 Texel pro Zelle, Periode 256 Zellen): Gradientenrauschen mit Hash mod 256
+const NOISE_FS = `#version 300 es
+precision highp float;
+precision highp int;
+out vec4 o;
+vec2 grad2(vec2 c, uint seed) {
+    uvec2 q = uvec2(mod(c, 256.0));
+    uint h = (q.x * 1597334677u) ^ (q.y * 3812015801u) ^ (seed * 2654435761u);
+    h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
+    return vec2(float(h & 0xffffu), float(h >> 16)) * (2.0 / 65535.0) - 1.0;
+}
+float gnoise(vec2 p, uint seed) {
+    vec2 i = floor(p), f = fract(p), u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    float a = dot(grad2(i, seed), f), b = dot(grad2(i + vec2(1.0, 0.0), seed), f - vec2(1.0, 0.0));
+    float c = dot(grad2(i + vec2(0.0, 1.0), seed), f - vec2(0.0, 1.0)), d = dot(grad2(i + vec2(1.0, 1.0), seed), f - vec2(1.0, 1.0));
+    return clamp(0.5 + 0.75 * mix(mix(a, b, u.x), mix(c, d, u.x), u.y), 0.0, 1.0);
+}
+void main() {
+    vec2 Q = gl_FragCoord.xy * 0.5;
+    o = vec4(gnoise(Q, 1u), gnoise(Q, 2u), gnoise(Q * 2.0, 3u), 1.0);
 }`;
 
 const SKY_FS = `#version 300 es
@@ -338,26 +469,42 @@ void main() {
     o = u_h8 == 1 ? vec4(clamp((h - u_L.x) * u_L.y, 0.0, 1.0), g, b, 1.0) : vec4(h - u_base, g, b, 1.0);
 }`;
 
-// Sonde: PW×PH Stichproben (Iterationswert der schärfsten Ebene) in einem Fenster ±u_win um den Fokus
+// Sonde: PW×PH Stichproben (Iterationswert der schärfsten Ebene) in einem Fenster ±u_win um den Fokus.
+// 6.2: die unteren 8 Bit tragen die Distanz zur Menge (Flug zum Mengenrand): 0 = keine Angabe, 1 = innen,
+// 2..254 = log2(Abstand in lokalen Einheiten = Bildhälften) in 1/16-Stufen ab 2^-12, 255 = weiter als der
+// Kodierbereich der Ebene (> 245 Pufferpixel). Die Höhe verliert damit
+// 8 Mantissenbits (relativ 3e-5) – für Höhenstatistik und Flugwertung ohne Bedeutung.
 const PROBE_FS = `#version 300 es
 ${SH.COMMON}
 ${rep(N3, i => `uniform usampler2D u_i${i};`)}
+${rep(N3, i => `uniform sampler2D u_d${i};`)}
 uniform vec4 u_lt[${N3}];
 uniform vec4 u_ls[${N3}];
 uniform int u_n3;
 uniform vec2 u_psize;
 uniform float u_win;
 out uint o;
-uint probe(usampler2D t, vec4 lt, vec4 ls, vec2 P, out bool ok) {
+uint probe(usampler2D t, sampler2D d, vec4 lt, vec4 ls, vec2 P, out bool ok) {
     vec2 tc = P * lt.x + lt.yz;
     ok = tc.x >= 0.0 && tc.y >= 0.0 && tc.x < ls.x && tc.y < ls.y;
-    return ok ? texelFetch(t, ivec2(tc), 0).r : 0u;
+    if (!ok) return 0u;
+    ivec2 c = ivec2(tc);
+    uint r = texelFetch(t, c, 0).r;
+    float v = uintBitsToFloat(r);
+    uint code = 0u;
+    if (v < 0.0 && v > -3.0) code = 1u;
+    else {
+        float e = texelFetch(d, c, 0).r * 255.0;
+        if (e >= 254.5) code = 255u;          // Distanz über dem Kodierbereich (> 245 Pufferpixel): weit weg
+        else if (e >= 0.5) code = uint(clamp((log2(exp2(e * 0.0625 - 8.0) * ls.w) + 12.0) * 16.0 + 2.0, 2.0, 254.0));
+    }
+    return (r & 0xFFFFFF00u) | code;
 }
 void main() {
     vec2 P = (gl_FragCoord.xy / u_psize * 2.0 - 1.0) * u_win;
     bool ok = false;
     uint r = floatBitsToUint(-1e30);
-${rep(N3, i => `    if (!ok && u_n3 > ${i}) { uint v = probe(u_i${i}, u_lt[${i}], u_ls[${i}], P, ok); if (ok) r = v; }`)}
+${rep(N3, i => `    if (!ok && u_n3 > ${i}) { uint v = probe(u_i${i}, u_d${i}, u_lt[${i}], u_ls[${i}], P, ok); if (ok) r = v; }`)}
     o = r;
 }`;
 
@@ -422,10 +569,17 @@ function create(R) {
         const f = [Math.sin(ps), Math.cos(ps)], r = [Math.cos(ps), -Math.sin(ps)];
         const cam = [-f[0] * D * Math.sin(th), -f[1] * D * Math.sin(th), D * Math.cos(th)];
         const fwd = [f[0] * Math.sin(ph), f[1] * Math.sin(ph), -Math.cos(ph)];
-        const rt = [r[0], r[1], 0];
-        const up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
+        let rt = [r[0], r[1], 0];
+        let up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
+        if (v.roll) {     // 6.2: Schräglage im Flug (um die Blickachse)
+            const cr = Math.cos(v.roll), sr = Math.sin(v.roll);
+            const rt2 = rt.map((x, k) => x * cr + up[k] * sr), up2 = up.map((x, k) => x * cr - rt[k] * sr);
+            rt = rt2; up = up2;
+        }
         const hor = Math.sin(ph) > 1e-4 ? Math.cos(ph) / (tanH * Math.sin(ph)) : 10;
-        return { cam, fwd, rt, up, tan: [tanH * aspect, tanH], yTop: Math.min(1.03, hor - 0.002), f, r, D, aspect };
+        // Gitter bis knapp unter den Horizont; mit Schräglage liegt er auf einer Seite höher
+        const yTop = v.roll ? (hor + 1.08 * aspect * Math.abs(Math.sin(v.roll))) / Math.cos(v.roll) : hor;
+        return { cam, fwd, rt, up, tan: [tanH * aspect, tanH], yTop: Math.min(1.03, yTop - 0.002), f, r, D, aspect };
     };
     // Bildschirmpunkt (NDC) -> Bodenpunkt (lokal), null über dem Horizont
     T.groundAt = function (c, x, y) {
@@ -507,7 +661,11 @@ function create(R) {
         grid = { cols, rows, vao, vb, ib, n: idx.length };
         return grid;
     }
-    function terrainProgram() { return R.program('t3terr', TERRAIN_FS, TERRAIN_VS); }
+    function terrainProgram(look) {
+        if (look && look.alpine) return R.program('t3terrX', TERRAIN_FS_X, TERRAIN_VS);
+        if (look && look.setCol && SH_LUM(look.setCol) > 0.34) return R.program('t3terrS', TERRAIN_FS_S, TERRAIN_VS);
+        return R.program('t3terr', TERRAIN_FS, TERRAIN_VS);
+    }
 
     // ---------------- Offscreen-Ziele (Farbe + Tiefe): fbo = Bewegung (skaliert), fboS = Stillstand (volle
     // Auflösung, Subpixel-Versatz), acc = gemitteltes Bild (6.1)
@@ -566,6 +724,52 @@ function create(R) {
         return [0, 1, 2].map(k => p.a[k] + p.b[k] * Math.cos(6.28318 * (p.c[k] * t + p.d[k])));
     }
 
+    // ---------------- 6.2 Rauschtextur (einmalig auf der GPU erzeugt, nur für Schnee/Alpin)
+    let noiseTex = null;
+    function getNoise() {
+        if (noiseTex) return noiseTex;
+        const N = 512;
+        noiseTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, noiseTex);
+        gl.texStorage2D(gl.TEXTURE_2D, Math.log2(N) + 1, gl.RGBA8, N, N);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        const fb = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, noiseTex, 0);
+        gl.viewport(0, 0, N, N);
+        const pr = R.program('t3noise', NOISE_FS);
+        gl.useProgram(pr.p);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(fb);
+        gl.bindTexture(gl.TEXTURE_2D, noiseTex);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        return noiseTex;
+    }
+
+    // ---------------- 6.2 Welt-verankertes Rauschen (Alpin, Schnee): Versatz je Oktave exakt aus der BigInt-Kamera
+    // (Fokus / Wellenlänge mod 256 – im Deep Zoom wäre das in f32 unmöglich), Wellenlänge = Zweierpotenz der Welt
+    const noffB = new Float32Array(8);
+    function noiseUniforms(U, focus, u) {
+        if (!U.u_noff) return;
+        const L = Math.log2(u), n0 = Math.floor(L);
+        for (let j = 0; j < 4; j++) {
+            const sh = 1088 + (n0 - j - 3);     // Welt / 2^(n0-j-3) = Festkomma >> sh
+            for (let a = 0; a < 2; a++) {
+                const v = a ? focus.cy : focus.cx;
+                if (sh < 24) { noffB[2 * j + a] = 0; continue; }
+                const M = 256n << BigInt(sh);
+                const r = ((v % M) + M) % M;
+                noffB[2 * j + a] = Number(r >> BigInt(sh - 24)) / 16777216;
+            }
+        }
+        gl.uniform2fv(U.u_noff, noffB);
+        gl.uniform1f(U.u_nfr, L - n0);
+    }
+
     // ---------------- Zeichnen
     // list: Ebenen (schärfste zuerst, max. N3) · v: { tilt, heading, height, mix, focus{cx,cy}, u, L[2], time }
     // o (6.1): { smooth, de:[lo,hi], still:{ n, N, mix2 } | null }. still = Mittelung im Stillstand: Bild n wird
@@ -585,6 +789,7 @@ function create(R) {
         layerUniforms(list, v.focus, v.u);
         const c = T.camera(v, W, H);
         T.lastCam = c;
+        if (look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
         const tg = still ? targetS(sw, shh) : target(sw, shh);
         let jit = [0, 0];
         if (still && still.N > 1) { const k = still.n % 64 + 1; jit = [(halton(k, 2) - 0.5) * 2 / sw, (halton(k, 3) - 0.5) * 2 / shh]; }
@@ -593,8 +798,9 @@ function create(R) {
         const sunAz = 2.35, sunEl = 0.5;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief)
         const sun = [Math.cos(sunAz) * Math.cos(sunEl), Math.sin(sunAz) * Math.cos(sunEl), Math.sin(sunEl)];
         const hz = palCol(look, 0.18 + look.cycle), zn = palCol(look, 0.62 + look.cycle);
-        const haze = hz.map((x, k) => (x * 0.35 + [0.62, 0.68, 0.8][k] * 0.65) * 0.7);
-        const zenith = zn.map((x, k) => x * 0.18 + [0.03, 0.05, 0.12][k]);
+        let haze = hz.map((x, k) => (x * 0.35 + [0.62, 0.68, 0.8][k] * 0.65) * 0.7);
+        let zenith = zn.map((x, k) => x * 0.18 + [0.03, 0.05, 0.12][k]);
+        if (look.alpine) { haze = [0.66, 0.74, 0.85]; zenith = [0.17, 0.33, 0.62]; }   // Alpin: klarer Himmel, bläulicher Dunst
         // Himmel
         let pr = R.program('t3sky', SKY_FS), U = pr.loc;
         gl.useProgram(pr.p);
@@ -606,7 +812,7 @@ function create(R) {
         // Gelände
         gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
         gl.clear(gl.DEPTH_BUFFER_BIT);
-        pr = terrainProgram(); U = pr.loc;
+        pr = terrainProgram(look); U = pr.loc;
         gl.useProgram(pr.p);
         camUniforms(U, c, sw, shh);
         gl.uniform2fv(U.u_jit, jit);
@@ -626,12 +832,15 @@ function create(R) {
         gl.uniform1f(U.u_mix, v.mix);
         gl.uniform1f(U.u_time, v.time || 0);
         gl.uniform1i(U.u_smooth, sm ? 1 : 0);
+        gl.uniform1i(U.u_alpine, look.alpine || 0);
+        noiseUniforms(U, v.focus, v.u);
         R.setPalette(U, look);
         gl.uniform1f(U.u_density, look.density);
         gl.uniform1i(U.u_formula, look.formula);
         gl.uniform1i(U.u_maxIter, look.maxIter);
         gl.uniform1i(U.u_banded, look.banded ? 1 : 0);
         bindLayers(U, list, true, 0);
+        if (U.u_noise && noiseTex) { const nt = noiseTex; gl.activeTexture(gl.TEXTURE0 + 2 * N3); gl.bindTexture(gl.TEXTURE_2D, nt); gl.uniform1i(U.u_noise, 2 * N3); }
         gl.bindVertexArray(g.vao);
         gl.drawElements(gl.TRIANGLES, g.n, gl.UNSIGNED_SHORT, 0);
         gl.bindVertexArray(R.vao);
@@ -693,6 +902,9 @@ function create(R) {
             gl.activeTexture(gl.TEXTURE0 + i);
             gl.bindTexture(gl.TEXTURE_2D, list[i] ? list[i].buf.tex : R.dummyU());
             gl.uniform1i(U['u_i' + i], i);
+            gl.activeTexture(gl.TEXTURE0 + N3 + i);
+            gl.bindTexture(gl.TEXTURE_2D, list[i] && list[i].buf.de ? list[i].buf.de : R.dummyD());
+            gl.uniform1i(U['u_d' + i], N3 + i);
         }
         gl.uniform4fv(U.u_lt, ltB); gl.uniform4fv(U.u_ls, lsB);
         gl.uniform1i(U.u_n3, list.length);
@@ -704,15 +916,21 @@ function create(R) {
         return R.readIterAsync(probeBuf).then((f) => {
             probeBusy = false;
             if (!f) return null;
-            const out = new Float32Array(f.length);
-            for (let i = 0; i < f.length; i++) { const v = f[i]; out[i] = v < -1e29 ? NaN : (v <= -3 ? -v - 4 : (v < -1.5 ? -1 : v)); }
-            return { w: PW, h: PH, win, data: out };
+            const out = new Float32Array(f.length), de = new Float32Array(f.length), fu = new Uint32Array(f.buffer);
+            let nde = 0;
+            for (let i = 0; i < f.length; i++) {
+                const v = f[i], code = fu[i] & 255;
+                out[i] = v < -1e29 ? NaN : (v <= -3 ? -v - 4 : (v < -1.5 ? -1 : v));
+                de[i] = v < -1e29 || code === 0 ? NaN : code === 1 ? 0 : code === 255 ? 4 : Math.pow(2, (code - 2) / 16 - 12);
+                if (code > 1) nde++;
+            }
+            return { w: PW, h: PH, win, data: out, de, hasDE: nde > 0 };
         });
     };
 
     // 3D-Shader im Leerlauf vorab übersetzen (parallel, blockiert nicht)
     T.prewarm = function () {
-        R.prewarm('t3terr', TERRAIN_FS, TERRAIN_VS); R.prewarm('t3sky', SKY_FS); R.prewarm('t3blit', BLIT_FS);
+        R.prewarm('t3terr', TERRAIN_FS, TERRAIN_VS); R.prewarm('t3terrS', TERRAIN_FS_S, TERRAIN_VS); R.prewarm('t3terrX', TERRAIN_FS_X, TERRAIN_VS); R.prewarm('t3sky', SKY_FS); R.prewarm('t3blit', BLIT_FS);
         R.prewarm('t3hb', HBUILD_FS); R.prewarm('t3probe', PROBE_FS);
     };
     // GPU-Zeit-Messung (Test-Hook)

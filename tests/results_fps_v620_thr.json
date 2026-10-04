@@ -1,0 +1,35 @@
+{
+ "2d_zoom": {
+  "fps": 60,
+  "p95": 17.2,
+  "max": 17.7,
+  "long": 0
+ },
+ "3d_gesture_std": {
+  "fps": 60,
+  "p95": 17.4,
+  "max": 17.7,
+  "long": 0
+ },
+ "fly_std": {
+  "fps": 51.6,
+  "p95": 33.4,
+  "max": 150,
+  "long": 11,
+  "zoom": "2.6e+06"
+ },
+ "3d_gesture_alpin": {
+  "fps": 60,
+  "p95": 17.6,
+  "max": 17.8,
+  "long": 0
+ },
+ "fly_alpin": {
+  "fps": 51.2,
+  "p95": 34.4,
+  "max": 150,
+  "long": 13,
+  "zoom": "1.8e+06"
+ },
+ "errors": []
+}

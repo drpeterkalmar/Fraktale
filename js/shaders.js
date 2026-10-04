@@ -448,7 +448,15 @@ uniform int u_palCustom;
 uniform vec3 u_custom[6];
 uniform float u_cycle, u_density, u_time, u_relief;
 uniform int u_particles, u_banded;
+uniform vec3 u_setCol;          // 6.2: Farbe der Menge (Schwarz = vec3(0, 0, 0.015) wie bis 6.1)
 out vec4 fragColor;
+// 6.2: bei heller Menge ein weicher dunkler Saum außen an der Kontur (1,25–4 Zielpixel), damit der Rand klar bleibt
+float rimShade(float d00, float d10, float d01, float d11, vec2 f, float pxPerTexel) {
+    float sl = dot(u_setCol, vec3(0.299, 0.587, 0.114));
+    if (sl < 0.35) return 1.0;
+    float d = mix(mix(d00, d10, f.x), mix(d01, d11, f.x), f.y) * pxPerTexel;
+    return 1.0 - 0.5 * smoothstep(0.35, 0.8, sl) * (1.0 - smoothstep(1.25, 4.0, d));
+}
 
 ${PAL_GLSL}vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
     float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
@@ -527,10 +535,13 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
     ivec2 mx = ivec2(size) - 1;
     ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
     float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
-    float dm = 0.0;
-    if (u_deOn == 1)
-        dm = deMask(fetchDE(dtex, i0, v00), fetchDE(dtex, ivec2(i1.x, i0.y), v10), fetchDE(dtex, ivec2(i0.x, i1.y), v01), fetchDE(dtex, i1, v11), f, 1.0 / xf.x, u_deLH);
-    if (u_recon == 0 || xf.x >= 0.9) return mix(shade4(v00, v10, v01, v11, f, xf.x, voidCol), voidCol, dm);
+    float dm = 0.0, rim = 1.0;
+    if (u_deOn == 1) {
+        float e00 = fetchDE(dtex, i0, v00), e10 = fetchDE(dtex, ivec2(i1.x, i0.y), v10), e01 = fetchDE(dtex, ivec2(i0.x, i1.y), v01), e11 = fetchDE(dtex, i1, v11);
+        dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);
+        rim = rimShade(e00, e10, e01, e11, f, 1.0 / xf.x);
+    }
+    if (u_recon == 0 || xf.x >= 0.9) return mix(shade4(v00, v10, v01, v11, f, xf.x, voidCol) * rim, voidCol, dm);
     // Innen/Außen getrennt: Außenwerte untereinander interpolieren, Innenanteil weich-scharf darüber
     vec4 v = vec4(v00, v10, v01, v11);
     vec4 wb = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
@@ -568,13 +579,15 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
         col = c / wo;
     }
     if (u_relief > 0.0 && u_formula != 5 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
-    col = mix(col, voidCol, max(dm, smoothstep(0.15, 0.85, inside)));
+    col = mix(col * rim, voidCol, max(dm, smoothstep(0.15, 0.85, inside)));
     return col;
 }
 
 vec3 voidColor() {
-    vec3 bg = vec3(0.0, 0.0, 0.015);
-    if (u_particles == 0) return bg;
+    vec3 bg = u_setCol;
+    // Funkeln nur auf dunkler Menge (auf hellen Farben wirkt es schmutzig): blendet zwischen Helligkeit 0,15 und 0,45 aus
+    float sk = 1.0 - smoothstep(0.15, 0.45, dot(bg, vec3(0.299, 0.587, 0.114)));
+    if (u_particles == 0 || sk <= 0.0) return bg;
     vec2 uv = gl_FragCoord.xy / min(u_target.x, u_target.y);
     float sparkle = 0.0;
     for (int layer = 0; layer < 3; layer++) {
@@ -591,7 +604,7 @@ vec3 voidColor() {
         sparkle += glow * (0.6 - float(layer) * 0.15);
     }
     vec3 pc = palette(u_time * 0.1) * 0.5 + vec3(0.3, 0.4, 0.8) * 0.5;
-    return bg + sparkle * pc * 0.35;
+    return bg + sparkle * pc * 0.35 * sk;
 }
 
 void main() {

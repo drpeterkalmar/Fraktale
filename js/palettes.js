@@ -14,6 +14,7 @@ const PALETTES = [
     { id: 'gold',     name: 'Gold',          a: [0.55, 0.42, 0.22], b: [0.45, 0.38, 0.24], c: [1, 1, 1], d: [0.00, 0.06, 0.16] },
     { id: 'ice',      name: 'Eis',           a: [0.45, 0.62, 0.78], b: [0.40, 0.36, 0.26], c: [1, 1, 1], d: [0.55, 0.58, 0.62] },
     { id: 'graphite', name: 'Graphit',       a: [H, H, H], b: [H, H, H], c: [1, 1, 1],     d: [0, 0, 0] },
+    { id: 'alpine',   name: 'Alpin',         a: [0.46, 0.50, 0.44], b: [0.30, 0.28, 0.30], c: [1, 1, 1], d: [0.58, 0.52, 0.42] },
     { id: 'custom',   name: 'Custom',        custom: true, a: [0, 0, 0], b: [0, 0, 0], c: [0, 0, 0], d: [0, 0, 0] },
 ];
 const DEFAULT_CUSTOM = ['#7c3aed', '#22d3ee', '#f472b6', '#facc15', '#34d399', '#ffffff'];
@@ -46,10 +47,44 @@ function gradientCSS(p, stops = 14) {
     for (let i = 0; i <= stops; i++) { const [r, g, b] = colorAt(p, i / stops); parts.push(`rgb(${r},${g},${b}) ${(100 * i / stops).toFixed(1)}%`); }
     return `linear-gradient(90deg, ${parts.join(',')})`;
 }
+// Palettenfarbe vor Sättigung/Gamma (so, wie der Shader sie aus palette() bekommt)
+function rawAt(p, t) {
+    t = t - Math.floor(t);
+    if (p.custom) {
+        const x = t * 6, s = Math.floor(x) % 6, f = x - Math.floor(x);
+        const a = hexToRgb01(custom[s]), b = hexToRgb01(custom[(s + 1) % 6]);
+        return [0, 1, 2].map(k => a[k] + (b[k] - a[k]) * f);
+    }
+    return [0, 1, 2].map(k => Math.min(1, Math.max(0, p.a[k] + p.b[k] * Math.cos(6.28318 * (p.c[k] * t + p.d[k])))));
+}
+// 6.2 Farbe der Menge (Shader-Eingang, vor Sättigung + Gamma des Display-Pass):
+// black = Verhalten bis 6.1 (exakt), white = Schnee, dark/light = dunkelste/hellste Farbe der Palette (über den ganzen
+// Farbzyklus, ändert sich also nicht mit der Farbanimation), custom = Farbwähler (so umgerechnet, dass nach Sättigung
+// und Gamma ungefähr die gewählte Farbe erscheint)
+const SET_BLACK = [0, 0, 0.015], SET_WHITE = [0.95, 0.965, 1.0];
+const lumOf = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+function setRGB(mode, hex, p) {
+    if (mode === 'white') return SET_WHITE.slice();
+    if (mode === 'dark' || mode === 'light') {
+        let best = null;
+        for (let i = 0; i < 96; i++) { const c = rawAt(p, i / 96), l = lumOf(c); if (!best || (mode === 'dark' ? l < best.l : l > best.l)) best = { c, l }; }
+        return best.c;
+    }
+    if (mode === 'custom' && /^#[0-9a-fA-F]{6}$/.test(hex || '')) {
+        const c = hexToRgb01(hex).map(v => Math.pow(v, 1 / 0.92)), l = lumOf(c);
+        return c.map(v => Math.min(1, Math.max(0, l + (v - l) / 1.2)));
+    }
+    return SET_BLACK.slice();
+}
+// Anzeigefarbe (CSS) einer Shader-Farbe – für die Knöpfe im Farben-Sheet
+function cssOf(c) {
+    const l = lumOf(c);
+    return 'rgb(' + c.map(v => Math.round(255 * Math.min(1, Math.pow(Math.max(0, l + (v - l) * 1.2), 0.92)))).join(',') + ')';
+}
 function customFlat() { const out = []; custom.forEach(h => out.push(...hexToRgb01(h))); return new Float32Array(out); }
 
 root.FKPalettes = {
-    list: PALETTES, colorAt, gradientCSS, customFlat, loadCustom, saveCustom,
+    list: PALETTES, colorAt, gradientCSS, customFlat, loadCustom, saveCustom, setRGB, cssOf, lumOf,
     get custom() { return custom; }, setCustom(i, hex) { custom[i] = hex.toLowerCase(); },
     indexOf(id) { const i = PALETTES.findIndex(p => p.id === id); return i < 0 ? 0 : i; }
 };

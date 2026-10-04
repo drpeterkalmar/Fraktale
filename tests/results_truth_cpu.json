@@ -8,7 +8,7 @@
    "method": "center",
    "period": 0,
    "len": 3366,
-   "ms": 14
+   "ms": 11
   },
   "size": "824x1678",
   "maxIter": 2450,
@@ -22,9 +22,9 @@
    674.0,
    2354.7
   ],
-  "renderS": 8.03,
-  "lastFullMs": 7699.699999999999,
-  "truthS": 1.3,
+  "renderS": 10.12,
+  "lastFullMs": 9868.1,
+  "truthS": 1.2,
   "pass": true
  },
  {
@@ -36,7 +36,7 @@
    "method": "nucleus",
    "period": 150,
    "len": 151,
-   "ms": 4
+   "ms": 3
   },
   "size": "824x1678",
   "maxIter": 4050,
@@ -50,9 +50,9 @@
    308.9,
    1273.7
   ],
-  "renderS": 3.3,
-  "lastFullMs": 3016.5,
-  "truthS": 0.5,
+  "renderS": 2.95,
+  "lastFullMs": 2701.7999999999993,
+  "truthS": 0.6,
   "pass": true
  },
  {
@@ -78,8 +78,8 @@
    49.0,
    119.6
   ],
-  "renderS": 1.29,
-  "lastFullMs": 900,
+  "renderS": 1.03,
+  "lastFullMs": 583.1999999999989,
   "truthS": 0.3,
   "pass": true
  },
@@ -88,11 +88,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 7,
+   "id": 8,
    "method": "center",
    "period": 0,
-   "len": 11559,
-   "ms": 11
+   "len": 12492,
+   "ms": 16
   },
   "size": "824x1678",
   "maxIter": 9800,
@@ -106,9 +106,9 @@
    3030.3,
    8961.4
   ],
-  "renderS": 18.87,
-  "lastFullMs": 18449.3,
-  "truthS": 2.9,
+  "renderS": 19.31,
+  "lastFullMs": 19001.1,
+  "truthS": 2.5,
   "pass": true
  },
  {
@@ -120,7 +120,7 @@
    "method": "grid",
    "period": 0,
    "len": 1635,
-   "ms": 7
+   "ms": 11
   },
   "size": "824x1678",
   "maxIter": 11250,
@@ -134,9 +134,9 @@
    1005.4,
    1712.9
   ],
-  "renderS": 6.31,
-  "lastFullMs": 5933.100000000006,
-  "truthS": 1.2,
+  "renderS": 6.21,
+  "lastFullMs": 5831.5999999999985,
+  "truthS": 0.9,
   "pass": true
  },
  {
@@ -144,11 +144,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 11,
+   "id": 12,
    "method": "nucleus",
-   "period": 1939,
-   "len": 1940,
-   "ms": 4
+   "period": 1958,
+   "len": 1959,
+   "ms": 6
   },
   "size": "824x1678",
   "maxIter": 30000,
@@ -162,8 +162,8 @@
    2318.6,
    3093.2
   ],
-  "renderS": 7.6,
-  "lastFullMs": 7383,
+  "renderS": 8.93,
+  "lastFullMs": 8601.399999999994,
   "truthS": 2.0,
   "pass": true
  },
@@ -172,11 +172,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 14,
+   "id": 15,
    "method": "grid",
    "period": 0,
    "len": 1874,
-   "ms": 7
+   "ms": 9
   },
   "size": "824x1678",
   "maxIter": 5000,
@@ -190,9 +190,9 @@
    747.7,
    1715.8
   ],
-  "renderS": 6.64,
-  "lastFullMs": 6166.4000000000015,
-  "truthS": 0.8,
+  "renderS": 6.54,
+  "lastFullMs": 6216.399999999994,
+  "truthS": 0.9,
   "pass": true
  },
  {
@@ -200,7 +200,7 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 15,
+   "id": 17,
    "method": "nucleus",
    "period": 90,
    "len": 91,
@@ -218,9 +218,9 @@
    143.4,
    906.4
   ],
-  "renderS": 2.94,
-  "lastFullMs": 2650,
-  "truthS": 0.4,
+  "renderS": 2.78,
+  "lastFullMs": 2467.5,
+  "truthS": 0.5,
   "pass": true
  },
  {
@@ -228,11 +228,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 17,
+   "id": 19,
    "method": "grid",
    "period": 0,
-   "len": 475,
-   "ms": 3
+   "len": 82,
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 1250,
@@ -246,8 +246,8 @@
    73.4,
    309.4
   ],
-  "renderS": 1.66,
-  "lastFullMs": 1316.699999999997,
+  "renderS": 1.13,
+  "lastFullMs": 849.9000000000087,
   "truthS": 0.3,
   "pass": true
  },
@@ -256,10 +256,10 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 19,
+   "id": 21,
    "method": "nucleus",
-   "period": 90,
-   "len": 91,
+   "period": 180,
+   "len": 181,
    "ms": 1
   },
   "size": "824x1678",
@@ -274,9 +274,9 @@
    214.5,
    1288.5
   ],
-  "renderS": 3.05,
-  "lastFullMs": 2783.300000000003,
-  "truthS": 0.4,
+  "renderS": 2.97,
+  "lastFullMs": 2699.899999999994,
+  "truthS": 0.5,
   "pass": true
  },
  {
@@ -284,11 +284,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 21,
+   "id": 23,
    "method": "nucleus",
-   "period": 180,
-   "len": 181,
-   "ms": 3
+   "period": 270,
+   "len": 271,
+   "ms": 4
   },
   "size": "824x1678",
   "maxIter": 3200,
@@ -302,9 +302,9 @@
    491.5,
    3113.8
   ],
-  "renderS": 11.53,
-  "lastFullMs": 11249.600000000006,
-  "truthS": 1.1,
+  "renderS": 10.82,
+  "lastFullMs": 10416.100000000006,
+  "truthS": 1.3,
   "pass": true
  },
  {
@@ -312,11 +312,11 @@
   "engine": "cpu/perturb",
   "bla": false,
   "ref": {
-   "id": 24,
+   "id": 25,
    "method": "grid",
    "period": 0,
    "len": 1034,
-   "ms": 2
+   "ms": 5
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -330,9 +330,9 @@
    297.3,
    1358.3
   ],
-  "renderS": 4.22,
-  "lastFullMs": 3833.199999999997,
-  "truthS": 0.5,
+  "renderS": 3.63,
+  "lastFullMs": 3249,
+  "truthS": 0.6,
   "pass": true
  },
  {
@@ -340,11 +340,11 @@
   "engine": "cpu/perturb",
   "bla": false,
   "ref": {
-   "id": 26,
+   "id": 27,
    "method": "grid",
    "period": 0,
    "len": 816,
-   "ms": 6
+   "ms": 4
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -358,9 +358,9 @@
    753.1,
    849.6
   ],
-  "renderS": 5.5,
-  "lastFullMs": 5149.800000000003,
-  "truthS": 0.6,
+  "renderS": 6.01,
+  "lastFullMs": 5716.299999999988,
+  "truthS": 0.7,
   "pass": true
  },
  {
@@ -368,11 +368,11 @@
   "engine": "cpu/direct",
   "bla": null,
   "ref": {
-   "id": 26,
+   "id": 27,
    "method": "grid",
    "period": 0,
    "len": 816,
-   "ms": 6
+   "ms": 4
   },
   "size": "824x1678",
   "maxIter": 450,
@@ -386,9 +386,9 @@
    40.1,
    447.2
   ],
-  "renderS": 1.25,
-  "lastFullMs": 1016.5999999999913,
-  "truthS": 0.3,
+  "renderS": 1.08,
+  "lastFullMs": 782.6999999999971,
+  "truthS": 0.4,
   "pass": true
  },
  {
@@ -396,11 +396,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 27,
+   "id": 29,
    "method": "nucleus",
-   "period": 25,
-   "len": 26,
-   "ms": 0
+   "period": 27,
+   "len": 28,
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 450,
@@ -414,9 +414,9 @@
    40.1,
    427.7
   ],
-  "renderS": 1.01,
-  "lastFullMs": 700,
-  "truthS": 0.3,
+  "renderS": 1.16,
+  "lastFullMs": 851.6000000000058,
+  "truthS": 0.4,
   "pass": true
  },
  {
@@ -424,11 +424,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 30,
+   "id": 31,
    "method": "grid",
    "period": 0,
    "len": 4045,
-   "ms": 23
+   "ms": 34
   },
   "size": "824x1678",
   "maxIter": 30000,
@@ -442,9 +442,9 @@
    3276.4,
    3803.4
   ],
-  "renderS": 6.68,
-  "lastFullMs": 6333.199999999997,
-  "truthS": 2.3,
+  "renderS": 7.55,
+  "lastFullMs": 7216.200000000012,
+  "truthS": 2.8,
   "pass": true
  }
 ]

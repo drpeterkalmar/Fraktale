@@ -288,10 +288,11 @@ function buildPalettes() {
     PAL.list.forEach((p, i) => {
         const b = el('button', 'swatch' + (i === S.palette ? ' on' : ''));
         b.innerHTML = `<span class="bar" style="background:${PAL.gradientCSS(p)}"></span><span class="name">${p.custom ? t('custom_palette') : p.name}</span>`;
-        b.addEventListener('click', () => { S.palette = i; A.saveSettings(); A.invalidate(); buildPalettes(); });
+        b.addEventListener('click', () => { S.palette = i; A.saveSettings(); A.invalidate(); buildPalettes(); syncSet(); });
         g.appendChild(b);
     });
     $('custom-bar').style.background = PAL.gradientCSS(PAL.list[PAL.list.length - 1], 24);
+    syncSet();
 }
 for (let i = 0; i < 6; i++) {
     const inp = $('custom-color-' + i);
@@ -300,6 +301,30 @@ for (let i = 0; i < 6; i++) {
     inp.addEventListener('input', apply);
     inp.addEventListener('change', () => { apply(); PAL.saveCustom(); A.saveSettings(); });
 }
+// 6.2 Farbe der Menge + Alpin-Look
+function syncSet() {
+    const p = PAL.list[S.palette];
+    document.querySelectorAll('#seg-setcol button').forEach(b => {
+        b.classList.toggle('on', b.dataset.v === S.setCol);
+        b.querySelector('.sdot').style.background = PAL.cssOf(PAL.setRGB(b.dataset.v, S.setHex, p));
+    });
+    $('set-color-custom').hidden = S.setCol !== 'custom';
+    $('set-color-custom').value = S.setHex;
+    $('t-alpine').checked = S.alpine;
+    $('seg-valley').hidden = !S.alpine;
+    document.querySelectorAll('#seg-valley button').forEach(b => b.classList.toggle('on', b.dataset.v === S.valley));
+}
+document.querySelectorAll('#seg-setcol button').forEach(b => b.addEventListener('click', () => {
+    S.setCol = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet();
+}));
+$('set-color-custom').addEventListener('input', (e) => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { S.setHex = e.target.value.toLowerCase(); S.setCol = 'custom'; A.invalidate(); syncSet(); } });
+$('set-color-custom').addEventListener('change', () => A.saveSettings());
+$('t-alpine').addEventListener('change', (e) => {
+    S.alpine = e.target.checked;
+    if (S.alpine) { S.setCol = 'white'; S.palette = PAL.indexOf('alpine'); buildPalettes(); }   // Voreinstellung: Gletscher + Alpin-Palette (2D)
+    A.saveSettings(); A.invalidate(); syncSet();
+});
+document.querySelectorAll('#seg-valley button').forEach(b => b.addEventListener('click', () => { S.valley = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet(); }));
 function bindRange(id, out, get, set, fmt) {
     const r = $(id);
     const upd = () => { $(out).textContent = fmt(get()); };
@@ -338,7 +363,7 @@ const segs = [
     bindSeg('seg-renderer', () => S.renderer, (v) => { S.renderer = v; A.invalidate(); }),
 ];
 function syncControls() {
-    syncDensity(); syncSpeed(); syncRelief();
+    syncDensity(); syncSpeed(); syncRelief(); syncSet();
     toggles.forEach(f => f()); segs.forEach(f => f());
     $('s-speed').closest('label').classList.toggle('dim', !S.anim);
     $('s-relief').closest('label').classList.toggle('dim', !S.relief);

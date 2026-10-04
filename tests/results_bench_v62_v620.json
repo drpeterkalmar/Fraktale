@@ -1,0 +1,72 @@
+{
+ "ganz": {
+  "std": {
+   "min": 3.27,
+   "median": 3.31
+  },
+  "white": {
+   "min": 3.39,
+   "median": 3.41
+  },
+  "alpin_wald": {
+   "min": 5.51,
+   "median": 5.65
+  },
+  "alpin_see": {
+   "min": 5.51,
+   "median": 5.56
+  }
+ },
+ "seepferd_300": {
+  "std": {
+   "min": 3.77,
+   "median": 3.84
+  },
+  "white": {
+   "min": 4.18,
+   "median": 4.2
+  },
+  "alpin_wald": {
+   "min": 6.4,
+   "median": 6.41
+  },
+  "alpin_see": {
+   "min": 6.27,
+   "median": 6.33
+  }
+ },
+ "rand_1e6": {
+  "std": {
+   "min": 4.09,
+   "median": 4.35
+  },
+  "white": {
+   "min": 4.5,
+   "median": 4.62
+  },
+  "alpin_wald": {
+   "min": 6.85,
+   "median": 6.99
+  },
+  "alpin_see": {
+   "min": 6.67,
+   "median": 6.98
+  }
+ },
+ "gpu": {
+  "h8": false,
+  "scale": 0.65,
+  "grid": [
+   103,
+   273
+  ],
+  "target": [
+   536,
+   1091
+  ],
+  "still": [
+   824,
+   1678
+  ]
+ }
+}

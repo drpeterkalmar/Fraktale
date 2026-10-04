@@ -155,6 +155,13 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 #custom-pickers input { width: 100%; height: 48px; border: 1px solid var(--line-strong); border-radius: 12px; background: none; padding: 3px; cursor: pointer; }
 #custom-pickers input::-webkit-color-swatch-wrapper { padding: 0; }
 #custom-pickers input::-webkit-color-swatch { border: 0; border-radius: 9px; }
+.seg-set button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 12px; padding: 0 2px; min-width: 0; }
+.seg-set .sdot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line-strong); flex: none; }
+#set-color-custom { display: block; width: 100%; height: 48px; margin-top: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: none; padding: 3px; cursor: pointer; }
+#set-color-custom[hidden] { display: none; }
+#set-color-custom::-webkit-color-swatch-wrapper { padding: 0; }
+#set-color-custom::-webkit-color-swatch { border: 0; border-radius: 9px; }
+#seg-valley { margin: 4px 0 6px; }
 label.toggle, label.slider, label.select { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 2px 4px; }
 label.toggle span:first-child, label.slider span, label.select span { flex: 1; }
 label.toggle.inline { min-height: 48px; margin-left: auto; }

@@ -431,6 +431,7 @@ function create(canvas) {
         gl.uniform1i(L.u_palCustom, p.custom ? 1 : 0);
         gl.uniform3fv(L.u_custom, look.custom);
         gl.uniform1f(L.u_cycle, look.cycle);
+        if (L.u_setCol) gl.uniform3fv(L.u_setCol, look.setCol || [0, 0, 0.015]);   // 6.2 Farbe der Menge
     }
     // Integer-Texturen MÜSSEN NEAREST filtern, sonst 'incomplete' -> texelFetch liefert 0
     function nearest() {

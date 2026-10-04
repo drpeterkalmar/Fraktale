@@ -250,6 +250,10 @@ const TRANSLATIONS_UI = {
         governor: "Tempo an Rechenleistung anpassen", governor_hint: "Tour, Doppeltipp, Mausrad und Schwung werden kurz langsamer, wenn das Bild sonst grob würde. Die Finger-Gesten bleiben immer 1:1.",
         d3_title: "3D-Landschaft", fly: "Flug", fly_stop: "Stopp", height: "Höhe", fly_speed: "Tempo", north: "Ausrichten", fly_place: "Flug",
         fly_paused: "Flug pausiert – tippen zum Weiterfliegen", fly_on: "Weiter geht's", fly_max: "Tiefste Flughöhe erreicht", d3_hint: "3D: zwei Finger hoch/runter neigen, drehen dreht, spreizen zoomt",
+        set_color: "Farbe der Menge", set_black: "Schwarz", set_white: "Weiß", set_dark: "Dunkel", set_light: "Hell", set_custom: "Eigene",
+        set_hint: "Dunkel/Hell = dunkelste bzw. hellste Farbe der Palette. Gilt in 2D und 3D; Weiß wird in 3D zur Schnee- und Gletscherfläche.",
+        alpine: "Alpin-Look (3D)", valley_forest: "Wald", valley_lake: "See", valley_meadow: "Wiese",
+        alpine_hint: "Alpenpanorama: Tal (Wald, See oder Wiese) → Almen → Fels → Schnee; die Menge ist Gletscher. Färbt nach der Höhe statt nach der Palette.",
         d3_na: "Diese Welt ist schon 3D bzw. hat keine Landschaft", g_3d: "3D-Landschaft (⛰ oben rechts): ein Finger schiebt, zwei Finger spreizen = zoomen, drehen = drehen, gemeinsam hoch/runter = neigen. ✈ Flug: tippen = Pause, nach links/rechts wischen = lenken."
     },
     en: {
@@ -289,6 +293,10 @@ const TRANSLATIONS_UI = {
         governor: "Match speed to computing power", governor_hint: "Tour, double tap, mouse wheel and fling slow down briefly when the image would otherwise turn coarse. Finger gestures always stay 1:1.",
         d3_title: "3D landscape", fly: "Fly", fly_stop: "Stop", height: "Height", fly_speed: "Speed", north: "Reset view", fly_place: "Fly",
         fly_paused: "Flight paused – tap to continue", fly_on: "Off we go", fly_max: "Deepest flight level reached", d3_hint: "3D: two fingers up/down tilt, twist rotates, pinch zooms",
+        set_color: "Colour of the set", set_black: "Black", set_white: "White", set_dark: "Dark", set_light: "Light", set_custom: "Custom",
+        set_hint: "Dark/Light = darkest or lightest colour of the palette. Applies in 2D and 3D; in 3D, white turns into a snowfield and glacier.",
+        alpine: "Alpine look (3D)", valley_forest: "Forest", valley_lake: "Lake", valley_meadow: "Meadow",
+        alpine_hint: "Alpine panorama: valley (forest, lake or meadow) → pastures → rock → snow; the set is a glacier. Colours by height instead of the palette.",
         d3_na: "This world is already 3D or has no landscape", g_3d: "3D landscape (⛰ top right): one finger pans, pinch = zoom, twist = rotate, two fingers up/down = tilt. ✈ Fly: tap = pause, swipe left/right = steer."
     },
     hu: { lang_name: "Magyar" }, es: { lang_name: "Español" }, fr: { lang_name: "Français" }, pt: { lang_name: "Português" },

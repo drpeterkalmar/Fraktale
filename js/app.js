@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.1.0';
+const APP_VERSION = '6.2.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -38,6 +38,7 @@ const S = {
     cycle: 0, time: 0,
     quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.5,
     deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
+    setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     chrome: true,
 };
 // 6.1 „glatt wie Video": A/B-Regler per URL
@@ -55,7 +56,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -64,7 +65,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -880,7 +881,10 @@ function cancelFix() {
 
 function pumpCtl(moving, prefetch) {
     const vs = RC.vsync || 16.7;
-    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, 8 * vs)) : vs };
+    // 6.2: in 3D sind „Leerlauf"-Frames nie leer (3D-Bild, eingereihte GPU-Arbeit) – ihre Dauer darf das Budget nicht
+    // aufblähen (sonst rechnete der Flug bis zu 8 Bildtakte pro Frame und ruckelte); dort keine Reserve über den Bildtakt (A/B: ?flycap=N Takte, ?flycap=0 = 6.1)
+    const cap = V3.on && Q.get('flycap') !== '0' ? (Q.has('flycap') ? +Q.get('flycap') : 1.0) * vs : 8 * vs;
+    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, cap)) : vs };
 }
 function isMoving(now) {
     return gestures.active() || !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused) || now - RC.lastMoveT < 150 || now - lastParamT < 150;
@@ -1226,7 +1230,8 @@ function look() {
     const p = PAL.list[S.palette];
     return { formula: S.formula, maxIter: RC.front ? RC.front.maxIter : currentMaxIter(), pal: p, custom: PAL.customFlat(),
              cycle: S.cycle, density: S.density, time: S.time, relief: S.relief ? S.reliefStrength : 0,
-             particles: S.particles && S.anim, banded: S.banded };
+             particles: S.particles && S.anim, banded: S.banded,
+             setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0 };
 }
 
 // Ebenenliste + Optionen für den Display-Pass (auch für Screenshot/Thumbnail)
@@ -1331,6 +1336,7 @@ function update3d(now, dt) {
         if (V3.cdfT && V3.cdf) for (let i = 0; i < 9; i++) { const d = (V3.cdfT[i] - V3.cdf[i]) * k; if (Math.abs(d) > 1e-4) { V3.cdf[i] += d; RC.dirty = true; } }
     }
     if (FLY.on && !FLY.paused) flyUpdate(now, dt);
+    else if (Math.abs(FLY.roll || 0) > 1e-4 || FLY.om) { FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); FLY.om = 0; if (Math.abs(FLY.roll) <= 1e-4) FLY.roll = 0; RC.dirty = true; }   // Schräglage klingt aus
     if (V3.northT) {
         const u = Math.min(1, (now - V3.northT) / 450), e = ease(u);
         const h0 = V3.northFrom[0] - Math.round(V3.northFrom[0] / (2 * Math.PI)) * 2 * Math.PI;
@@ -1348,7 +1354,7 @@ function update3d(now, dt) {
 }
 function view3d() {
     const em = e3(V3.mix);
-    return { tilt: V3.tilt * em, heading: V3.heading * (V3.dir < 0 ? em : 1), height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time };
+    return { tilt: V3.tilt * em, heading: V3.heading * (V3.dir < 0 ? em : 1), roll: (FLY.roll || 0) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time };
 }
 // Ebenen für 3D: gültiger Inhalt, schärfste zuerst, höchstens N3 – die größte (Horizont) immer dabei
 function layers3d(list) {
@@ -1369,7 +1375,7 @@ function layers3d(list) {
 // ungeglätteter Kanten, wenn im Stillstand eine vorausgerechnete Ebene einblendet)
 function still3dKey(L3, v, lk) {
     const c = S.cam;
-    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on].join('|');
+    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine].join('|');
 }
 function still3dSoft(L3, v, lk) {
     return [v.L[0].toFixed(3), v.L[1].toFixed(3), (v.cdf || []).map(x => x.toFixed(3)).join(','), L3.map(l => l.seq + ':' + l.alpha.toFixed(2)).join(','), lk.maxIter].join('|');
@@ -1408,10 +1414,12 @@ function present3d(now, camChanged, force) {
     RC.list = a.list;
     if (FS.on) frameStatsRecord(now, a.list);
     // Sonde: Höhenstatistik + Interesse für den Zufallsflug (alle 300 ms, asynchron)
-    if (now - V3.probeT > 300) {
+    // (im Zufallsflug alle 150 ms: die Zielwahl am Mengenrand braucht frische Daten)
+    if (now - V3.probeT > (FLY.on && !FLY.paused && FLY.edge ? 150 : 300)) {
         V3.probeT = now;
-        const pr = T3.probe(L3, S.cam, 1.5 / S.cam.zoom, 2);
-        if (pr) pr.then((pb) => { if (pb) { V3.probe = pb; heightStats(pb); } });
+        const cam = S.cam;
+        const pr = T3.probe(L3, cam, 1.5 / cam.zoom, 2);
+        if (pr) pr.then((pb) => { if (pb) { pb.cam = cam; pb.seq = (V3.probe ? V3.probe.seq || 0 : 0) + 1; V3.probe = pb; heightStats(pb); } });
     }
 }
 function heightStats(pb) {
@@ -1455,11 +1463,23 @@ function ground3d(cam, dx, dy) {
     return { cx: cam.cx + HP.fromNumber((-gx * r[0] + gy * f[0]) * u), cy: cam.cy + HP.fromNumber((-gx * r[1] + gy * f[1]) * u), zoom: cam.zoom };
 }
 
-// ---- Flug: Zoom + Vorwärtsflug. Gezoomt wird um einen Punkt knapp vor dem Fokus (Blickrichtung) -> die
-// Kamera gleitet vorwärts und taucht tiefer; Berge wirken in jeder Tiefe gleich hoch (lokale Einheiten).
-// Zufallsflug: Kurs zum interessantesten Randbereich voraus (hohe Iteration + Detail, nicht ins Schwarze).
+// ---- Flug: Zoom + Vorwärtsflug. Gezoomt wird um einen Punkt vor dem Fokus -> die Kamera gleitet vorwärts und
+// taucht tiefer; Berge wirken in jeder Tiefe gleich hoch (lokale Einheiten).
 // Ziel-Flug: Start im Gesamtbild (wie ▶ Tour), gerade auf den Ort zu, Ankunft exakt am Ort.
+// Zufallsflug 6.2 („sanft, am Mengenrand"): Der Zoompunkt FLY.A (lokal, Welt-Achsen) ist der Fixpunkt des Zooms –
+// bliebe er stehen, flöge die Kamera genau auf diesen Weltpunkt zu. Er gleitet weich (begrenzte Geschwindigkeit)
+// zu einem Ziel FLY.T im Korridor knapp außerhalb der Menge (Distanz zur Menge ≈ 0,05–0,3 Bildhälften, aus der
+// Distanzschätzung der Sonde). Weil die Distanz eines festen Punkts in lokalen Einheiten mit dem Zoom wächst, wird
+// das Ziel alle 300 ms nachgeführt (lokale Suche ±0,2) und nur mit Hysterese (+25 %, ≥ 1,5 s gehalten) gegen ein
+// besseres getauscht. Der Kurs folgt der Richtung des Zoompunkts als gedämpftes System (Drehrate ≤ FLY_TURN,
+// begrenzte Drehbeschleunigung, leichte Schräglage in Kurven).
+// A/B: ?flyedge=0 = Wertung und Lenkung 6.1.0, ?flyturn=R = maximale Drehrate (rad/s).
 const FLY_AHEAD = 0.55;
+const FLY_EDGE = Q.get('flyedge') !== '0';
+const FLY_TURN = Q.has('flyturn') ? Math.max(0.02, +Q.get('flyturn') || 0.3) : 0.3;
+const FLY_ACC = 0.5;          // max. Drehbeschleunigung (rad/s²)
+const FLY_DE = 0.04;          // Zoompunkt höchstens so weit von der Menge (Bildhälften)
+const FLY_RMIN = 0.25, FLY_RMAX = 0.7, FLY_RPREF = 0.45;   // Zoompunkt vor dem Fokus (Bildhälften)
 function startFly(place) {
     if (!can3d(place && place.formula !== undefined ? place.formula : S.formula)) return;
     stopAnims();
@@ -1479,6 +1499,10 @@ function startFly(place) {
     } else { FLY.mode = 'random'; FLY.target = null; }
     set3d(true);
     FLY.on = true; FLY.paused = false; FLY.hdgT = V3.heading; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0; FLY.t0 = performance.now();
+    // 6.2: Zoompunkt startet geradeaus, Kurs ruhend
+    const f = [Math.sin(V3.heading), Math.cos(V3.heading)];
+    FLY.A = [f[0] * FLY_AHEAD, f[1] * FLY_AHEAD]; FLY.VA = [0, 0]; FLY.T = null; FLY.Tt = 0; FLY.om = 0; FLY.roll = 0;
+    FLY.userPrev = 0; FLY.userT = -1e9; FLY.zf = 1; FLY.glide = null; FLY.edge = FLY_EDGE;
     emit('fly');
 }
 // Ausrichten: Drehung weich auf Norden, Neigung auf den Standard
@@ -1497,27 +1521,75 @@ function flyStep(cam, heading, dt) {
     }
     // über einer leeren Ebene "verloren": kaum noch tiefer, dafür seitlich zum nächsten Rand gleiten
     const lost = Math.min(1, FLY.lost || 0);
-    const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.85 * lost)));
     const u = 1.5 / cam.zoom, f = [Math.sin(heading), Math.cos(heading)];
+    if (FLY.edge && FLY.A) {
+        const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.95 * lost) * (FLY.zf || 1)));
+        const k = 1 - cam.zoom / z1, gd = FLY.glide || f, gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * dt * g, lat = gl * u;
+        return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + gd[0] * lat), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + gd[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28, lat: [gd[0] * gl, gd[1] * gl] };
+    }
+    const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.85 * lost)));
     const ax = f[0] * FLY_AHEAD * u, ay = f[1] * FLY_AHEAD * u;          // Zoompunkt vor dem Fokus
     const k = 1 - cam.zoom / z1, lat = lost * 0.7 * dt * g * u;
     return { cam: { cx: cam.cx + HP.fromNumber(ax * k + f[0] * lat), cy: cam.cy + HP.fromNumber(ay * k + f[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28 };
 }
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
+const rot2 = (v, a) => [v[0] * Math.cos(a) + v[1] * Math.sin(a), -v[0] * Math.sin(a) + v[1] * Math.cos(a)];   // Kurs +a (im Uhrzeigersinn)
 function flyUpdate(now, dt) {
-    if (FLY.mode === 'random') {
-        if (now - FLY.scoreT > 300 && V3.probe) { FLY.scoreT = now; flySteer(); }
+    if (FLY.mode === 'random' && !FLY.edge) {
+        // 6.1.0: Kurs dreht mit bis zu 0,9 rad/s auf den Zielkurs, Wischen addiert einen abklingenden Versatz
+        if (now - FLY.scoreT > 300 && V3.probe) { FLY.scoreT = now; if (FLY.rec && T3.lastCam) FLY.recM.push(flyMetrics(V3.probe, now)); flySteer(); }
         const d = angDiff(FLY.hdgT + (FLY.user || 0), V3.heading);
+        const h0 = V3.heading;
         V3.heading += Math.max(-0.9 * dt, Math.min(0.9 * dt, d));
+        FLY.om = dt > 0 ? angDiff(V3.heading, h0) / dt : 0;
         FLY.user = (FLY.user || 0) * Math.exp(-dt / 2.5); FLY.userBase = (FLY.userBase || 0) * Math.exp(-dt / 2.5);
+    } else if (FLY.mode === 'random') {
+        if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; flyEdgeSteer(now); }
+        // Wischen: Zoompunkt und Ziel um den Fokus drehen (der Kurs folgt gedämpft), danach führt die Automatik
+        // von der neuen Richtung aus weiter
+        const du = (FLY.user || 0) - (FLY.userPrev || 0);
+        if (du) { FLY.A = rot2(FLY.A, du); if (FLY.T) FLY.T = rot2(FLY.T, du); FLY.userPrev = FLY.user; FLY.userT = now; FLY.Tt = now; }
+        const g = GOV.g, sp = S.flySpeed * g;
+        // Zoompunkt gleitet zum Ziel: Geschwindigkeit begrenzt, Änderung der Geschwindigkeit weich
+        if (FLY.T) {
+            const dx = FLY.T[0] - FLY.A[0], dy = FLY.T[1] - FLY.A[1], d = Math.hypot(dx, dy);
+            const vmax = 0.12 + 0.5 * sp, v = Math.min(vmax, d * 1.6);
+            const vx = d > 1e-9 ? dx / d * v : 0, vy = d > 1e-9 ? dy / d * v : 0;
+            const kv = Math.min(1, dt * 3);
+            FLY.VA = [FLY.VA[0] + (vx - FLY.VA[0]) * kv, FLY.VA[1] + (vy - FLY.VA[1]) * kv];
+            FLY.A = [FLY.A[0] + FLY.VA[0] * dt, FLY.A[1] + FLY.VA[1] * dt];
+            // Zoomtempo weich drosseln, solange der Zoompunkt noch weit vom Ziel ist (erst hingleiten, dann tauchen)
+            const zfT = 1 - 0.55 * smooth01((d - 0.12) / 0.45);
+            FLY.zf += (zfT - FLY.zf) * Math.min(1, dt * 1.5);
+        }
+        // Zoompunkt im Vorwärtsbereich halten (0,25–0,7 Bildhälften)
+        const ra = Math.hypot(FLY.A[0], FLY.A[1]);
+        if (ra < FLY_RMIN || ra > FLY_RMAX) { const c = Math.max(FLY_RMIN, Math.min(FLY_RMAX, ra)) / Math.max(1e-9, ra); FLY.A = [FLY.A[0] * c, FLY.A[1] * c]; }
+        // Kurs: gedämpfte Drehung zur Richtung des Zoompunkts (kritisch gedämpft, Rate und Beschleunigung begrenzt)
+        const err = angDiff(Math.atan2(FLY.A[0], FLY.A[1]), V3.heading);
+        const lost = Math.min(1, FLY.lost || 0);
+        const wmax = FLY_TURN * (1 + 0.5 * lost);
+        const K = 1.4, acc = Math.max(-FLY_ACC * (1 + lost), Math.min(FLY_ACC * (1 + lost), K * err - 2 * Math.sqrt(K) * FLY.om));
+        FLY.om = Math.max(-wmax, Math.min(wmax, FLY.om + acc * dt));
+        V3.heading += FLY.om * dt;
+        // leichte Schräglage in Kurven (max. ~6°), weich
+        FLY.roll += (-0.35 * FLY.om - FLY.roll) * Math.min(1, dt * 2);
     }
+    const z0 = S.cam.zoom;
     const st = flyStep(S.cam, V3.heading, dt);
     setCam(st.cam.cx, st.cam.cy, st.cam.zoom);
+    if (FLY.mode === 'random' && FLY.edge && FLY.T) {
+        // Ziel ist ein Weltpunkt: der Zoom (Fixpunkt A) schiebt es in lokalen Einheiten nach außen, Gleiten verschiebt es
+        const q = S.cam.zoom / z0;
+        FLY.T = [FLY.A[0] + (FLY.T[0] - FLY.A[0]) * q, FLY.A[1] + (FLY.T[1] - FLY.A[1]) * q];
+        if (st.lat) FLY.T = [FLY.T[0] - st.lat[0], FLY.T[1] - st.lat[1]];
+    }
+    if (FLY.rec) FLY.rec.push([+now.toFixed(1), +V3.heading.toFixed(5), S.cam.zoom, +(FLY.om || 0).toFixed(5), +(FLY.lost || 0).toFixed(2)]);
     if (st.done) { stopFly(); if (FLY.mode === 'random') toast(t('fly_max')); }
 }
 // Kurswahl aus der Sonde (alle 300 ms): Kandidaten bis ±150° um den aktuellen Kurs, Wertung entlang des
 // Strahls (0,3–1,3 Bildhälften, nahe stärker): Randnähe + Detail positiv, leere Ebene negativ, Inneres
-// (Schwarz) stark negativ, Abweichung vom Kurs leicht negativ. Ist alles voraus flach: "verloren".
+// (Schwarz) stark negativ, Abweichung vom Kurs leicht negativ. Ist alles voraus flach: "verloren". (6.1.0, ?flyedge=0)
 function flySteer() {
     const pb = V3.probe;
     if (!pb) return;
@@ -1552,6 +1624,132 @@ function flySteer() {
     FLY.hdgT = best.h;
     const here = best.flat && Math.abs(angDiff(best.h, h0)) < 0.7;
     FLY.lost = Math.max(0, Math.min(1.5, (FLY.lost || 0) + (here ? 0.25 : -0.4)));
+}
+// 6.2: Zielwahl am Mengenrand aus der Distanzschätzung der Sonde (bei jeder neuen Sonde, ~150 ms).
+// Die Sonde wurde für eine etwas ältere Kamera aufgenommen (Auslesen asynchron) – im Flug ist der Zoom seitdem um
+// bis zu ×1,5 gewachsen. Alle Positionen werden darum zwischen Sonden- und aktueller Kamera umgerechnet (probeMap).
+// Wertung einer Stelle: voll bis FLY_DE, darüber abfallend (halbe Höhe bei ×3), leere Ebene (Abstand > 0,25)
+// zunehmend negativ, innen stark negativ, viel Menge in der Umgebung (Minibrot-Inneres, große Mengenfläche)
+// negativ, Detail und Randdichte in der Umgebung positiv.
+function probeMap(pb) {
+    const c = pb.cam || S.cam, u = 1.5 / S.cam.zoom, up = 1.5 / c.zoom, k = u / up;
+    const ox = HP.toNumber(S.cam.cx - c.cx) / up, oy = HP.toNumber(S.cam.cy - c.cy) / up;
+    return { k, toP: (x, y) => [ox + x * k, oy + y * k], fromP: (x, y) => [(x - ox) / k, (y - oy) / k] };
+}
+function flyEdgeSteer(now) {
+    const pb = V3.probe;
+    if (!pb) return;
+    if (FLY.rec && T3.lastCam) FLY.recM.push(flyMetrics(pb, now));
+    if (!pb.hasDE) { flySteer(); const f = [Math.sin(FLY.hdgT), Math.cos(FLY.hdgT)]; FLY.T = [f[0] * FLY_AHEAD, f[1] * FLY_AHEAD]; FLY.glide = null; return; }
+    const W = pb.w, H = pb.h, M = probeMap(pb);
+    const cellIdx = (px, py) => { const i = Math.floor((px / pb.win * 0.5 + 0.5) * W), j = Math.floor((py / pb.win * 0.5 + 0.5) * H); return i < 3 || j < 3 || i >= W - 3 || j >= H - 3 ? -1 : j * W + i; };
+    const idx = (x, y) => { const q = M.toP(x, y); return cellIdx(q[0], q[1]); };
+    const deC = (k) => pb.de[k] / M.k;          // Distanz in aktuellen lokalen Einheiten
+    const L0 = V3.L[0], inv = 1 / Math.max(0.3, V3.L[1] - V3.L[0]);
+    const hn = (v) => v < 0 ? 0 : (Math.log2(1 + (S.formula === 5 ? v % 1000 : v)) - L0) * inv;
+    const LN = Math.log2(3);
+    const score = (k) => {
+        const d0 = pb.de[k];
+        if (Number.isNaN(d0)) return null;
+        if (d0 === 0) return -3;
+        const d = d0 / M.k;
+        // bis FLY_DE voll (dicht am Rand bleibt ein Punkt über viele Zoomstufen randnah), darüber abfallend
+        // (halbe Höhe bei ×3), ab 0,25 (leer) zunehmend negativ; je dichter am Rand, desto etwas besser
+        const x = Math.max(0, Math.log2(d / FLY_DE) / LN);
+        let s = Math.exp(-0.69 * x * x) - 0.45 * Math.max(0, Math.log2(d / 0.25)) + 0.15 * Math.min(1, Math.max(0, -Math.log2(d / FLY_DE) / 4));
+        // Umgebung (7×7 Zellen): viel Menge (Minibrot-Inneres, große Fläche) negativ, Detail und Randdichte positiv
+        const i0 = k % W, j0 = (k - i0) / W;
+        let nin = 0, nv = 0, det = 0, nedge = 0;
+        const h0 = hn(pb.data[k]);
+        for (let j = j0 - 3; j <= j0 + 3; j += 1) for (let i = i0 - 3; i <= i0 + 3; i += 1) {
+            const q = j * W + i, e = pb.de[q];
+            if (Number.isNaN(e)) continue;
+            nv++; if (e === 0) nin++; else { det += Math.abs(hn(pb.data[q]) - h0); if (e / M.k < 0.3) nedge++; }
+        }
+        if (nv) { s -= 2.5 * Math.max(0, nin / nv - 0.45); s += 0.3 * Math.min(1, det / nv * 4) + 0.4 * nedge / nv; }
+        return s;
+    };
+    const h0 = V3.heading;
+    const userHold = now - FLY.userT < 3000;
+    const A = FLY.A;
+    const lim = userHold ? 0.6 : Math.PI / 2;     // Vorwärtsbereich ±90° (Wischen: ±35° für 3 s); Anflug sucht ringsum (bestAll)
+    let bestF = null, bestAll = null, hiIt = null;
+    for (let j = 3; j < H - 3; j += 2) for (let i = 3; i < W - 3; i += 2) {
+        const k = j * W + i, d0 = pb.de[k];
+        if (Number.isNaN(d0)) continue;
+        const [x, y] = M.fromP(((i + 0.5) / W * 2 - 1) * pb.win, ((j + 0.5) / H * 2 - 1) * pb.win), r = Math.hypot(x, y);
+        if (r < FLY_RMIN) continue;
+        if (d0 > 0 && r > 0.5 && (!hiIt || pb.data[k] > hiIt.v)) hiIt = { v: pb.data[k], x, y };   // höchste Iteration = Richtung zur Menge
+        const sc = score(k);
+        if (sc === null) continue;
+        const db = Math.abs(angDiff(Math.atan2(x, y), h0));
+        if (!bestAll || sc > bestAll.sc) bestAll = { sc, x, y };
+        if (r > FLY_RMAX || db > lim) continue;
+        const tot = sc - 0.3 * Math.hypot(x - A[0], y - A[1]) - 0.18 * db - 0.4 * Math.max(0, r - FLY_RPREF);
+        if (!bestF || tot > bestF.tot) bestF = { tot, sc, x, y };
+    }
+    // Ziel lokal nachführen: Hügelsteigen um den Zoompunkt A (Umkreis bis 0,2) – der Rand „wandert" beim Tauchen
+    // nach außen (die Distanz eines festen Punkts wächst mit dem Zoom), das Ziel bleibt so dicht am Zoompunkt
+    const pen = (x, y, rr) => 0.6 * rr + 0.4 * Math.max(0, Math.hypot(x, y) - FLY_RPREF);
+    let cur = null;
+    const kA = idx(A[0], A[1]), sA = kA >= 0 ? score(kA) : null;
+    const approach = FLY.lost > 0.3 && FLY.T && Math.hypot(FLY.T[0] - A[0], FLY.T[1] - A[1]) > 0.3;   // Anflug läuft: Ziel halten
+    if (sA !== null) {
+        cur = { sc: sA, x: A[0], y: A[1] };
+        for (let a = 0; a < 12; a++) for (const rr of [0.05, 0.1, 0.16, 0.24]) {
+            const x = A[0] + Math.sin(a * Math.PI / 6) * rr, y = A[1] + Math.cos(a * Math.PI / 6) * rr;
+            const r = Math.hypot(x, y);
+            if (r < FLY_RMIN || r > FLY_RMAX || Math.abs(angDiff(Math.atan2(x, y), h0)) > lim) continue;
+            const kk = idx(x, y); if (kk < 0) continue;
+            const s2 = score(kk);
+            if (s2 !== null && s2 - pen(x, y, rr) > cur.sc) cur = { sc: s2 - pen(x, y, rr), x, y };
+        }
+        // bisheriges Ziel behalten, solange es kaum schlechter ist (kein Hin und Her)
+        if (FLY.T) { const kt = idx(FLY.T[0], FLY.T[1]), st = kt >= 0 ? score(kt) : null; if (st !== null && st - pen(FLY.T[0], FLY.T[1], 0) > cur.sc - 0.08 && Math.hypot(FLY.T[0] - A[0], FLY.T[1] - A[1]) < 0.3) cur = { sc: st - pen(FLY.T[0], FLY.T[1], 0), x: FLY.T[0], y: FLY.T[1] }; }
+        if (!approach) FLY.T = [cur.x, cur.y];
+    }
+    const curTot = cur ? cur.sc - 0.18 * Math.abs(angDiff(Math.atan2(cur.x, cur.y), h0)) : -1e9;
+    const held = now - FLY.Tt;
+    // weiter entferntes Ziel nur mit Hysterese: deutlich besser (+25 %) und das bisherige ≥ 1,5 s gehalten
+    if (bestF && (!cur || (held > 1500 && bestF.tot > curTot + Math.max(0.25 * Math.abs(curTot), 0.15)) || (cur.sc < 0 && held > 600 && bestF.tot > curTot + 0.1))) {
+        FLY.T = [bestF.x, bestF.y]; FLY.Tt = now;
+    }
+    // Anflug („verloren"): voraus keine gute Stelle -> die beste Stelle im ganzen Sondenfenster anfliegen: kaum
+    // tiefer, seitlich hingleiten (langsamer, je näher), der Kurs dreht dorthin. Gar nichts im Fenster: geradeaus.
+    const okAhead = (cur && cur.sc > 0.25) || (bestF && bestF.sc > 0.35);
+    // (nichts Brauchbares im Fenster: Richtung der höchsten Iteration – sie steigt zur Menge hin)
+    const far = bestAll && bestAll.sc > 0.35 ? bestAll : hiIt;
+    if (!okAhead && far && (!FLY.T || held > 600)) { FLY.T = [far.x, far.y]; FLY.Tt = now; }
+    FLY.lost = Math.max(0, Math.min(1.5, (FLY.lost || 0) + (okAhead ? -0.3 : 0.25)));
+    if (FLY.lost > 0.3 && FLY.T && far) {
+        const r = Math.max(1e-9, Math.hypot(FLY.T[0], FLY.T[1]));
+        FLY.glide = [FLY.T[0] / r, FLY.T[1] / r]; FLY.gv = Math.min(1, Math.max(0.15, (r - 0.3) / 0.6));
+    } else { FLY.glide = null; FLY.gv = 1; }
+}
+// Messung (tests/measure_fly.py): pro Sonde Anteil Bild mit Mengenrand im mittleren Drittel (Distanz < 0,3
+// Bildhälften), Anteil innen bzw. leer (Distanz > 1) am sichtbaren Boden im Sondenfenster
+function flyMetrics(pb, now) {
+    const c = T3.lastCam, M = probeMap(pb);
+    const at = (P) => { const q = M.toP(P[0], P[1]); const i = Math.floor((q[0] / pb.win * 0.5 + 0.5) * pb.w), j = Math.floor((q[1] / pb.win * 0.5 + 0.5) * pb.h); return i < 0 || j < 0 || i >= pb.w || j >= pb.h ? NaN : pb.de[j * pb.w + i] / M.k; };
+    const look = (x, y) => {
+        const g = T3.groundAt(c, x, y);
+        if (!g) return -2;
+        const d = at(g);
+        return Number.isNaN(d) ? -2 : d;
+    };
+    let edgeMid = 0, nMid = 0, nAll = 0, nIn = 0, nEmpty = 0, nEdge = 0;
+    for (let a = 0; a < 9; a++) for (let b = 0; b < 9; b++) {
+        const d = look((a / 8 - 0.5) * 2 / 3, (b / 8 - 0.5) * 2 / 3);
+        if (d < -1) continue;
+        nMid++; if (d > 0 && d < 0.3) edgeMid++;
+    }
+    for (let a = 0; a < 15; a++) for (let b = 0; b < 15; b++) {
+        const d = look(a / 7 - 1, b / 7 - 1);
+        if (d < -1) continue;
+        nAll++; if (d === 0) nIn++; else if (d > 1) nEmpty++; else if (d < 0.3) nEdge++;
+    }
+    const deAt = (P) => { if (!P) return null; const d = at(P); return Number.isNaN(d) ? null : +d.toPrecision(3); };
+    return { dA: deAt(FLY.A), dT: deAt(FLY.T), dF: deAt([0, 0]), A: FLY.A ? FLY.A.map(x => +x.toFixed(3)) : null, T: FLY.T ? FLY.T.map(x => +x.toFixed(3)) : null, t: +now.toFixed(0), z: S.cam.zoom, edgeMid: nMid ? edgeMid / nMid : null, inFrac: nAll ? nIn / nAll : null, emptyFrac: nAll ? nEmpty / nAll : null, edgeFrac: nAll ? nEdge / nAll : null, n: nAll, lost: +(FLY.lost || 0).toFixed(2), hasDE: !!pb.hasDE };
 }
 // ------------------------------------------------------------------ Buddhabrot
 const BUD = { hist: null, w: 0, h: 0, max: 0, version: 0, camKey: '' };
@@ -1601,6 +1799,8 @@ function stateURL() {
     p.set('p', PAL.list[S.palette].id);
     if (S.formula === 1) { p.set('jx', HP.toString(S.julia.x, 12)); p.set('jy', HP.toString(S.julia.y, 12)); }
     if (S.iterManual) p.set('it', S.iterValue);
+    const sc = setColParam(); if (sc) p.set('sc', sc);
+    if (S.alpine) p.set('al', S.valley[0]);
     return location.origin + location.pathname + '#' + p.toString();
 }
 function readURL() {
@@ -1612,9 +1812,21 @@ function readURL() {
     S.formula = m;
     if (p.has('jx')) S.julia = { x: HP.fromString(p.get('jx')), y: HP.fromString(p.get('jy') || '0') };
     if (p.has('p')) S.palette = PAL.indexOf(p.get('p'));
+    // der Link beschreibt das Bild vollständig: ohne sc = Schwarz, ohne al = kein Alpin-Look
+    applySetColParam(p.get('sc') || '');
+    S.alpine = p.has('al');
+    if (S.alpine) S.valley = { f: 'forest', l: 'lake', m: 'meadow' }[p.get('al')] || 'forest';
     if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, parseInt(p.get('it'), 10) || 300); }
     setCam(HP.fromString(p.get('x')), HP.fromString(p.get('y') || '0'), parseFloat(p.get('z')) || 1);
     return true;
+}
+// 6.2 Farbe der Menge im Link: sc=w (Weiß), d/l (dunkelste/hellste Palettenfarbe), sonst Hex ohne # (eigene);
+// fehlt = Schwarz. al=f|l|m: Alpin-Look mit Wald/See/Wiese im Tal
+function setColParam() { return S.setCol === 'white' ? 'w' : S.setCol === 'dark' ? 'd' : S.setCol === 'light' ? 'l' : S.setCol === 'custom' ? S.setHex.slice(1) : ''; }
+function applySetColParam(v) {
+    if (v === 'w') S.setCol = 'white'; else if (v === 'd') S.setCol = 'dark'; else if (v === 'l') S.setCol = 'light';
+    else if (/^[0-9a-fA-F]{6}$/.test(v)) { S.setCol = 'custom'; S.setHex = '#' + v.toLowerCase(); }
+    else S.setCol = 'black';
 }
 let urlT = 0, urlKey = '';
 function syncURL(now) {
@@ -1749,7 +1961,7 @@ const API = {
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
-    V3, FLY, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT,
+    V3, FLY, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
     prewarm3d() { if (T3 && !T3.warm) { T3.warm = true; T3.prewarm(); } },
@@ -1780,7 +1992,7 @@ const API = {
         const d = HP.digitsForZoom(S.cam.zoom);
         return { cx: HP.toString(S.cam.cx, d), cy: HP.toString(S.cam.cy, d), zoom: S.cam.zoom, formula: S.formula,
                  jx: S.formula === 1 ? HP.toString(S.julia.x, 12) : undefined, jy: S.formula === 1 ? HP.toString(S.julia.y, 12) : undefined,
-                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id };
+                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined };
     },
     isMoving: () => isMoving(performance.now()),
     // Test/Messung: aktuelles Bild frisch auf den Canvas (2D: Display-Pass; 3D: gemitteltes Bild bzw. neu zeichnen)
