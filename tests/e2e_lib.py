@@ -9,7 +9,9 @@ GPU_ARGS = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
 class App:
     def __init__(self, p, gpu=True, device='Pixel 7', landscape=False, query='nosw&noanim', extra_ctx=None):
         self.errors = []
-        self.browser = p.chromium.launch(args=GPU_ARGS if gpu else [])
+        # FK_HEADED=1: sichtbares Fenster (headless drosselt macOS den Bildtakt zeitweise auf ~10 Bilder/s – für Flug-
+        # und Bildratenmessungen dann sichtbar messen)
+        self.browser = p.chromium.launch(args=GPU_ARGS if gpu else [], headless=os.environ.get('FK_HEADED') != '1')
         dev = dict(p.devices[device])
         if landscape:
             vw, vh = dev['viewport']['width'], dev['viewport']['height']

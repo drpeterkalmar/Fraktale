@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.4.0';
+const APP_VERSION = '6.4.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -893,7 +893,12 @@ function pumpCtl(moving, prefetch) {
     // 6.2: in 3D sind „Leerlauf"-Frames nie leer (3D-Bild, eingereihte GPU-Arbeit) – ihre Dauer darf das Budget nicht
     // aufblähen (sonst rechnete der Flug bis zu 8 Bildtakte pro Frame und ruckelte); dort keine Reserve über den Bildtakt (A/B: ?flycap=N Takte, ?flycap=0 = 6.1)
     const cap = V3.on && Q.get('flycap') !== '0' ? (Q.has('flycap') ? +Q.get('flycap') : 1.0) * vs : 8 * vs;
-    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, cap)) : vs };
+    // 6.4 Flug: Rechenanteil garantieren – eine Vorschau soll in ~0,6 s fertig werden, auch wenn schon das 3D-Bild allein
+    // länger als ein Bildtakt braucht (langsames Gerät, großer Bildschirm, hohe Bildwiederholrate). Sonst schrumpfte der
+    // Häppchen-Regler die Rechnung auf 1024 Pixel pro Bild, keine Vorschau wurde mehr fertig, der Flug sah nur noch
+    // Leere und suchte den Rand (A/B: ?flyhold=0)
+    const minS = FLY_HOLD && V3.on && FLY.on && !FLY.paused ? 0.6 : 0;
+    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, cap)) : vs, minS };
 }
 function isMoving(now) {
     return gestures.active() || !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused) || now - RC.lastMoveT < 150 || now - lastParamT < 150;
@@ -1179,7 +1184,9 @@ function governorUpdate(now, dt) {
     // 10-%-Quantil der Schärfe (90 % des Bildes sind mindestens so scharf), Totzone ±10 % um die Schwelle
     GOV.q = cov.q;
     const e = (GOV.kmin - cov.q) / GOV.kmin;
-    if (e > 0.1) GOV.g = Math.max(GOV.min, GOV.g - dt * 3 * Math.min(1, e));
+    // 6.4: im Flug darf die Bremse bis 30 % gehen (sonst 40 %) – lieber etwas langsamer tauchen als ins Leere (A/B: ?flyhold=0)
+    const gmin = FLY_HOLD && FLY.on && !FLY.paused && !Q.has('govmin') ? 0.3 : GOV.min;
+    if (e > 0.1) GOV.g = Math.max(gmin, GOV.g - dt * 3 * Math.min(1, e));
     else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);
 }
 
@@ -1502,6 +1509,7 @@ function ground3d(cam, dx, dy) {
 // A/B: ?flyedge=0 = Wertung und Lenkung 6.1.0, ?flyturn=R = maximale Drehrate (rad/s).
 const FLY_AHEAD = 0.55;
 const FLY_EDGE = Q.get('flyedge') !== '0';
+const FLY_HOLD = FLY_EDGE && Q.get('flyhold') !== '0';    // 6.4: Flug bleibt am Rand (Rechenanteil, Bremse, Datenlücken, Vorausschau)
 const FLY_TURN = Q.has('flyturn') ? Math.max(0.02, +Q.get('flyturn') || 0.3) : 0.3;
 const FLY_ACC = 0.5;          // max. Drehbeschleunigung (rad/s²)
 const FLY_DE = 0.04;          // Zoompunkt höchstens so weit von der Menge (Bildhälften)
@@ -1530,7 +1538,7 @@ function startFly(place) {
     // 6.2: Zoompunkt startet geradeaus, Kurs ruhend
     const f = [Math.sin(V3.heading), Math.cos(V3.heading)];
     FLY.A = [f[0] * FLY_AHEAD, f[1] * FLY_AHEAD]; FLY.VA = [0, 0]; FLY.T = null; FLY.Tt = 0; FLY.om = 0; FLY.roll = 0;
-    FLY.userPrev = 0; FLY.userT = -1e9; FLY.zf = 1; FLY.glide = null; FLY.edge = FLY_EDGE;
+    FLY.userPrev = 0; FLY.userT = -1e9; FLY.zf = 1; FLY.glide = null; FLY.edge = FLY_EDGE; FLY.dA = null; FLY.gap = false;
     emit('fly');
 }
 // Ausrichten: Drehung weich auf Norden, Neigung auf den Standard
@@ -1552,7 +1560,9 @@ function flyStep(cam, heading, dt) {
     const u = 1.5 / cam.zoom, f = [Math.sin(heading), Math.cos(heading)];
     if (FLY.edge && FLY.A) {
         const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.95 * lost) * (FLY.zf || 1)));
-        const k = 1 - cam.zoom / z1, gd = FLY.glide || f, gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * dt * g, lat = gl * u;
+        // 6.4: verloren -> erst zum Randstück drehen, dann vorwärts dorthin gleiten (statt seitlich zu rutschen)
+        const al = FLY_HOLD && FLY.glide ? Math.max(0, f[0] * FLY.glide[0] + f[1] * FLY.glide[1]) : 1;
+        const k = 1 - cam.zoom / z1, gd = FLY_HOLD ? f : (FLY.glide || f), gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * al * dt * g, lat = gl * u;
         return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + gd[0] * lat), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + gd[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28, lat: [gd[0] * gl, gd[1] * gl] };
     }
     const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.85 * lost)));
@@ -1587,8 +1597,16 @@ function flyUpdate(now, dt) {
             FLY.VA = [FLY.VA[0] + (vx - FLY.VA[0]) * kv, FLY.VA[1] + (vy - FLY.VA[1]) * kv];
             FLY.A = [FLY.A[0] + FLY.VA[0] * dt, FLY.A[1] + FLY.VA[1] * dt];
             // Zoomtempo weich drosseln, solange der Zoompunkt noch weit vom Ziel ist (erst hingleiten, dann tauchen)
-            const zfT = 1 - 0.55 * smooth01((d - 0.12) / 0.45);
-            FLY.zf += (zfT - FLY.zf) * Math.min(1, dt * 1.5);
+            let zfT = 1 - 0.55 * smooth01((d - 0.12) / 0.45);
+            if (FLY_HOLD) {
+                // 6.4 Vorausschau: Die Distanz des Zoompunkts zum Rand wächst beim Tauchen mit dem Zoom – schon bremsen, wenn
+                // sie in ~0,4 s aus dem Band (≈ 0,08 Bildhälften) liefe; die Lenkung holt den Zoompunkt derweil zurück an
+                // den Rand. Datenlücke: langsam weiter, bis das Bild voraus gerechnet ist.
+                if (FLY.gap) zfT *= 0.3;
+                if (FLY.dA !== null && FLY.dA !== undefined) zfT *= 1 - 0.85 * smooth01((FLY.dA * Math.pow(10, sp * 0.4) - 0.08) / 0.3);
+            }
+            // bremsen schnell, beschleunigen weich
+            FLY.zf += (zfT - FLY.zf) * Math.min(1, dt * (FLY_HOLD && zfT < FLY.zf ? 5 : 1.5));
         }
         // Zoompunkt im Vorwärtsbereich halten (0,25–0,7 Bildhälften)
         const ra = Math.hypot(FLY.A[0], FLY.A[1]);
@@ -1701,11 +1719,12 @@ function flyEdgeSteer(now) {
     const userHold = now - FLY.userT < 3000;
     const A = FLY.A;
     const lim = userHold ? 0.6 : Math.PI / 2;     // Vorwärtsbereich ±90° (Wischen: ±35° für 3 s); Anflug sucht ringsum (bestAll)
-    let bestF = null, bestAll = null, hiIt = null;
+    let bestF = null, bestAll = null, hiIt = null, nFwd = 0, nFwdOk = 0;
     for (let j = 3; j < H - 3; j += 2) for (let i = 3; i < W - 3; i += 2) {
         const k = j * W + i, d0 = pb.de[k];
-        if (Number.isNaN(d0)) continue;
         const [x, y] = M.fromP(((i + 0.5) / W * 2 - 1) * pb.win, ((j + 0.5) / H * 2 - 1) * pb.win), r = Math.hypot(x, y);
+        if (r >= FLY_RMIN && r <= 1 && Math.abs(angDiff(Math.atan2(x, y), h0)) < Math.PI / 2) { nFwd++; if (!Number.isNaN(d0)) nFwdOk++; }
+        if (Number.isNaN(d0)) continue;
         if (r < FLY_RMIN) continue;
         if (d0 > 0 && r > 0.5 && (!hiIt || pb.data[k] > hiIt.v)) hiIt = { v: pb.data[k], x, y };   // höchste Iteration = Richtung zur Menge
         const sc = score(k);
@@ -1721,6 +1740,8 @@ function flyEdgeSteer(now) {
     const pen = (x, y, rr) => 0.6 * rr + 0.4 * Math.max(0, Math.hypot(x, y) - FLY_RPREF);
     let cur = null;
     const kA = idx(A[0], A[1]), sA = kA >= 0 ? score(kA) : null;
+    // 6.4: Distanz des Zoompunkts zum Rand (aktuelle lokale Einheiten; innen zählt wie „zu weit“) – für die Vorausschau
+    FLY.dA = kA >= 0 && !Number.isNaN(pb.de[kA]) ? (pb.de[kA] === 0 ? 0.3 : deC(kA)) : null;
     const approach = FLY.lost > 0.3 && FLY.T && Math.hypot(FLY.T[0] - A[0], FLY.T[1] - A[1]) > 0.3;   // Anflug läuft: Ziel halten
     if (sA !== null) {
         cur = { sc: sA, x: A[0], y: A[1] };
@@ -1745,6 +1766,11 @@ function flyEdgeSteer(now) {
     // Anflug („verloren"): voraus keine gute Stelle -> die beste Stelle im ganzen Sondenfenster anfliegen: kaum
     // tiefer, seitlich hingleiten (langsamer, je näher), der Kurs dreht dorthin. Gar nichts im Fenster: geradeaus.
     const okAhead = (cur && cur.sc > 0.25) || (bestF && bestF.sc > 0.35);
+    // 6.4: Datenlücke (das Bild voraus ist noch nicht gerechnet) ist kein „verloren“: Kurs halten, langsam weiter tauchen,
+    // bis wieder Daten da sind – statt zu kreisen und seitlich zu gleiten (A/B: ?flyhold=0)
+    // (Ziel nahe dem Zoompunkt wurde oben schon mit den vorhandenen Daten nachgeführt)
+    FLY.gap = FLY_HOLD && nFwd > 0 && nFwdOk < 0.3 * nFwd;
+    if (FLY.gap) { FLY.lost = Math.max(0, (FLY.lost || 0) - 0.15); FLY.glide = null; FLY.gv = 1; return; }
     // (nichts Brauchbares im Fenster: Richtung der höchsten Iteration – sie steigt zur Menge hin)
     const far = bestAll && bestAll.sc > 0.35 ? bestAll : hiIt;
     if (!okAhead && far && (!FLY.T || held > 600)) { FLY.T = [far.x, far.y]; FLY.Tt = now; }
@@ -1870,8 +1896,12 @@ function syncURL(now) {
 let lastT = performance.now();
 const PROF = Q.has('prof') ? [] : null;   // Test: Frames > 25 ms JS mit Teilzeiten
 const VS = { buf: new Array(90).fill(0), i: 0 };
+// Test (6.4, tests/measure_fly.py): ?fpscap=N begrenzt die Bildrate (langsames Gerät nachstellen)
+const FPSCAP = +Q.get('fpscap') || 0;
+let capT = 0;
 function frame(now) {
     requestAnimationFrame(frame);
+    if (FPSCAP) { if (now - capT < 1000 / FPSCAP - 2) return; capT = now; }
     const js0 = performance.now();
     const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
     lastT = now;
@@ -1992,7 +2022,7 @@ const API = {
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
-    V3, FLY, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,
+    V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
     // 6.3: nur die Programme des aktuellen Looks, nicht blockierend (T3.ready pollt danach pro Bild)

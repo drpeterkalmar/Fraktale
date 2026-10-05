@@ -1,0 +1,57 @@
+{
+ "tag": "alt_s05_fps15",
+ "query": "fpscap=15&flyhold=0",
+ "secs": 240.0,
+ "land": true,
+ "runs": {
+  "seepferd_300": {
+   "zoomEnd": "3.85e+07",
+   "decades": 5.11,
+   "stillFlying": true,
+   "hard": 0,
+   "meanTurn": 18.54,
+   "p95Turn": 25.78,
+   "maxTurn": 25.79,
+   "flipsPerMin": 0.0,
+   "meanJerk": 0.8,
+   "maxJerk": 14.3,
+   "frames": 3574,
+   "secs": 240.2,
+   "edgeMidShare": 1.0,
+   "edgeMidMean": 0.789,
+   "inFrac": 0.179,
+   "emptyFrac": 0.047,
+   "edgeFrac": 0.659,
+   "longestNoEdge": 0,
+   "probes": 92,
+   "lostShare": 0.0,
+   "lostPhasesPerMin": 0.25,
+   "lostTimeShare": 0.9233,
+   "longestLost": 221.5
+  }
+ },
+ "errors": [],
+ "mean": {
+  "meanTurn": 18.54,
+  "p95Turn": 25.78,
+  "maxTurn": 25.79,
+  "flipsPerMin": 0.0,
+  "meanJerk": 0.8,
+  "maxJerk": 14.3,
+  "edgeMidShare": 1.0,
+  "inFrac": 0.179,
+  "emptyFrac": 0.047,
+  "longestNoEdge": 0.0,
+  "lostPhasesPerMin": 0.25,
+  "lostTimeShare": 0.923,
+  "longestLost": 221.5,
+  "decades": 5.11
+ },
+ "max": {
+  "maxTurn": 25.79,
+  "maxJerk": 14.3,
+  "longestNoEdge": 0,
+  "longestLost": 221.5
+ },
+ "speed": 0.5
+}

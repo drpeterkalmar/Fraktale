@@ -248,7 +248,9 @@ function create(canvas) {
         }
         if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
         // Vorausrechnen: kleinere Häppchen (halbes Stillstands-Häppchen), damit eine neue Geste nicht wartet
-        const px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
+        let px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
+        // 6.4 Flug: Mindestanteil, damit der Job in ctl.minS Sekunden fertig wird (Bildzeit dt ms pro Häppchen-Runde)
+        if (moving && ctl && ctl.minS) px = Math.max(px, Math.min(2e5, job.w * job.h * (ctl.dt / 1000) / ctl.minS));
         // 6.4: neue Rechen-Variante (Bunt eingeschaltet) erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job
         if (job.inn && job.row < job.h && !programs[computeKey(job)] && !R.programReady(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
         while (job.row < job.h && job.q.length < R.maxInflight) {

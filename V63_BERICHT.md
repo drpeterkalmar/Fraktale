@@ -1,4 +1,4 @@
-# Fraktal-Explorer 6.3 + 6.4 – Bericht „3D-Start ohne Hänger“ und „Bunte Menge“
+# Fraktal-Explorer 6.3 + 6.4 – Bericht „3D-Start ohne Hänger“, „Bunte Menge“, „Flug bleibt am Mengenrand“
 
 Datum 05.10.2026. Auftrag: Peters Wunsch vom 04.10. (22:40): „Der Start vom 3D-Modus hängt Chrome am rog für
 30 Sekunden auf – vielleicht geht das ressourcenschonender am Start?“ (rog = Windows 11, Chrome, RTX 3070 Ti → WebGL
@@ -257,3 +257,82 @@ Mini-Mandelbrots GPU-Zeit bis +55 … +85 %.
   nicht sicher gefunden). Farben für Perioden > 1 023 wiederholen sich.
 - Burning Ship/Tricorn: Perioden stimmen, |λ| ist dort nur eine Näherung (Betrag wie holomorph). Newton: keine Wirkung.
 - Orbit-Fallen (Auftrag Punkt 3, optional) nur für Julia als „Blasen“; für Mandelbrot weggelassen.
+
+---
+
+# 6.4.1 Flug bleibt am Mengenrand
+
+Peter: „… wenn der Flug nicht immer in die Unendlichkeit abdriftet und sich ständig die Grenze zur Menge neu suchen
+muss.“ Gemessen statt vermutet – **die Ursache war nicht die Lenkung, sondern fehlende Bilddaten bei niedriger
+Bildrate.**
+
+![Flug bei 15 Bildern/s ab dem Gesamtbild, 6 Bilder in der Flugmitte – oben bis 6.4.0 (nur Dunst bei Zoom 1,2·10⁴), unten 6.4.1](tests/shots/fly/serie_v640_fps15_alt_neu.jpg)
+
+## 1. Messung (Ist)
+`tests/measure_fly.py` kann jetzt lange Flüge messen (`--secs`, `--speed`, Ende an der Zoomgrenze) und zählt
+„Verloren“-Phasen (FLY.lost > 0,3) pro Minute, den Zeitanteil mit lost > 0 und die längste Verloren-Phase.
+- **60 Bilder/s, Standardtempo:** Der Flug ist dort gar nicht das Problem: 0 Verloren-Phasen, Rand in der
+  Bildmitte, 4–7 % leerer Boden. Er erreicht nach 52–83 s die Zoomgrenze 10²⁸ und endet („Tiefste Flughöhe
+  erreicht“) – 3–5-Minuten-Flüge gibt es bei Standardtempo also nicht.
+- **Niedrige Bildrate (15 Bilder/s, nachgestellt mit `?fpscap=15`):** Ab Zoom ~10³–10⁴ kommt die Rechnung nicht
+  mehr nach. Der Häppchen-Regler aus 5.1 verkleinert die Rechenmenge pro Bild, solange ein Bild länger als 1,3 ×
+  Bildtakt dauert – hier liegt das aber nicht an der Rechnung, sondern am langsamen Gerät. So schrumpft sie auf 1024
+  Pixel pro Bild, keine Vorschau wird mehr fertig (nach 1,5 s verworfen), die vorhandenen Ebenen sind bis zu
+  5 000-fach zu grob, und ab ~1,2·10⁴ gibt es keine gültige Ebene mehr. Das 3D-Bild zeigt nur noch Dunst (oben im
+  Serienbild), die Sonde sieht nichts, die Lenkung hält das für „verloren“, bremst den Zoom auf 5 % und kreist mit
+  der höchsten Drehrate – **„driftet in die Unendlichkeit ab und sucht die Grenze“.** Dasselbe passiert auf jedem
+  Gerät, auf dem schon das 3D-Bild allein länger als 1,3 Bildtakte braucht: großer Bildschirm (die 3D-Rechnung ist
+  quadratisch, Kantenlänge = längere Bildschirmseite), hohe Bildwiederholrate (der rog-Bildschirm vermutlich
+  144–165 Hz: dann gilt 8,3 ms als Takt), Alpin-Look, Mittelklasse-Handy. **Am rog nicht nachgemessen.**
+- Zusätzlicher Fund: macOS drosselte headless-Chromium zeitweise auf ~10 Bilder/s (auch eine leere Seite) – alle
+  Flugmessungen hier darum mit sichtbarem Fenster (`FK_HEADED=1`), Bildrate per `?fpscap` festgelegt.
+
+## 2. Umsetzung (`js/app.js`, `js/renderer.js`; A/B `?flyhold=0` = Verhalten 6.4.0)
+- **Rechenanteil im Flug:** Der Häppchen-Regler bekommt eine Untergrenze – eine Vorschau soll in ~0,6 s fertig
+  werden (Pixel pro Bild ≥ Jobgröße × Bildzeit / 0,6 s, höchstens 200 000). Lieber ein paar Bilder pro Sekunde
+  weniger als gar kein Bild.
+- **Tempo-Bremse tiefer:** Wird das Bild trotzdem grob, darf die Bremse im Flug bis 30 % (statt 40 %) gehen.
+- **Datenlücke ≠ verloren:** Liegt voraus weniger als 30 % gerechnetes Bild, zählt das nicht als „verloren“: Kurs
+  halten, Zoom auf 30 %, bis wieder Daten da sind.
+- **Vorausschau:** Die Distanz des Zoompunkts zum Rand (Distanzschätzung der Sonde) wächst beim Tauchen mit dem
+  Zoom. Der Zoom bremst jetzt schon, wenn sie in ~0,4 s aus dem Band (≈ 0,08 Bildhälften) liefe (bis auf 15 %,
+  schnell bremsen, weich beschleunigen); die Lenkung holt den Zoompunkt derweil an den Rand zurück.
+- **Verloren: drehen statt rutschen:** Statt seitlich zum nächsten Randstück zu gleiten, dreht der Kurs dorthin und
+  gleitet erst dann vorwärts (Gleiten × Ausrichtung des Kurses zum Ziel).
+- 2b („lohnende Ziele“ alle 20–40 s) **bewusst nicht umgesetzt**: Ein Flug dauert bei Standardtempo ohnehin nur ~1
+  Minute bis zur Zoomgrenze, und die Messung zeigt den eigentlichen Fehler woanders. Die Wertung bevorzugt schon jetzt
+  Stellen mit viel Detail und Randdichte.
+
+## 3. Vorher/Nachher (je 3 Startorte: Gesamtbild, Seepferdchen-Tal 300×, Randpunkt 10⁶; Mittelwerte; Flug bis zur
+Zoomgrenze bzw. 4 min; Pixel-7-Ansicht, sichtbares Fenster, M1)
+
+| | Verloren-Phasen/min | Zeit verloren | längste Phase | leerer Boden | Drehrate Ø | Wechsel/min | Tiefe |
+|---|---|---|---|---|---|---|---|
+| **15 fps, hoch, Tempo 0,5** – 6.4.0 | 0,25 | **92 %** | **222 s** | 0–3 % | 17–20 °/s | 0,2 | 5 Zehnerpot. in 4 min |
+| 15 fps, hoch, Tempo 0,5 – **6.4.1** | **0** | **0 %** | 0 | 0,2 % | 2,0 °/s | 5,4 | 25 (Grenze) |
+| 15 fps, quer, Tempo 0,5 – 6.4.0¹ | 0,25 | 92 % | 222 s | 4,7 % | 18,5 °/s | 0 | 5 in 4 min |
+| 15 fps, quer, Tempo 0,5 – **6.4.1** | **0** | **0 %** | 0 | 0,4 % | 1,9 °/s | 4,9 | 25 |
+| 15 fps, hoch, ⏩ 1,0 – **6.4.1** | 0 | 0 % | 0 | 0,2 % | 3,4 °/s | 4,7 | 25 |
+| 60 fps, hoch, Tempo 0,5 – 6.4.0 (2 Läufe) | 0 / 0 | 0 % | 0 | 4,4 / 6,1 % | 5,1 / 4,4 °/s | 7,1 / 5,3 | 25 |
+| 60 fps, hoch, Tempo 0,5 – **6.4.1** (2 Läufe) | 0 / 0 | 0 % | 0 | 6,9 / 5,3 % | 5,3 / 4,2 °/s | 5,5 / 9,0 | 25 |
+| 60 fps, quer, Tempo 0,5 – 6.4.0 | 1,7 | 2,9 % | 1,8 s | 8,3 % | 6,9 °/s | 8,3 | 25 |
+| 60 fps, quer, Tempo 0,5 – **6.4.1** | **0** | **0 %** | 0 | **4,8 %** | **5,2 °/s** | **5,5** | 25 |
+| 60 fps, hoch, ⏩ 1,0 – 6.4.0 (2 Läufe) | 3,5 / 5,0 | 10 / 13 % | 2,9 / 1,8 s | 17 / 22 % | 7,9 / 8,1 °/s | 10,4 / 5,6 | 25 |
+| 60 fps, hoch, ⏩ 1,0 – **6.4.1** (2 Läufe) | 4,2 / **0** | 8,8 / **0 %** | 0,3 / 0 s | 25 / **8 %** | 4,2 / 6,1 °/s | 6,3 / 7,7 | 25 |
+
+¹ nur Seepferdchen-Tal (die anderen Startorte verhalten sich bei 6.4.0 gleich: 92 %). Rohdaten
+`tests/results_fly_{alt,neu,ist}_*.json`.
+
+**Zielwerte** (≤ 1 Verloren-Phase pro 2 min, < 3 % Zeit verloren, < 5 % leerer Boden, ruhige Lenkung Ø ≤ 6 °/s,
+≤ 8 Wechsel/min): bei Standardtempo erreicht – bei 15 und 60 Bildern/s, hoch und quer. Leerer Boden 4,8–6,9 % bei
+60 fps (Grenzbereich, wie 6.4.0: die Bildmitte liegt hinter dem Zoompunkt). Ein Lauf mit 9,0 Wechseln/min (Streuung;
+der zweite 5,5). Bei ⏩ 1,0 und 60 fps streut es stark: ein Lauf ohne Verloren-Phase und mit 8 % leerem Boden, einer
+mit 4,2 Phasen/min und 25 % – im Mittel besser als 6.4.0, aber nicht im Ziel.
+
+## 4. Tests
+- Neu `tests/test_fly64.py` (in `run_all`): Zufallsflug 40 s bei 15 fps, hoch und quer: Zoom ≥ 10⁵, < 5 % der Zeit
+  verloren, Rand im Bild; 6.4.0 zum Vergleich (berichtet): bleibt bei ~1,5·10⁴, 39 % verloren nach 30 s. PASS
+  (sichtbares Fenster; headless bei ~8 fps: neu ebenfalls 0 % verloren, Zoom 1,8·10⁵).
+- `test_3d` (Flug 20 s bis 1,7·10¹⁴) und `test_v62` (Lenkung Spitze 17 °/s, 4 Wechsel/min, Rand 100 %, Wischen lenkt)
+  PASS mit sichtbarem Fenster. Headless scheitern beide Flugteile, solange macOS headless auf ~10 Bilder/s drosselt
+  (auch 6.3.0/6.4.0 – kein Code-Effekt).

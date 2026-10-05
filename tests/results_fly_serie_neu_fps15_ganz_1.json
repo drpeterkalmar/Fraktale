@@ -1,0 +1,57 @@
+{
+ "tag": "serie_neu_fps15",
+ "query": "fpscap=15",
+ "secs": 40.0,
+ "land": false,
+ "runs": {
+  "ganz_1": {
+   "zoomEnd": "2.46e+06",
+   "decades": 6.39,
+   "stillFlying": true,
+   "hard": 0,
+   "meanTurn": 1.66,
+   "p95Turn": 6.25,
+   "maxTurn": 7.42,
+   "flipsPerMin": 3.0,
+   "meanJerk": 1.3,
+   "maxJerk": 7.7,
+   "frames": 595,
+   "secs": 40.4,
+   "edgeMidShare": 1.0,
+   "edgeMidMean": 0.902,
+   "inFrac": 0.047,
+   "emptyFrac": 0.021,
+   "edgeFrac": 0.81,
+   "longestNoEdge": 0,
+   "probes": 200,
+   "lostShare": 0.0,
+   "lostPhasesPerMin": 0.0,
+   "lostTimeShare": 0.0,
+   "longestLost": 0
+  }
+ },
+ "errors": [],
+ "mean": {
+  "meanTurn": 1.66,
+  "p95Turn": 6.25,
+  "maxTurn": 7.42,
+  "flipsPerMin": 3.0,
+  "meanJerk": 1.3,
+  "maxJerk": 7.7,
+  "edgeMidShare": 1.0,
+  "inFrac": 0.047,
+  "emptyFrac": 0.021,
+  "longestNoEdge": 0.0,
+  "lostPhasesPerMin": 0.0,
+  "lostTimeShare": 0.0,
+  "longestLost": 0.0,
+  "decades": 6.39
+ },
+ "max": {
+  "maxTurn": 7.42,
+  "maxJerk": 7.7,
+  "longestNoEdge": 0,
+  "longestLost": 0
+ },
+ "speed": 0.5
+}

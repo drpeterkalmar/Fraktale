@@ -16,4 +16,5 @@ run python3 tests/test_smooth.py
 run python3 tests/test_v62.py
 run python3 tests/test_v63.py
 run python3 tests/test_v64.py
+run python3 tests/test_fly64.py
 exit $fail

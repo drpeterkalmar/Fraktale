@@ -9,7 +9,8 @@ Kennzahlen:
     wechsel von ω, nur gezählt bei |ω| > 2 °/s); Ruck = |dω/dt| (°/s²): Mittel, Maximum
   * Rand: Anteil Sonden mit Mengenrand (Distanz < 0,3 Bildhälften) im mittleren Bilddrittel; Ø Anteil Boden
     innen bzw. leer (Distanz > 1 Bildhälfte); längste Strecke ohne Rand in der Bildmitte (s)
-Aufruf: python3 tests/measure_fly.py [--tag=v620] [--query=flyedge=0] [--secs=30] [--land] [--burst]
+Aufruf: python3 tests/measure_fly.py [--tag=v620] [--query=flyedge=0] [--secs=30] [--land] [--burst] [--speed=0.5] [--only=ganz_1]
+6.4: zusätzlich „Verloren“-Phasen pro Minute (FLY.lost > 0,3), Zeitanteil lost > 0, längste Verloren-Phase.
 Ergebnis: tests/results_fly_<tag>.json, Serienbilder tests/shots/fly/<tag>/
 """
 import sys, os, json, time, math
@@ -54,6 +55,21 @@ def turn_stats(rec):
                 flipsPerMin=round(flips / T * 60, 1), meanJerk=round(sum(jerk) / len(jerk), 1), maxJerk=round(max(jerk), 1), frames=len(w), secs=round(T, 1))
 
 
+def lost_stats(rec):
+    # rec: [t_ms, heading, zoom, om, lost] pro Bild. „Verloren“-Phase = FLY.lost steigt über 0,3 (Flug hat den Rand
+    # verloren und sucht ihn neu); Zeitanteil mit lost > 0; längste Verloren-Phase
+    if len(rec) < 3: return {}
+    T = (rec[-1][0] - rec[0][0]) / 1000
+    phases, inph, t0, longest, tl = 0, False, 0, 0, 0
+    for a, b in zip(rec, rec[1:]):
+        dt = (b[0] - a[0]) / 1000
+        if b[4] > 0: tl += dt
+        if not inph and b[4] > 0.3: inph, t0 = True, b[0]; phases += 1
+        elif inph and b[4] <= 0.05: inph = False; longest = max(longest, (b[0] - t0) / 1000)
+    if inph: longest = max(longest, (rec[-1][0] - t0) / 1000)
+    return dict(lostPhasesPerMin=round(phases / max(T, 1e-3) * 60, 2), lostTimeShare=round(tl / max(T, 1e-3), 4), longestLost=round(longest, 1))
+
+
 def edge_stats(m):
     m = [x for x in m if x.get('edgeMid') is not None]
     if not m: return {}
@@ -71,6 +87,7 @@ def edge_stats(m):
 
 def main():
     tag = arg('tag', 'cur'); q = arg('query', ''); secs = float(arg('secs', 30)); land = bool(arg('land', False)); burst = bool(arg('burst', False))
+    speed = float(arg('speed', 0.5))
     only = arg('only')
     out = {'tag': tag, 'query': q, 'secs': secs, 'land': land, 'runs': {}}
     shots = os.path.join(os.path.dirname(__file__), 'shots', 'fly', tag + ('_quer' if land else ''))
@@ -81,25 +98,28 @@ def main():
             if only and only != name: continue
             pg.evaluate("() => { const A = window.__fraktal; A.stopFly(); A.set3d(false); }"); time.sleep(0.9)
             a.set_view(cx, cy, z); a.wait_done(120)
-            pg.evaluate("() => { const A = window.__fraktal; A.S.flySpeed = 0.5; A.set3d(true); }"); time.sleep(1.2); a.wait_done(120); time.sleep(1.0)
+            pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.flySpeed = {speed}; A.set3d(true); }}"); a.wait_3d(); time.sleep(0.5); a.wait_done(120); time.sleep(1.0)
             pg.evaluate("() => { const A = window.__fraktal; A.frameStats(true); A.startFly(); A.FLY.rec = []; A.FLY.recM = []; }")
             t0 = time.time(); bi = 0
             while time.time() - t0 < secs:
+                if not pg.evaluate("() => window.__fraktal.FLY.on"): break      # Zoomgrenze erreicht: Flug zu Ende
                 if burst and time.time() - t0 > secs / 2 and bi < 6:
                     pg.screenshot(path=os.path.join(shots, f'{name}_{bi}.jpg'), quality=82); bi += 1; time.sleep(0.25); continue
                 time.sleep(0.5)
             r = pg.evaluate("() => { const A = window.__fraktal, F = A.FLY; const o = { rec: F.rec, recM: F.recM, zoom: A.S.cam.zoom, on: F.on, hard: A.frameStats().hard }; F.rec = null; F.recM = null; A.stopFly(); return o; }")
             res = dict(zoomEnd='%.2e' % r['zoom'], decades=round(math.log10(r['zoom'] / z), 2), stillFlying=r['on'], hard=r['hard'])
-            res.update(turn_stats(r['rec'])); res.update(edge_stats(r['recM']))
+            res.update(turn_stats(r['rec'])); res.update(edge_stats(r['recM'])); res.update(lost_stats(r['rec']))
             out['runs'][name] = res
             print(name, json.dumps(res), flush=True)
         out['errors'] = a.errors
         a.close()
-    keys = ['meanTurn', 'p95Turn', 'maxTurn', 'flipsPerMin', 'meanJerk', 'maxJerk', 'edgeMidShare', 'inFrac', 'emptyFrac', 'longestNoEdge']
+    keys = ['meanTurn', 'p95Turn', 'maxTurn', 'flipsPerMin', 'meanJerk', 'maxJerk', 'edgeMidShare', 'inFrac', 'emptyFrac', 'longestNoEdge',
+            'lostPhasesPerMin', 'lostTimeShare', 'longestLost', 'decades']
     runs = list(out['runs'].values())
     out['mean'] = {k: round(sum(r.get(k, 0) for r in runs) / max(1, len(runs)), 3) for k in keys}
-    out['max'] = {k: max((r.get(k, 0) for r in runs), default=0) for k in ['maxTurn', 'maxJerk', 'longestNoEdge']}
-    fn = os.path.join(os.path.dirname(__file__), f'results_fly_{tag}{"_quer" if land else ""}.json')
+    out['max'] = {k: max((r.get(k, 0) for r in runs), default=0) for k in ['maxTurn', 'maxJerk', 'longestNoEdge', 'longestLost']}
+    out['speed'] = speed
+    fn = os.path.join(os.path.dirname(__file__), f'results_fly_{tag}{"_quer" if land else ""}{"_" + only if only else ""}.json')
     json.dump(out, open(fn, 'w'), indent=1)
     print('MEAN', json.dumps(out['mean']), 'MAX', json.dumps(out['max']), 'errors', len(out['errors']))
 
