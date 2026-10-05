@@ -140,7 +140,7 @@ Etappe 1 (6.5.0) gegen einen eingefrorenen Stand, Etappe 2 (6.5.1) ebenso (eigen
 | `test_v64` Wiederholung (Shader-Cache angewärmt) | – | grün | 3D mit Bunt: Variante `t3terrB`; gezielt geprüft: übersetzt fehlerfrei, 3D nach 4,7 s (kalt) bzw. 3,9 s |
 | `test_v62` (Mengenfarbe, Alpin, Flug am Rand) | – | grün (nach Korrektur; Abstand 256, knapp) | „Weiß wirkt in 3D“: die Wolkenspiegelung hellte den schwarzen See auf und der Talnebel legte sich auf den Gletscher (Abstand 211 bzw. 250, gefordert > 250) → Spiegelung bei Aufsicht schwächer, kein Nebel über Schnee/Gletscher; Flugteil (Lenkung, Rand, Wischen) grün |
 | `test_fly64` (Flug bei 15 fps, hoch + quer) | – | grün | |
-- Live-Rauchtest 6.5.0 (github.io, mit und ohne `?deko=0`, Palettenwechsel): Version 6.5.0, 0 Fehler.
+- Live-Rauchtests (github.io, mit und ohne `?deko=0`): 6.5.0 um 19:47 (Palettenwechsel) und 6.5.1 um 20:29 (Palettenwechsel + 3D): richtige Version, 3D an, 0 Fehler.
 
 ## 6. Worauf Peter am Handy achten soll
 
