@@ -20,7 +20,8 @@ def touch(cdp, typ, pts):
 
 
 def canvas_hash(page):
-    b = page.locator('#gl').screenshot()
+    # 6.5: HUD maskieren – nach dem Fertigrechnen läuft dort einmal ein Lichtschweif (Deko), das Bild bleibt geprüft
+    b = page.locator('#gl').screenshot(mask=[page.locator('#hud')])
     return hashlib.sha1(b).hexdigest()
 
 
