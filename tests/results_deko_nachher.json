@@ -1,0 +1,74 @@
+{
+ "tag": "nachher",
+ "query": "",
+ "host": "rog17/RTX 3070 Ti",
+ "throttle": 4,
+ "scenes": {
+  "2d_menue": {
+   "frames": 600,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 16.8,
+   "mean": 16.67,
+   "callsPerFrame": 1,
+   "trisPerFrame": 1,
+   "textures": 21,
+   "scale3d": 1,
+   "fps": 60
+  },
+  "3d_stand": {
+   "frames": 600,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 16.8,
+   "mean": 16.67,
+   "callsPerFrame": 2.1,
+   "trisPerFrame": 28121,
+   "textures": 31,
+   "scale3d": 0.65,
+   "fps": 60
+  },
+  "3d_flug": {
+   "frames": 719,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 16.8,
+   "mean": 16.67,
+   "callsPerFrame": 3.6,
+   "trisPerFrame": 56319,
+   "textures": 34,
+   "scale3d": 0.65,
+   "fps": 60
+  },
+  "3d_alpin": {
+   "frames": 597,
+   "p50": 16.7,
+   "p95": 16.8,
+   "max": 49.9,
+   "mean": 16.72,
+   "callsPerFrame": 2.1,
+   "trisPerFrame": 28544,
+   "textures": 32,
+   "scale3d": 0.65,
+   "fps": 60
+  },
+  "3d_flug_akku": {
+   "frames": 719,
+   "p50": 16.7,
+   "p95": 16.7,
+   "max": 16.8,
+   "mean": 16.67,
+   "callsPerFrame": 3.7,
+   "trisPerFrame": 21665,
+   "textures": 37,
+   "scale3d": 0.65,
+   "fps": 60
+  }
+ },
+ "errors": [],
+ "size": {
+  "files": 28,
+  "raw": 931598,
+  "gzip": 614501
+ }
+}

@@ -1,0 +1,32 @@
+{
+ "tag": "ab_aus_2",
+ "query": "deko=0",
+ "host": "rog17/RTX 3070 Ti",
+ "gpu": {
+  "standard": {
+   "bewegt": {
+    "min": 1.36,
+    "max": 3.69,
+    "scale": 0.65
+   },
+   "still": {
+    "min": 2.77,
+    "max": 5.51,
+    "scale": 0.65
+   }
+  },
+  "alpin_see": {
+   "bewegt": {
+    "min": 1.73,
+    "max": 2.05,
+    "scale": 0.65
+   },
+   "still": {
+    "min": 3.59,
+    "max": 3.76,
+    "scale": 0.65
+   }
+  }
+ },
+ "errors": []
+}

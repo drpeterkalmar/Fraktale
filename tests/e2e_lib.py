@@ -18,7 +18,8 @@ def launch_ctx(p, args, headless, **ctx):
         b = p.chromium.launch(args=args, headless=headless)
         return b, b.new_context(**ctx)
     import msvcrt
-    for slot in range(4):
+    slots = [int(os.environ['FK_SLOT'])] if os.environ.get('FK_SLOT') else range(4)   # FK_SLOT: Platz festlegen
+    for slot in slots:
         d = os.path.join(tempfile.gettempdir(), 'fk_pw_%s_%d' % (os.environ.get('FK_ANGLE', 'd3d11'), slot))
         # Platz per Dateisperre belegen (ein zweiter Chrome auf demselben Profil übergäbe an den ersten und schlösse
         # sich sofort); die Sperre löst das Betriebssystem spätestens beim Prozessende

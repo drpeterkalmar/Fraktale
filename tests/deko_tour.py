@@ -206,13 +206,14 @@ def size(quiet=False):
 def collage():
     from PIL import Image, ImageDraw
     A, B = ARG.get('a', 'vorher'), ARG.get('b', 'nachher')
-    for o in ('hoch', 'quer'):
+    GROUPS = {'bedienung': ('1_start', '2_tief', '3_orte', '4_welten', '5_farben'), '3d': ('6_3d', '7_3d_alpin', '8_3d_flug')}
+    for o, (g, pre) in [(o, gp) for o in ('hoch', 'quer') for gp in GROUPS.items()]:
         names = sorted({f.split(f'{A}_{o}_')[1] for f in os.listdir(SH) if f.startswith(f'{A}_{o}_')})
-        names = [n for n in names if os.path.exists(os.path.join(SH, f'{B}_{o}_{n}'))]
+        names = [n for n in names if os.path.exists(os.path.join(SH, f'{B}_{o}_{n}')) and n.rsplit('.', 1)[0] in pre]
         if not names: continue
         ims = [(Image.open(os.path.join(SH, f'{A}_{o}_{n}')).convert('RGB'), Image.open(os.path.join(SH, f'{B}_{o}_{n}')).convert('RGB')) for n in names]
         w, h = ims[0][0].size
-        s = 0.42 if o == 'hoch' else 0.36
+        s = (0.42 if o == 'hoch' else 0.36) * (1.4 if g == '3d' else 1.0)
         tw, th = int(w * s), int(h * s)
         cols = len(ims)
         sheet = Image.new('RGB', (tw * cols + 6 * (cols - 1), th * 2 + 6 + 40), (16, 16, 24))
@@ -222,8 +223,8 @@ def collage():
             x = i * (tw + 6)
             sheet.paste(ia.resize((tw, th)), (x, 40)); sheet.paste(ib.resize((tw, th)), (x, 40 + th + 6))
             d.text((x + 4, 22), names[i].rsplit('.', 1)[0], fill=(200, 200, 220))
-        sheet.save(os.path.join(SH, f'vergleich_{o}.jpg'), quality=82)
-        print('vergleich', o, len(names))
+        sheet.save(os.path.join(SH, f'vergleich_{o}_{g}.jpg'), quality=82)
+        print('vergleich', o, g, len(names))
 
 
 if __name__ == '__main__':

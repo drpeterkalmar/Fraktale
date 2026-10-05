@@ -500,7 +500,8 @@ void main() {
     // Normalen ergäbe das Rauschen ein regelmäßiges Punktmuster (Moiré); die Wellen bleiben im Himmelsverlauf
     vec3 R0 = reflect(V, vec3(0.0, 0.0, 1.0)), cloudR = vec3(0.0);
     if (u_deko > 0 && water > 0.01) cloudR = skyDeko(R0, 3) - skyColor(R0);
-    vec3 wcol = mix(lakeCol, skyR, fr) + cloudR * (0.45 + 0.55 * fr) + vec3(1.0, 0.9, 0.7) * pow(max(dot(R, u_sun), 0.0), 120.0) * sh * 0.8;
+    // Wolken spiegeln sich mit dem Fresnel-Anteil (bei Aufsicht schwach: ein schwarz gewählter See bleibt dunkel)
+    vec3 wcol = mix(lakeCol, skyR, fr) + cloudR * (0.1 + 0.6 * fr) + vec3(1.0, 0.9, 0.7) * pow(max(dot(R, u_sun), 0.0), 120.0) * sh * 0.8;
     lit = mix(lit, wcol, water);
 #if ALP >= 2
     if (lakeAlp > 0.0) {      // Talsee (Alpin): Wasser-Shader, etwas grünlich-tief
@@ -511,7 +512,7 @@ void main() {
         float fr2 = 0.12 + 0.88 * pow(1.0 - max(dot(-V, wn2), 0.0), 4.0);
         vec3 lc = mix(vec3(0.02, 0.07, 0.08), u_zenith, 0.35);
         if (u_deko > 0 && cloudR == vec3(0.0)) cloudR = skyDeko(R0, 3) - skyColor(R0);
-        lit = mix(lit, mix(lc, skyColor(R2), fr2) + cloudR * (0.45 + 0.55 * fr2) + vec3(1.0, 0.95, 0.85) * pow(max(dot(R2, u_sun), 0.0), 120.0) * sh * 0.7, lakeAlp);
+        lit = mix(lit, mix(lc, skyColor(R2), fr2) + cloudR * (0.2 + 0.6 * fr2) + vec3(1.0, 0.95, 0.85) * pow(max(dot(R2, u_sun), 0.0), 120.0) * sh * 0.7, lakeAlp);
     }
 #endif
     vec3 col = mix(alb, lit, u_mix);
