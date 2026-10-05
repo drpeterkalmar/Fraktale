@@ -521,7 +521,7 @@ void main() {
         float dist = length(v_V), k = u_dk * u_mix;
         col = mix(col, mix(u_haze, u_zenith, 0.3) * 0.95 + col * 0.2, (1.0 - exp(-dist / 9.0)) * 0.32 * k);
         float zr0 = u_hn.z > 1e-4 ? clamp(h0 / u_hn.z, 0.0, 1.0) : 0.5;
-        col = mix(col, u_haze, (1.0 - smoothstep(0.02, 0.3, zr0)) * smoothstep(0.8, 4.0, dist) * (1.0 - water) * 0.3 * k);
+        col = mix(col, u_haze, (1.0 - smoothstep(0.02, 0.3, zr0)) * smoothstep(0.8, 4.0, dist) * (1.0 - water) * (1.0 - snowM) * 0.3 * k);
     }
     float fog = 1.0 - exp(-pow(length(v_V) / u_fog, 2.0));
     vec3 fogC = skyColor(V);
