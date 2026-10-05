@@ -17,14 +17,20 @@ def launch_ctx(p, args, headless, **ctx):
     if not WIN:
         b = p.chromium.launch(args=args, headless=headless)
         return b, b.new_context(**ctx)
-    err = None
+    import msvcrt
     for slot in range(4):
         d = os.path.join(tempfile.gettempdir(), 'fk_pw_%s_%d' % (os.environ.get('FK_ANGLE', 'd3d11'), slot))
+        # Platz per Dateisperre belegen (ein zweiter Chrome auf demselben Profil übergäbe an den ersten und schlösse
+        # sich sofort); die Sperre löst das Betriebssystem spätestens beim Prozessende
+        lk = open(d + '.lock', 'a+')
         try:
-            c = p.chromium.launch_persistent_context(d, args=args, headless=headless, **ctx)
-        except Exception as e:  # Profil belegt
-            err = e
+            msvcrt.locking(lk.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            lk.close()
             continue
+        c = p.chromium.launch_persistent_context(d, args=args, headless=headless, **ctx)
+        c._fk_lock = lk
+        c.on('close', lambda *_: lk.close())
         # Einstellungen/Orte/Service Worker vom letzten Lauf löschen (der GPU-Shader-Cache bleibt)
         pg = c.pages[0] if c.pages else c.new_page()
         cdp = c.new_cdp_session(pg)
@@ -35,7 +41,7 @@ def launch_ctx(p, args, headless, **ctx):
         cdp.send('Network.clearBrowserCache')   # sonst liefert der HTTP-Cache alte Dateien mit gleicher ?v=-Nummer
         cdp.detach()
         return c, c
-    raise err
+    raise RuntimeError('alle 4 Profil-Plätze belegt')
 
 
 class App:
