@@ -94,6 +94,13 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 6.5.0** – Verschönerung, Teil 1: Bedienung und Übergänge (A/B: `?deko=0` = Aussehen bis 6.4.1)
+- Glas mit Lichtkante (oben heller, unten ein Hauch Violett), leuchtende Oberkante am Sheet, ein Leuchtbalken gleitet unter den aktiven Reiter, Leuchtpunkt unter dem aktiven Dock-Knopf, Glas-Toast.
+- **Weiche Übergänge:** Wechsel von Welt, Palette, Mengenfarbe, Inseln/Ringe, Alpin-Look und Tal blenden in 0,4–0,65 s über (Schnappschuss des alten Bilds blendet aus, einmalig, danach freigegeben) statt hart umzuspringen; der Start blendet aus dem Dunkel auf.
+- **Rückmeldung:** „Ansicht merken“ blitzt kurz wie ein Foto, die neue Karte springt herein; ist ein Bild nach längerem Rechnen fertig, läuft ein Lichtschweif über die HUD-Pille (höchstens alle 4 s, nicht im Flug).
+- Karten: Vorschaubilder mit Tiefe, Zoom als Glas-Plakette auf dem Bild, Häkchen an gewählter Welt und Palette, die gewählte Palette leuchtet in ihrer eigenen Farbe.
+- Kosten: nur CSS-Schichten und einmalige Übergänge (Compositor), kein Dauer-Loop, gleicher Blur; Mathematik, 2D-Bild und Shader unverändert. Details: `DEKO_BERICHT.md`.
+
 **Version 6.4.1** – Flug bleibt am Mengenrand
 - Behoben: Bei niedriger Bildrate (langsames Gerät, großer Bildschirm, hohe Bildwiederholrate, Alpin-Look) „driftete“ der Zufallsflug ins Leere: Der Häppchen-Regler schrumpfte die Rechnung auf 1024 Pixel pro Bild, keine Vorschau wurde mehr fertig, das 3D-Bild zeigte nur noch Dunst, und der Flug kreiste „verloren“ (bei 15 Bildern/s gemessen: 92 % der Zeit, Zoom blieb bei ~10⁴).
 - Jetzt: Im Flug hat die Rechnung einen Mindestanteil (eine Vorschau ist in ~0,6 s fertig), die Tempo-Bremse darf bis 30 % gehen, eine Datenlücke zählt nicht als „verloren“ (Kurs halten, langsam weiter), der Zoom bremst vorausschauend, wenn der Zoompunkt vom Rand wegläuft, und verloren dreht der Flug erst zum Randstück, statt seitlich zu rutschen. Gemessen (3 Startorte, hoch + quer): bei 15 Bildern/s 0 statt 92 % Zeit verloren, volle Tiefe statt 5 Zehnerpotenzen in 4 min; bei 60 Bildern/s im Querformat 0 statt 1,7 Verloren-Phasen pro Minute, ruhiger (Drehrate Ø 5,2 statt 6,9 °/s).

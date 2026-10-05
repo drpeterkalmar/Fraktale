@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.4.1';
+const APP_VERSION = '6.5.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -47,6 +47,10 @@ const S = {
 //   ?aa=N     Zahl der gemittelten 3D-Bilder im Stillstand (Standard 8, Akku 4)
 //   ?de=0     nur die Distanzschätzung aus        ?dew=W  Saumbreite in Pixeln (Standard 1)
 const AA0 = Q.get('aa') === '0';
+// 6.5 Deko (Glas, weiche Übergänge, 3D-Himmel/Dunst/Wasser): ?deko=0 = Aussehen bis 6.4.1 (A/B-Vergleich)
+const DEKO = Q.get('deko') !== '0';
+document.documentElement.classList.toggle('deko', DEKO);
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const DEW = Q.has('dew') ? Math.max(0.05, +Q.get('dew') || 1) : 1;
 function deActive() { return !AA0 && S.deOn && Q.get('de') !== '0' && S.formula !== 5; }
 function aaFrames() { if (AA0 || !S.aa) return 0; const n = Q.has('aa') ? +Q.get('aa') : (S.quality === 'eco' ? 4 : 8); return Math.max(0, Math.min(64, n | 0)); }
@@ -2000,6 +2004,8 @@ function captureBlob() {
         out.toBlob((b) => resolve(b), 'image/png');
     });
 }
+// 6.5: frisches Bild zeichnen (2D oder 3D) – danach ist der Canvas im selben Task lesbar (Überblendung, Schnappschuss)
+function freshFrame() { if (V3.on) present3d(performance.now(), false, true); else presentNow(); }
 function fileName() { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.toExponential(1).replace('+', '')}_${Date.now()}.png`; }
 
 // ------------------------------------------------------------------ Start
@@ -2019,7 +2025,7 @@ function init() {
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, AA0,
-    t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit,
+    t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,

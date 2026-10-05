@@ -30,8 +30,36 @@ function toast(msg, ms) {
     toastTimer = setTimeout(() => n.classList.remove('show'), ms || 2600);
 }
 
+// ------------------------------------------------------------------ 6.5 Deko: weiche Übergänge
+// Beim Wechsel von Welt/Farbe/Look: Schnappschuss des aktuellen Bilds (frisch gezeichnet, im selben Task lesbar) liegt
+// als Ebene über dem Canvas und blendet aus, während darunter schon das neue Bild steht. Einmalig pro Wechsel (kein
+// Dauer-Loop); die Ebene wird danach freigegeben. ?deko=0 = harter Wechsel wie bis 6.4.1.
+let fadeCv = null, fadeT = 0;
+function crossfade(ms) {
+    if (!A.DEKO || document.hidden) return;
+    const src = A.R.canvas;
+    if (!src.width || !src.height) return;
+    try { A.freshFrame(); } catch (e) { return; }
+    if (!fadeCv) { fadeCv = document.createElement('canvas'); fadeCv.id = 'xfade'; src.after(fadeCv); }
+    fadeCv.width = src.width; fadeCv.height = src.height;
+    fadeCv.getContext('2d').drawImage(src, 0, 0);
+    fadeCv.hidden = false;
+    fadeCv.style.transition = 'none'; fadeCv.style.opacity = '1';
+    clearTimeout(fadeT);
+    const dur = A.RM.matches ? 150 : ms;
+    // zwei Bilder warten: das neue Bild steht dann schon unter der Ebene
+    requestAnimationFrame(() => requestAnimationFrame(() => { fadeCv.style.transition = `opacity ${dur}ms cubic-bezier(.4, 0, .2, 1)`; fadeCv.style.opacity = '0'; }));
+    fadeT = setTimeout(() => { fadeCv.hidden = true; fadeCv.width = fadeCv.height = 1; }, dur + 120);
+}
+function flash() {
+    if (!A.DEKO || A.RM.matches) return;
+    let f = $('flash');
+    if (!f) { f = el('div'); f.id = 'flash'; document.body.appendChild(f); }
+    f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+}
+
 // ------------------------------------------------------------------ HUD
-let hudT = 0;
+let hudT = 0, busyT0 = 0, sweepT = 0;
 const MODE_NAMES = () => A.MODE_KEYS.map(k => t(k));
 function hudUpdate(force) {
     const now = performance.now();
@@ -49,7 +77,15 @@ function hudUpdate(force) {
     if (p === null && fx) p = fx.total ? 0.5 + 0.5 * fx.done / fx.total : 0.5;   // Präzisionskorrektur = zweite Hälfte
     prog.style.transform = p === null ? 'scaleX(0)' : `scaleX(${Math.max(0.04, p).toFixed(3)})`;
     prog.classList.toggle('on', p !== null);
-    $('hud-pill').classList.toggle('busy', p !== null);
+    const pill = $('hud-pill');
+    if (A.DEKO) {   // 6.5: fertig nach > 0,6 s Rechnen → einmal Lichtschweif (höchstens alle 4 s, nicht im Flug)
+        if (p !== null && !busyT0) busyT0 = now;
+        else if (p === null && busyT0) {
+            if (now - busyT0 > 600 && now - sweepT > 4000 && !A.FLY.on) { sweepT = now; pill.classList.remove('done'); void pill.offsetWidth; pill.classList.add('done'); }
+            busyT0 = 0;
+        }
+    }
+    pill.classList.toggle('busy', p !== null);
     if (!$('hud-details').hidden) {
         const d = HP.digitsForZoom(S.cam.zoom);
         $('d-re').textContent = HP.toString(S.cam.cx, d).replace('-', '−');
@@ -111,11 +147,21 @@ function openSheet(tab) {
     document.querySelectorAll('#sheet-tabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     document.querySelectorAll('.dock-btn[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === tab));
+    requestAnimationFrame(moveInk);
     $('share-pop').hidden = true;
     document.body.classList.add('sheet-open');
     if (tab === 'worlds') { buildModes(); drawCpad(); }
     if (tab === 'more') hudUpdate(true);
 }
+// 6.5: gleitender Leuchtbalken unter dem aktiven Reiter
+const ink = el('span'); ink.id = 'tab-ink'; $('sheet-tabs').prepend(ink);
+function moveInk() {
+    const b = document.querySelector('#sheet-tabs [role=tab].on');
+    if (!b || !b.offsetWidth) return;
+    ink.style.transform = `translate(${b.offsetLeft}px, ${b.offsetTop}px)`;
+    ink.style.width = b.offsetWidth + 'px';
+}
+addEventListener('resize', () => requestAnimationFrame(moveInk));
 function closeSheet() {
     sheet.classList.remove('open', 'full');
     sheet.setAttribute('aria-hidden', 'true');
@@ -181,7 +227,7 @@ function buildModes() {
     A.MODE_KEYS.forEach((k, i) => {
         const b = el('button', 'mode-card' + (i === S.formula ? ' on' : ''));
         b.innerHTML = `<span class="thumb" style="background-image:url('assets/modes/${i}.jpg${V}')"></span><span class="name">${cap(names[i])}</span><span class="formula">${t('f_' + k)}</span>`;
-        b.addEventListener('click', () => { A.setMode(i); buildModes(); });
+        b.addEventListener('click', () => { if (i !== S.formula) crossfade(650); A.setMode(i); buildModes(); });
         g.appendChild(b);
     });
 }
@@ -289,7 +335,8 @@ function buildPalettes() {
     PAL.list.forEach((p, i) => {
         const b = el('button', 'swatch' + (i === S.palette ? ' on' : ''));
         b.innerHTML = `<span class="bar" style="background:${PAL.gradientCSS(p)}"></span><span class="name">${p.custom ? t('custom_palette') : p.name}</span>`;
-        b.addEventListener('click', () => { S.palette = i; A.saveSettings(); A.invalidate(); buildPalettes(); syncSet(); });
+        if (i === S.palette) b.style.setProperty('--glow', PAL.cssOf(PAL.setRGB('light', S.setHex, p)) || '');
+        b.addEventListener('click', () => { if (i !== S.palette) crossfade(420); S.palette = i; A.saveSettings(); A.invalidate(); buildPalettes(); syncSet(); });
         g.appendChild(b);
     });
     $('custom-bar').style.background = PAL.gradientCSS(PAL.list[PAL.list.length - 1], 24);
@@ -319,19 +366,22 @@ function syncSet() {
     document.querySelectorAll('#seg-valley button').forEach(b => b.classList.toggle('on', b.dataset.v === S.valley));
 }
 document.querySelectorAll('#seg-setcol button').forEach(b => b.addEventListener('click', () => {
+    if (S.setCol !== b.dataset.v) crossfade(420);
     S.setCol = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet();
 }));
 document.querySelectorAll('#seg-inmode button').forEach(b => b.addEventListener('click', () => {
+    if (S.inMode !== +b.dataset.v) crossfade(420);
     S.inMode = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncSet();    // nur Darstellung, keine Neuberechnung
 }));
 $('set-color-custom').addEventListener('input', (e) => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { S.setHex = e.target.value.toLowerCase(); S.setCol = 'custom'; A.invalidate(); syncSet(); } });
 $('set-color-custom').addEventListener('change', () => A.saveSettings());
 $('t-alpine').addEventListener('change', (e) => {
+    crossfade(500);
     S.alpine = e.target.checked;
     if (S.alpine) { S.setCol = 'white'; S.palette = PAL.indexOf('alpine'); buildPalettes(); }   // Voreinstellung: Gletscher + Alpin-Palette (2D)
     A.saveSettings(); A.invalidate(); syncSet();
 });
-document.querySelectorAll('#seg-valley button').forEach(b => b.addEventListener('click', () => { S.valley = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet(); }));
+document.querySelectorAll('#seg-valley button').forEach(b => b.addEventListener('click', () => { if (S.valley !== b.dataset.v) crossfade(420); S.valley = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet(); }));
 function bindRange(id, out, get, set, fmt) {
     const r = $(id);
     const upd = () => { $(out).textContent = fmt(get()); };
@@ -424,6 +474,8 @@ $('btn-save-place').addEventListener('click', () => {
     list.unshift(Object.assign(v, { id: 'u' + Date.now(), name: `${cap(MODE_NAMES()[S.formula])} · ${A.fmtZoom(S.cam.zoom, 'sci')}`, thumb: c.toDataURL('image/jpeg', 0.8) }));
     savePlaces(list.slice(0, 40));
     buildUserPlaces();
+    flash();
+    if (A.DEKO) { const f = document.querySelector('#user-places .place'); if (f) f.classList.add('fresh'); }
     toast(t('saved'));
 });
 
@@ -514,9 +566,9 @@ window.addEventListener('keydown', (e) => {
         case '-': case '_': A.changeIter(0.8); break;
         default:
             switch (k.toLowerCase()) {
-                case 'm': A.setMode(0); break; case 'j': A.setMode(1); break; case 'b': A.setMode(2); break;
-                case 't': A.setMode(3); break; case '3': A.setMode(4); break; case 'n': A.setMode(5); break;
-                case 'p': S.palette = (S.palette + 1) % PAL.list.length; A.saveSettings(); A.invalidate(); buildPalettes(); break;
+                case 'm': case 'j': case 'b': case 't': case '3': case 'n': {
+                    const m = 'mjbt3n'.indexOf(k.toLowerCase()); if (m !== S.formula) crossfade(650); A.setMode(m); break; }
+                case 'p': crossfade(420); S.palette = (S.palette + 1) % PAL.list.length; A.saveSettings(); A.invalidate(); buildPalettes(); break;
                 case 'r': A.goHome(); break;
                 case 's': $('share-image').click(); break;
                 case 'z': S.rectMode = !S.rectMode; syncControls(); break;

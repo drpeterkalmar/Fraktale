@@ -1,0 +1,32 @@
+{
+ "tag": "vorher",
+ "query": "",
+ "host": "rog17/RTX 3070 Ti",
+ "gpu": {
+  "standard": {
+   "bewegt": {
+    "min": 1.79,
+    "max": 2.08,
+    "scale": 0.65
+   },
+   "still": {
+    "min": 3.31,
+    "max": 3.58,
+    "scale": 0.65
+   }
+  },
+  "alpin_see": {
+   "bewegt": {
+    "min": 2.21,
+    "max": 2.54,
+    "scale": 0.65
+   },
+   "still": {
+    "min": 4.39,
+    "max": 4.7,
+    "scale": 0.65
+   }
+  }
+ },
+ "errors": []
+}

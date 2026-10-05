@@ -264,3 +264,94 @@ label.select select { background: rgba(255, 255, 255, .07); color: var(--text); 
     body.sheet-open #dock { opacity: 1; pointer-events: auto; transform: translateX(-50%); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* ======================================================================================================
+   6.5 Deko – nur mit html.deko (?deko=0 = Aussehen bis 6.4.1). Nur statische Schichten und einmalige
+   Übergänge (transform/opacity, laufen im Compositor); keine Dauer-Animation im Leerlauf, kein stärkerer Blur.
+   ====================================================================================================== */
+html.deko .glass {
+    /* Lichtkante: oben links heller (wie Licht auf Glas), unten ein Hauch Akzentfarbe */
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0) 38%),
+                linear-gradient(340deg, rgba(167, 139, 250, 0.07) 0%, rgba(167, 139, 250, 0) 45%), var(--glass);
+    border-color: rgba(255, 255, 255, 0.13);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.42), 0 2px 10px rgba(0, 0, 0, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+html.deko #sheet, html.deko .modal-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 120px),
+                radial-gradient(120% 60% at 50% 0%, rgba(167, 139, 250, 0.10), rgba(167, 139, 250, 0) 70%), var(--glass-strong);
+}
+/* leuchtende Oberkante des Sheets */
+html.deko #sheet::before { content: ''; position: absolute; left: 12%; right: 12%; top: 0; height: 1px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.85), rgba(244, 114, 182, 0.6), rgba(34, 211, 238, 0.7), transparent); }
+html.deko #sheet-grab span { background: linear-gradient(90deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.25)); }
+
+/* Reiter: gleitender Leuchtbalken statt hartem Umschalten */
+html.deko #sheet-tabs { position: relative; }
+html.deko #sheet-tabs [role=tab].on { background: transparent; box-shadow: none; }
+#tab-ink { display: none; }
+html.deko #tab-ink { display: block; position: absolute; left: 0; top: 0; height: 48px; width: 10px; border-radius: 14px; pointer-events: none; z-index: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -2px 0 var(--accent), 0 6px 18px rgba(124, 58, 237, 0.28);
+    transition: transform .38s var(--ease), width .38s var(--ease); }
+html.deko #sheet-tabs [role=tab] { position: relative; z-index: 1; }
+
+/* Dock: aktiver Knopf mit Leuchtpunkt, Druck federt */
+html.deko .dock-btn { position: relative; transition: background .25s, color .25s, transform .2s var(--ease); }
+html.deko .dock-btn::after { content: ''; position: absolute; bottom: 3px; left: 50%; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+    background: #e9d5ff; box-shadow: 0 0 8px 2px rgba(167, 139, 250, 0.9); opacity: 0; transform: scale(0); transition: opacity .3s, transform .35s var(--ease); }
+html.deko .dock-btn.on::after { opacity: 1; transform: scale(1); }
+html.deko .dock-btn.on { background: linear-gradient(180deg, rgba(167, 139, 250, 0.28), rgba(167, 139, 250, 0.12)); }
+
+/* HUD: Lichtschweif über die Pille, wenn ein Bild fertig gerechnet ist (einmalig) */
+html.deko #hud-pill::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+    background: linear-gradient(105deg, transparent 20%, rgba(255, 255, 255, 0.22) 45%, rgba(196, 181, 253, 0.18) 55%, transparent 80%);
+    transform: translateX(-100%); }
+html.deko #hud-pill.done::after { animation: sweep .9s var(--ease) forwards; }
+@keyframes sweep { 0% { opacity: 1; transform: translateX(-100%); } 100% { opacity: 0; transform: translateX(100%); } }
+html.deko .hud-icon { box-shadow: 0 0 12px rgba(167, 139, 250, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+html.deko .hud-progress { box-shadow: 0 0 8px rgba(196, 181, 253, 0.8); }
+
+/* Knöpfe + Chips: Glanzkante und weiche Druck-Rückmeldung */
+html.deko .round, html.deko .chip, html.deko .mini, html.deko .tile-btn, html.deko .wide-btn { transition: transform .2s var(--ease), background .25s, border-color .25s, box-shadow .25s; }
+html.deko .wide-btn { box-shadow: 0 8px 24px rgba(124, 58, 237, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+html.deko #btn-3d.on { box-shadow: 0 0 22px rgba(167, 139, 250, .55), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+html.deko .fly-btn { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+
+/* Karten (Welten/Orte): Bild mit Tiefe (Verlauf + Lichtkante), Zoom als Glas-Plakette auf dem Bild */
+html.deko .mode-card .thumb, html.deko .place .thumb { position: relative; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10); }
+html.deko .mode-card .thumb::after, html.deko .place .thumb::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0) 30%, rgba(5, 6, 15, 0) 60%, rgba(5, 6, 15, 0.45) 100%); }
+html.deko .mode-card.on .thumb { box-shadow: inset 0 0 0 1px rgba(196, 181, 253, 0.6), 0 0 18px rgba(167, 139, 250, 0.35); }
+html.deko .mode-card.on::before { content: '✓'; position: absolute; z-index: 2; top: 14px; right: 14px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 13px; font-weight: 800; color: #0b0b1a; background: var(--accent-grad); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45); animation: popIn .35s var(--ease); }
+@keyframes popIn { from { transform: scale(.3); opacity: 0; } }
+html.deko .place { position: relative; background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28); }
+html.deko .place-main { position: relative; }
+html.deko .place .zoom { position: absolute; top: 8px; right: 8px; padding: 3px 8px; border-radius: 999px; color: #fff; font-size: 11.5px;
+    background: rgba(10, 12, 28, 0.55); border: 1px solid rgba(255, 255, 255, 0.18); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+html.deko .place.fresh { animation: cardIn .6s var(--ease); }
+@keyframes cardIn { 0% { transform: scale(.86); opacity: 0; box-shadow: 0 0 0 2px rgba(196, 181, 253, 0.9), 0 0 40px rgba(167, 139, 250, 0.8); }
+    60% { opacity: 1; box-shadow: 0 0 0 2px rgba(196, 181, 253, 0.7), 0 0 30px rgba(167, 139, 250, 0.5); } }
+
+/* Paletten: gewählte Palette leuchtet in ihren eigenen Farben */
+html.deko .swatch { position: relative; }
+html.deko .swatch.on { border-color: transparent; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.8), 0 8px 24px rgba(0, 0, 0, 0.35); }
+html.deko .swatch.on .bar { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2), 0 0 16px var(--glow, rgba(167, 139, 250, 0.5)); }
+html.deko .swatch.on::after { content: '✓'; position: absolute; top: 14px; right: 14px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 12px; font-weight: 800; color: #0b0b1a; background: rgba(255, 255, 255, 0.92); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); animation: popIn .3s var(--ease); }
+html.deko .seg button.on { background: linear-gradient(180deg, rgba(167, 139, 250, 0.38), rgba(167, 139, 250, 0.2)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18); }
+html.deko .section { background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)); }
+
+/* Toast: Glas statt flacher Fläche */
+html.deko #toast { background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 50%), rgba(20, 22, 44, .86);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+
+/* Überblendung beim Wechsel von Welt/Farbe (Schnappschuss des alten Bilds blendet aus) und Blitz beim Merken */
+#xfade { position: fixed; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; display: block; }
+#flash { position: fixed; inset: 0; z-index: 65; pointer-events: none; background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.2) 70%); opacity: 0; }
+#flash.go { animation: flash .45s ease-out; }
+@keyframes flash { 0% { opacity: .8; } 100% { opacity: 0; } }
+/* sanfter Start: das erste Bild blendet aus dem Dunkel auf */
+html.deko body.ready #gl { animation: glIn .9s ease-out; }
+@keyframes glIn { from { opacity: 0; } }
