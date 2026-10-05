@@ -1,0 +1,346 @@
+{
+ "tag": "v620_alpin",
+ "platform": "darwin",
+ "runs": [
+  {
+   "version": "6.2.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "alpin",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 413.6,
+   "on3d": true,
+   "maxFrameGapMs": 1405.8,
+   "framesOver100ms": 1,
+   "framesOver50ms": 1,
+   "longTasks": 1,
+   "longestTaskMs": 1424,
+   "fpsDuringPrep": null,
+   "blockingStatusMs": 1352.3,
+   "programs": [
+    {
+     "name": "gelaende_0",
+     "chars": 31085,
+     "translatedChars": 90448,
+     "compileMs": null,
+     "blockMs": 0,
+     "startMs": 0.8
+    },
+    {
+     "name": "gelaende_weiss",
+     "chars": 31085,
+     "translatedChars": 97258,
+     "compileMs": null,
+     "blockMs": 0,
+     "startMs": 1.1
+    },
+    {
+     "name": "gelaende_alpin",
+     "chars": 31085,
+     "translatedChars": 104883,
+     "compileMs": 411.0,
+     "blockMs": 45.3,
+     "startMs": 1.4
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14543,
+     "compileMs": 365.6,
+     "blockMs": 18.5,
+     "startMs": 1.4
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13784,
+     "compileMs": 1427.4,
+     "blockMs": 1015.3,
+     "startMs": 1.6
+    },
+    {
+     "name": "hoehe",
+     "chars": 3650,
+     "translatedChars": 17383,
+     "compileMs": 284.6,
+     "blockMs": 246.9,
+     "startMs": 1.6
+    },
+    {
+     "name": "sonde",
+     "chars": 2208,
+     "translatedChars": 21236,
+     "compileMs": 1440.5,
+     "blockMs": 11.3,
+     "startMs": 1.7
+    },
+    {
+     "name": "rauschen",
+     "chars": 1111,
+     "translatedChars": 14615,
+     "compileMs": 15.0,
+     "blockMs": 15,
+     "startMs": 333.3
+    }
+   ],
+   "final": {
+    "on": true,
+    "prep": null,
+    "prepInfo": null,
+    "btn": "round glass on"
+   },
+   "bigGaps": [
+    {
+     "at": 38.3,
+     "ms": 1405.8
+    }
+   ],
+   "firstUse": {
+    "anderes": 38.5,
+    "hoehe": 286.3,
+    "rauschen": 348.3,
+    "himmel": 367.1,
+    "gelaende_alpin": 413.6,
+    "blit": 1429.2,
+    "sonde": 1442.3
+   },
+   "firstDrawAt": 413.6,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.4,
+     "t": 19.4
+    },
+    {
+     "prog": "shader",
+     "ms": 5.7,
+     "t": 25.8
+    },
+    {
+     "prog": "shader",
+     "ms": 3.2,
+     "t": 254.7
+    },
+    {
+     "prog": "shader",
+     "ms": 4.3,
+     "t": 327.6
+    },
+    {
+     "prog": "hoehe",
+     "ms": 246.9,
+     "t": 39.2
+    },
+    {
+     "prog": "shader",
+     "ms": 43,
+     "t": 287.2
+    },
+    {
+     "prog": "shader",
+     "ms": 2.9,
+     "t": 330.3
+    },
+    {
+     "prog": "rauschen",
+     "ms": 15,
+     "t": 333.3
+    },
+    {
+     "prog": "himmel",
+     "ms": 18.5,
+     "t": 348.5
+    },
+    {
+     "prog": "gelaende_alpin",
+     "ms": 45.3,
+     "t": 367.1
+    },
+    {
+     "prog": "blit",
+     "ms": 1015.3,
+     "t": 413.7
+    },
+    {
+     "prog": "sonde",
+     "ms": 11.3,
+     "t": 1429.3
+    }
+   ],
+   "errors": []
+  },
+  {
+   "version": "6.2.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "alpin",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 431.0,
+   "on3d": true,
+   "maxFrameGapMs": 1423.1,
+   "framesOver100ms": 1,
+   "framesOver50ms": 1,
+   "longTasks": 1,
+   "longestTaskMs": 1440,
+   "fpsDuringPrep": null,
+   "blockingStatusMs": 1383.8,
+   "programs": [
+    {
+     "name": "gelaende_0",
+     "chars": 31085,
+     "translatedChars": 90448,
+     "compileMs": null,
+     "blockMs": 0,
+     "startMs": 0.9
+    },
+    {
+     "name": "gelaende_weiss",
+     "chars": 31085,
+     "translatedChars": 97258,
+     "compileMs": null,
+     "blockMs": 0,
+     "startMs": 1.4
+    },
+    {
+     "name": "gelaende_alpin",
+     "chars": 31085,
+     "translatedChars": 104883,
+     "compileMs": 427.8,
+     "blockMs": 12.9,
+     "startMs": 1.7
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14543,
+     "compileMs": 414.7,
+     "blockMs": 16.7,
+     "startMs": 1.8
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13784,
+     "compileMs": 1448.8,
+     "blockMs": 1019.5,
+     "startMs": 1.8
+    },
+    {
+     "name": "hoehe",
+     "chars": 3650,
+     "translatedChars": 17383,
+     "compileMs": 351.0,
+     "blockMs": 310.9,
+     "startMs": 1.9
+    },
+    {
+     "name": "sonde",
+     "chars": 2208,
+     "translatedChars": 21235,
+     "compileMs": 1460.2,
+     "blockMs": 11.3,
+     "startMs": 1.9
+    },
+    {
+     "name": "rauschen",
+     "chars": 1111,
+     "translatedChars": 14615,
+     "compileMs": 12.5,
+     "blockMs": 12.5,
+     "startMs": 387.0
+    }
+   ],
+   "final": {
+    "on": true,
+    "prep": null,
+    "prepInfo": null,
+    "btn": "round glass on"
+   },
+   "bigGaps": [
+    {
+     "at": 40.6,
+     "ms": 1423.1
+    }
+   ],
+   "firstUse": {
+    "anderes": 41.3,
+    "hoehe": 353,
+    "rauschen": 399.5,
+    "himmel": 416.5,
+    "gelaende_alpin": 431,
+    "blit": 1450.6,
+    "sonde": 1462.3
+   },
+   "firstDrawAt": 431.0,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.5,
+     "t": 59.5
+    },
+    {
+     "prog": "shader",
+     "ms": 5.6,
+     "t": 65.7
+    },
+    {
+     "prog": "shader",
+     "ms": 3.7,
+     "t": 257.5
+    },
+    {
+     "prog": "shader",
+     "ms": 2.4,
+     "t": 329.6
+    },
+    {
+     "prog": "hoehe",
+     "ms": 310.9,
+     "t": 42
+    },
+    {
+     "prog": "shader",
+     "ms": 32.9,
+     "t": 353.3
+    },
+    {
+     "prog": "rauschen",
+     "ms": 12.5,
+     "t": 387
+    },
+    {
+     "prog": "himmel",
+     "ms": 16.7,
+     "t": 399.7
+    },
+    {
+     "prog": "gelaende_alpin",
+     "ms": 12.9,
+     "t": 416.5
+    },
+    {
+     "prog": "blit",
+     "ms": 1019.5,
+     "t": 431
+    },
+    {
+     "prog": "sonde",
+     "ms": 11.3,
+     "t": 1450.8
+    }
+   ],
+   "errors": []
+  }
+ ],
+ "median": {
+  "tapToFirst3dMs": 422.3,
+  "maxFrameGapMs": 1414.4499999999998,
+  "blockingStatusMs": 1368.05
+ }
+}

@@ -1,0 +1,199 @@
+{
+ "tag": "v630_metal_cache",
+ "platform": "darwin",
+ "runs": [
+  {
+   "version": "6.3.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 98.2,
+   "on3d": true,
+   "maxFrameGapMs": 24.5,
+   "framesOver100ms": 0,
+   "framesOver50ms": 0,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "fpsDuringPrep": 66.1,
+   "blockingStatusMs": 0,
+   "programs": [
+    {
+     "name": "hoehe",
+     "chars": 3650,
+     "translatedChars": 17010,
+     "compileMs": 19.4,
+     "blockMs": 0,
+     "startMs": 0.5
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14170,
+     "compileMs": 21.2,
+     "blockMs": 0,
+     "startMs": 0.6
+    },
+    {
+     "name": "gelaende_0",
+     "chars": 28838,
+     "translatedChars": 84831,
+     "compileMs": 21.2,
+     "blockMs": 0,
+     "startMs": 0.8
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13411,
+     "compileMs": 21.2,
+     "blockMs": 0,
+     "startMs": 1.0
+    },
+    {
+     "name": "sonde",
+     "chars": 2203,
+     "translatedChars": 21011,
+     "compileMs": 21.3,
+     "blockMs": 0,
+     "startMs": 1.0
+    }
+   ],
+   "bigGaps": [],
+   "firstUse": {
+    "hoehe": 22.8,
+    "himmel": 26.9,
+    "gelaende_0": 46.1,
+    "blit": 62.1,
+    "sonde": 78.9,
+    "anderes": 96.2
+   },
+   "firstDrawAt": 98.2,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.5,
+     "t": 62.9
+    },
+    {
+     "prog": "shader",
+     "ms": 5.7,
+     "t": 69.2
+    },
+    {
+     "prog": "shader",
+     "ms": 3.2,
+     "t": 251.8
+    },
+    {
+     "prog": "shader",
+     "ms": 5.9,
+     "t": 315.4
+    }
+   ],
+   "errors": []
+  },
+  {
+   "version": "6.3.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 100.0,
+   "on3d": true,
+   "maxFrameGapMs": 25.4,
+   "framesOver100ms": 0,
+   "framesOver50ms": 0,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "fpsDuringPrep": 67.1,
+   "blockingStatusMs": 0.1,
+   "programs": [
+    {
+     "name": "hoehe",
+     "chars": 3650,
+     "translatedChars": 17010,
+     "compileMs": 20.6,
+     "blockMs": 0,
+     "startMs": 0.6
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14170,
+     "compileMs": 23.8,
+     "blockMs": 0.1,
+     "startMs": 0.8
+    },
+    {
+     "name": "gelaende_0",
+     "chars": 28838,
+     "translatedChars": 84831,
+     "compileMs": 23.8,
+     "blockMs": 0,
+     "startMs": 1.0
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13411,
+     "compileMs": 24.0,
+     "blockMs": 0,
+     "startMs": 1.1
+    },
+    {
+     "name": "sonde",
+     "chars": 2203,
+     "translatedChars": 21011,
+     "compileMs": 24.0,
+     "blockMs": 0,
+     "startMs": 1.2
+    }
+   ],
+   "bigGaps": [],
+   "firstUse": {
+    "hoehe": 25.8,
+    "himmel": 27.5,
+    "gelaende_0": 46.4,
+    "blit": 62.4,
+    "sonde": 79.1,
+    "anderes": 96.6
+   },
+   "firstDrawAt": 100.0,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.5,
+     "t": 28.6
+    },
+    {
+     "prog": "shader",
+     "ms": 5.6,
+     "t": 35
+    },
+    {
+     "prog": "shader",
+     "ms": 3.1,
+     "t": 247.3
+    },
+    {
+     "prog": "shader",
+     "ms": 4.7,
+     "t": 335.3
+    }
+   ],
+   "errors": []
+  }
+ ],
+ "median": {
+  "tapToFirst3dMs": 99.1,
+  "maxFrameGapMs": 24.95,
+  "blockingStatusMs": 0.05
+ }
+}

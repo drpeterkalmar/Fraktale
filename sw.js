@@ -4,7 +4,7 @@
 //  * Neue Version -> neuer sw.js-Inhalt -> Browser installiert neu, alte Caches werden gelöscht.
 //  * HTML (Navigation) immer zuerst frisch aus dem Netz (no-cache), offline aus dem Cache.
 //  * VERSION MUSS APP_VERSION in js/app.js entsprechen (tests/test_release.py prüft das).
-const VERSION = '6.2.0';
+const VERSION = '6.3.0';
 const CACHE = 'fraktale-' + VERSION;
 const Q = '?v=' + VERSION;
 const ASSETS = [

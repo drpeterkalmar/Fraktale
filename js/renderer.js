@@ -31,7 +31,8 @@ function create(canvas) {
     // Vorab übersetzen ohne Statusabfrage: der Treiber übersetzt parallel (KHR_parallel_shader_compile),
     // erst program() fragt den Status ab -> kein Ruckler beim ersten Einschalten (3D-Shader sind groß)
     const pending = {};
-    gl.getExtension('KHR_parallel_shader_compile');
+    const PSC = gl.getExtension('KHR_parallel_shader_compile');
+    R.parallelCompile = !!PSC;
     function startProgram(fsSrc, vsSrc) {
         const p = gl.createProgram();
         const mk = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); gl.attachShader(p, sh); return sh; };
@@ -40,12 +41,52 @@ function create(canvas) {
         return { p, vs, fs };
     }
     R.prewarm = function (key, fsSrc, vsSrc) { if (!programs[key] && !pending[key]) pending[key] = startProgram(fsSrc, vsSrc); };
+    // 6.3: nicht blockierend fragen, ob ein Programm fertig ist (startet die Übersetzung bei Bedarf). Mit
+    // KHR_parallel_shader_compile wird COMPLETION_STATUS_KHR gepollt – das wartet nie. Ohne die Erweiterung blockiert
+    // jede Statusabfrage, bis der Treiber fertig ist; dann wird in Häppchen über mehrere Bilder verteilt
+    // (Vertex-Shader, Fragment-Shader, Link je in einem eigenen Bild), damit kein einzelnes Bild alles trägt.
+    // (Unter Windows übersetzt Chrome über Direct3D 11/FXC – große Shader brauchen dort Sekunden.)
+    R.programReady = function (key, fsSrc, vsSrc) {
+        if (programs[key]) return true;
+        if (gl.isContextLost()) return false;
+        if (PSC) {
+            if (!pending[key]) { pending[key] = startProgram(fsSrc, vsSrc); return false; }
+            if (!gl.getProgramParameter(pending[key].p, PSC.COMPLETION_STATUS_KHR)) return false;
+            program(key, fsSrc, vsSrc);
+            return true;
+        }
+        let st = pending[key];
+        if (!st) {          // Häppchen 1: Vertex-Shader
+            const p = gl.createProgram();
+            const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, vsSrc || SH.VS); gl.compileShader(vs);
+            pending[key] = { p, vs, fs: null, step: 1 };
+            return false;
+        }
+        if (st.step === 1) {   // Häppchen 2: auf den Vertex-Shader warten, Fragment-Shader starten
+            gl.getShaderParameter(st.vs, gl.COMPILE_STATUS);
+            const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, fsSrc); gl.compileShader(fs);
+            st.fs = fs; st.step = 2;
+            return false;
+        }
+        if (st.step === 2) {   // Häppchen 3: auf den Fragment-Shader warten, Link starten
+            gl.getShaderParameter(st.fs, gl.COMPILE_STATUS);
+            gl.attachShader(st.p, st.vs); gl.attachShader(st.p, st.fs); gl.linkProgram(st.p); st.step = 3;
+            return false;
+        }
+        program(key, fsSrc, vsSrc);    // Häppchen 4: Link-Status (+ Uniform-Orte)
+        return true;
+    };
+    R.hasProgram = (key) => !!programs[key];
     function program(key, fsSrc, vsSrc) {
         if (programs[key]) return programs[key];
         let p;
         if (pending[key]) {
             const pd = pending[key]; delete pending[key];
             p = pd.p;
+            if (pd.step && pd.step < 3) {     // Häppchen-Übersetzung noch nicht beim Link: jetzt (blockierend) abschließen
+                if (!pd.fs) { pd.fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(pd.fs, fsSrc); gl.compileShader(pd.fs); }
+                gl.attachShader(p, pd.vs); gl.attachShader(p, pd.fs); gl.linkProgram(p);
+            }
             if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost())
                 throw new Error('Link: ' + gl.getShaderInfoLog(pd.vs) + gl.getShaderInfoLog(pd.fs) + gl.getProgramInfoLog(p));
         } else {

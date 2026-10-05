@@ -1,0 +1,154 @@
+{
+ "tag": "v620_swiftshader",
+ "platform": "darwin",
+ "runs": [
+  {
+   "version": "6.2.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+   "parallelExt": false,
+   "slowSimMs": 0.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "swiftshader",
+   "tapToFirst3dMs": 5240.8,
+   "on3d": true,
+   "maxFrameGapMs": 2883.8,
+   "framesOver100ms": 1,
+   "framesOver50ms": 1,
+   "longTasks": 1,
+   "longestTaskMs": 6333,
+   "fpsDuringPrep": null,
+   "blockingStatusMs": 6302.2,
+   "programs": [
+    {
+     "name": "gelaende_0",
+     "chars": 31085,
+     "compileMs": 5234.8,
+     "blockMs": 26.4,
+     "startMs": 1.1
+    },
+    {
+     "name": "gelaende_weiss",
+     "chars": 31085,
+     "compileMs": null,
+     "blockMs": 0,
+     "startMs": 1.3
+    },
+    {
+     "name": "gelaende_alpin",
+     "chars": 31085,
+     "compileMs": null,
+     "blockMs": 0,
+     "startMs": 1.6
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "compileMs": 5207.7,
+     "blockMs": 35.5,
+     "startMs": 1.6
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "compileMs": 9165.8,
+     "blockMs": 3926.7,
+     "startMs": 1.7
+    },
+    {
+     "name": "hoehe",
+     "chars": 3650,
+     "compileMs": 5171.0,
+     "blockMs": 2309.6,
+     "startMs": 1.8
+    },
+    {
+     "name": "sonde",
+     "chars": 2208,
+     "compileMs": 9170.1,
+     "blockMs": 4,
+     "startMs": 1.8
+    }
+   ],
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 4,
+     "t": 60.6
+    },
+    {
+     "prog": "shader",
+     "ms": 3130.6,
+     "t": 66435.4
+    },
+    {
+     "prog": "shader",
+     "ms": 19.1,
+     "t": 69566
+    },
+    {
+     "prog": "anderes",
+     "ms": 21,
+     "t": 69585.3
+    },
+    {
+     "prog": "shader",
+     "ms": 4.5,
+     "t": 74604.1
+    },
+    {
+     "prog": "shader",
+     "ms": 6792.8,
+     "t": 74646.7
+    },
+    {
+     "prog": "shader",
+     "ms": 37.3,
+     "t": 81439.6
+    },
+    {
+     "prog": "hoehe",
+     "ms": 21.3,
+     "t": 81477
+    },
+    {
+     "prog": "shader",
+     "ms": 2247.7,
+     "t": 81520
+    },
+    {
+     "prog": "shader",
+     "ms": 32.4,
+     "t": 83767.7
+    },
+    {
+     "prog": "hoehe",
+     "ms": 2309.6,
+     "t": 2863.2
+    },
+    {
+     "prog": "himmel",
+     "ms": 35.5,
+     "t": 5173.8
+    },
+    {
+     "prog": "gelaende_0",
+     "ms": 26.4,
+     "t": 5209.5
+    },
+    {
+     "prog": "blit",
+     "ms": 3926.7,
+     "t": 5240.8
+    },
+    {
+     "prog": "sonde",
+     "ms": 4,
+     "t": 9167.8
+    }
+   ],
+   "errors": []
+  }
+ ]
+}

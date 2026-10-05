@@ -4,11 +4,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 1,
+   "id": 2,
    "method": "center",
    "period": 0,
-   "len": 3366,
-   "ms": 11
+   "len": 3878,
+   "ms": 10
   },
   "size": "824x1678",
   "maxIter": 2450,
@@ -22,8 +22,8 @@
    674.0,
    2354.7
   ],
-  "renderS": 10.12,
-  "lastFullMs": 9868.1,
+  "renderS": 9.59,
+  "lastFullMs": 9199.8,
   "truthS": 1.2,
   "pass": true
  },
@@ -32,11 +32,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 3,
+   "id": 4,
    "method": "nucleus",
-   "period": 150,
-   "len": 151,
-   "ms": 3
+   "period": 155,
+   "len": 156,
+   "ms": 4
   },
   "size": "824x1678",
   "maxIter": 4050,
@@ -50,9 +50,9 @@
    308.9,
    1273.7
   ],
-  "renderS": 2.95,
-  "lastFullMs": 2701.7999999999993,
-  "truthS": 0.6,
+  "renderS": 2.99,
+  "lastFullMs": 2716.6000000000004,
+  "truthS": 0.5,
   "pass": true
  },
  {
@@ -64,7 +64,7 @@
    "method": "nucleus",
    "period": 48,
    "len": 49,
-   "ms": 0
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 2614,
@@ -79,7 +79,7 @@
    119.6
   ],
   "renderS": 1.03,
-  "lastFullMs": 583.1999999999989,
+  "lastFullMs": 583.3999999999996,
   "truthS": 0.3,
   "pass": true
  },
@@ -106,9 +106,9 @@
    3030.3,
    8961.4
   ],
-  "renderS": 19.31,
-  "lastFullMs": 19001.1,
-  "truthS": 2.5,
+  "renderS": 19.16,
+  "lastFullMs": 18765.9,
+  "truthS": 2.3,
   "pass": true
  },
  {
@@ -120,7 +120,7 @@
    "method": "grid",
    "period": 0,
    "len": 1635,
-   "ms": 11
+   "ms": 10
   },
   "size": "824x1678",
   "maxIter": 11250,
@@ -134,8 +134,8 @@
    1005.4,
    1712.9
   ],
-  "renderS": 6.21,
-  "lastFullMs": 5831.5999999999985,
+  "renderS": 6.08,
+  "lastFullMs": 5733.0999999999985,
   "truthS": 0.9,
   "pass": true
  },
@@ -148,7 +148,7 @@
    "method": "nucleus",
    "period": 1958,
    "len": 1959,
-   "ms": 6
+   "ms": 5
   },
   "size": "824x1678",
   "maxIter": 30000,
@@ -162,9 +162,9 @@
    2318.6,
    3093.2
   ],
-  "renderS": 8.93,
-  "lastFullMs": 8601.399999999994,
-  "truthS": 2.0,
+  "renderS": 8.52,
+  "lastFullMs": 8199.599999999999,
+  "truthS": 1.9,
   "pass": true
  },
  {
@@ -172,11 +172,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 15,
+   "id": 14,
    "method": "grid",
    "period": 0,
    "len": 1874,
-   "ms": 9
+   "ms": 11
   },
   "size": "824x1678",
   "maxIter": 5000,
@@ -190,9 +190,9 @@
    747.7,
    1715.8
   ],
-  "renderS": 6.54,
-  "lastFullMs": 6216.399999999994,
-  "truthS": 0.9,
+  "renderS": 5.87,
+  "lastFullMs": 5564.600000000006,
+  "truthS": 0.8,
   "pass": true
  },
  {
@@ -200,11 +200,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 17,
+   "id": 16,
    "method": "nucleus",
    "period": 90,
    "len": 91,
-   "ms": 2
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -219,7 +219,7 @@
    906.4
   ],
   "renderS": 2.78,
-  "lastFullMs": 2467.5,
+  "lastFullMs": 2485.0999999999985,
   "truthS": 0.5,
   "pass": true
  },
@@ -228,7 +228,7 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 19,
+   "id": 18,
    "method": "grid",
    "period": 0,
    "len": 82,
@@ -246,8 +246,8 @@
    73.4,
    309.4
   ],
-  "renderS": 1.13,
-  "lastFullMs": 849.9000000000087,
+  "renderS": 1.14,
+  "lastFullMs": 851,
   "truthS": 0.3,
   "pass": true
  },
@@ -256,11 +256,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 21,
+   "id": 20,
    "method": "nucleus",
    "period": 180,
    "len": 181,
-   "ms": 1
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 2450,
@@ -274,8 +274,8 @@
    214.5,
    1288.5
   ],
-  "renderS": 2.97,
-  "lastFullMs": 2699.899999999994,
+  "renderS": 3.0,
+  "lastFullMs": 2733.199999999997,
   "truthS": 0.5,
   "pass": true
  },
@@ -284,11 +284,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 23,
+   "id": 22,
    "method": "nucleus",
    "period": 270,
    "len": 271,
-   "ms": 4
+   "ms": 3
   },
   "size": "824x1678",
   "maxIter": 3200,
@@ -302,9 +302,9 @@
    491.5,
    3113.8
   ],
-  "renderS": 10.82,
-  "lastFullMs": 10416.100000000006,
-  "truthS": 1.3,
+  "renderS": 10.54,
+  "lastFullMs": 10232,
+  "truthS": 1.2,
   "pass": true
  },
  {
@@ -312,7 +312,7 @@
   "engine": "cpu/perturb",
   "bla": false,
   "ref": {
-   "id": 25,
+   "id": 24,
    "method": "grid",
    "period": 0,
    "len": 1034,
@@ -330,9 +330,9 @@
    297.3,
    1358.3
   ],
-  "renderS": 3.63,
-  "lastFullMs": 3249,
-  "truthS": 0.6,
+  "renderS": 3.51,
+  "lastFullMs": 3183.5,
+  "truthS": 0.5,
   "pass": true
  },
  {
@@ -340,11 +340,11 @@
   "engine": "cpu/perturb",
   "bla": false,
   "ref": {
-   "id": 27,
+   "id": 26,
    "method": "grid",
    "period": 0,
    "len": 816,
-   "ms": 4
+   "ms": 6
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -358,9 +358,9 @@
    753.1,
    849.6
   ],
-  "renderS": 6.01,
-  "lastFullMs": 5716.299999999988,
-  "truthS": 0.7,
+  "renderS": 5.48,
+  "lastFullMs": 5049.699999999997,
+  "truthS": 0.6,
   "pass": true
  },
  {
@@ -368,11 +368,11 @@
   "engine": "cpu/direct",
   "bla": null,
   "ref": {
-   "id": 27,
+   "id": 26,
    "method": "grid",
    "period": 0,
    "len": 816,
-   "ms": 4
+   "ms": 6
   },
   "size": "824x1678",
   "maxIter": 450,
@@ -386,9 +386,9 @@
    40.1,
    447.2
   ],
-  "renderS": 1.08,
-  "lastFullMs": 782.6999999999971,
-  "truthS": 0.4,
+  "renderS": 1.12,
+  "lastFullMs": 684.2999999999884,
+  "truthS": 0.3,
   "pass": true
  },
  {
@@ -396,11 +396,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 29,
+   "id": 28,
    "method": "nucleus",
    "period": 27,
    "len": 28,
-   "ms": 1
+   "ms": 0
   },
   "size": "824x1678",
   "maxIter": 450,
@@ -414,8 +414,8 @@
    40.1,
    427.7
   ],
-  "renderS": 1.16,
-  "lastFullMs": 851.6000000000058,
+  "renderS": 1.11,
+  "lastFullMs": 798.1999999999971,
   "truthS": 0.4,
   "pass": true
  },
@@ -424,11 +424,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 31,
-   "method": "grid",
+   "id": 29,
+   "method": "center",
    "period": 0,
-   "len": 4045,
-   "ms": 34
+   "len": 3980,
+   "ms": 12
   },
   "size": "824x1678",
   "maxIter": 30000,
@@ -442,9 +442,9 @@
    3276.4,
    3803.4
   ],
-  "renderS": 7.55,
-  "lastFullMs": 7216.200000000012,
-  "truthS": 2.8,
+  "renderS": 6.92,
+  "lastFullMs": 6632.899999999994,
+  "truthS": 2.5,
   "pass": true
  }
 ]

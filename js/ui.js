@@ -169,6 +169,7 @@ A.on((w) => {
     else if (w === 'iter') hudUpdate(true);
     else if (w === 'settings') syncControls();
     else if (w === '3d' || w === 'fly') sync3d();
+    else if (w === '3dprep') prep3dProgress();
     else if (w && w.toast) toast(w.toast, w.ms);
 });
 
@@ -537,12 +538,18 @@ if ('serviceWorker' in navigator && !new URLSearchParams(location.search).has('n
 }
 
 // ------------------------------------------------------------------ 3D-Landschaft + Flug
-let hint3d = false;
+let hint3d = false, want3dHint = false, prepToastT = 0;
 function toggle3d() {
     if (!A.can3d()) { toast(t('d3_na')); return; }
-    const on = !(A.V3.on && A.V3.dir >= 0);
+    // 6.3: Antippen während der Vorbereitung bricht sie ab
+    const on = !(A.V3.on && A.V3.dir >= 0) && !A.V3.prep;
+    if (on && !hint3d) want3dHint = true;
     A.set3d(on);
-    if (on && !hint3d) { hint3d = true; toast(t('d3_hint'), 3800); }
+}
+function prep3dProgress() {
+    const pi = A.view3dInfo().prepInfo;
+    // Fortschritt: fertige Programme (das große Gelände-Programm zählt halb – es kommt meist zuletzt)
+    if (pi && pi.total) $('btn-3d').style.setProperty('--p', String(Math.max(0.08, Math.min(0.92, pi.done / (pi.total + 1)))));
 }
 $('btn-3d').addEventListener('click', toggle3d);
 $('btn-3d').addEventListener('pointerdown', () => A.prewarm3d());
@@ -553,8 +560,17 @@ $('r-height').addEventListener('change', () => A.saveSettings());
 $('r-speed').addEventListener('input', (e) => { S.flySpeed = +e.target.value; });
 $('r-speed').addEventListener('change', () => A.saveSettings());
 function sync3d() {
-    const can = A.can3d(), on = A.V3.on && A.V3.dir >= 0, fly = A.FLY.on;
+    const can = A.can3d(), on = A.V3.on && A.V3.dir >= 0, fly = A.FLY.on, prep = !!A.V3.prep && !A.V3.on;
     $('btn-3d').hidden = !can;
+    // 6.3: „3D wird vorbereitet …“ (Shader werden übersetzt, 2D bleibt bedienbar)
+    const b3 = $('btn-3d');
+    b3.classList.toggle('prep', prep);
+    b3.title = t(prep ? 'd3_prep' : 'd3_title');
+    b3.setAttribute('aria-label', b3.title);
+    b3.setAttribute('aria-busy', String(prep));
+    if (prep) { prep3dProgress(); if (!prepToastT) prepToastT = setTimeout(() => { if (A.V3.prep && !A.V3.on) toast(t('d3_prep'), 2600); }, 400); }
+    else if (prepToastT) { clearTimeout(prepToastT); prepToastT = 0; }
+    if (on && want3dHint) { want3dHint = false; hint3d = true; toast(t('d3_hint'), 3800); }
     $('btn-3d').classList.toggle('on', on);
     $('btn-3d').setAttribute('aria-pressed', String(on));
     $('bar3d').hidden = !on;

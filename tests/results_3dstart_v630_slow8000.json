@@ -1,0 +1,119 @@
+{
+ "tag": "v630_slow8000",
+ "platform": "darwin",
+ "runs": [
+  {
+   "version": "6.3.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 8000.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 8363.7,
+   "on3d": true,
+   "maxFrameGapMs": 140.6,
+   "framesOver100ms": 1,
+   "framesOver50ms": 1,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "fpsDuringPrep": 60.0,
+   "blockingStatusMs": 0.4,
+   "programs": [
+    {
+     "name": "hoehe",
+     "chars": 3650,
+     "translatedChars": 17383,
+     "compileMs": 8011.0,
+     "blockMs": 0.2,
+     "startMs": 0.6
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14543,
+     "compileMs": 8011.3,
+     "blockMs": 0,
+     "startMs": 0.6
+    },
+    {
+     "name": "gelaende_0",
+     "chars": 28838,
+     "translatedChars": 85617,
+     "compileMs": 8243.6,
+     "blockMs": 0.2,
+     "startMs": 0.9
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13784,
+     "compileMs": 8143.7,
+     "blockMs": 0,
+     "startMs": 1.0
+    },
+    {
+     "name": "sonde",
+     "chars": 2203,
+     "translatedChars": 21384,
+     "compileMs": 8193.4,
+     "blockMs": 0,
+     "startMs": 1.0
+    }
+   ],
+   "final": {
+    "on": true,
+    "prep": false,
+    "prepInfo": {
+     "done": 5,
+     "total": 5
+    },
+    "btn": "round glass on"
+   },
+   "bigGaps": [
+    {
+     "at": 8361.1,
+     "ms": 140.6
+    }
+   ],
+   "firstUse": {
+    "hoehe": 8244.9,
+    "himmel": 8261.1,
+    "gelaende_0": 8278.4,
+    "blit": 8294.5,
+    "sonde": 8344.6,
+    "anderes": 8361.8
+   },
+   "firstDrawAt": 8363.7,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.5,
+     "t": 21.2
+    },
+    {
+     "prog": "shader",
+     "ms": 5.6,
+     "t": 27.5
+    },
+    {
+     "prog": "shader",
+     "ms": 3,
+     "t": 236.3
+    },
+    {
+     "prog": "shader",
+     "ms": 2.3,
+     "t": 307.2
+    },
+    {
+     "prog": "shader",
+     "ms": 2.2,
+     "t": 325.7
+    }
+   ],
+   "errors": []
+  }
+ ]
+}

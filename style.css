@@ -81,6 +81,15 @@ body:not(.ready) .chrome { opacity: 0; }
 body.immersive #julia-chip { transform: translateX(-50%) translateY(24px); }
 
 /* ---------- 3D-Leiste ---------- */
+/* 6.3: 3D wird vorbereitet (Shader übersetzen) – dezenter Ring um den Knopf, Füllstand = Fortschritt */
+#btn-3d { position: relative; }
+#btn-3d.prep svg { opacity: .55; }
+#btn-3d.prep::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(rgba(167, 139, 250, .95) calc(var(--p, .1) * 360deg), rgba(167, 139, 250, .18) 0);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+            mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+    animation: prep3d 1.6s linear infinite; }
+@keyframes prep3d { to { transform: rotate(360deg); } }
 #btn-3d.on { background: rgba(167, 139, 250, 0.35); border-color: rgba(167, 139, 250, 0.8); box-shadow: 0 0 18px rgba(167, 139, 250, .45); }
 #bar3d { position: fixed; z-index: 19; left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-h) + 22px + var(--sa-b)); display: flex; align-items: center; gap: 8px;
     padding: 4px 6px; border-radius: 999px; width: min(460px, calc(100vw - 20px)); }

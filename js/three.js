@@ -33,6 +33,11 @@ uniform int u_formula, u_maxIter, u_banded;
 `;
 // Ebenen: lt = (Texel pro lokaler Einheit, Texel-Versatz x/y, Einblendung), ls = (Puffergröße, Höhen-Basis,
 // lokale Einheit pro Texel), lh = 2 × Größe der Höhentextur (Normierung der Texturkoordinate)
+// 6.3: Ebenen als echte Schleifen (Obergrenze u_n3 ist ein Uniform -> der Compiler entrollt nicht). Bis 6.2 stand jede
+// Ebene als eigene Kopie im Shader (6×, in colorAt sogar 6 × 6, dazu jede Kopie in jedem Aufruf eingebettet) – unter
+// Windows übersetzt Chrome über Direct3D 11/FXC, das brauchte dafür zig Sekunden. Sampler-Arrays dürfen in GLSL ES 3.0
+// nur konstant indiziert werden: Auswahl der Ebene per switch.
+const SWITCH = (body) => `    switch (i) {\n${rep(N3, k => `        ${k < N3 - 1 ? `case ${k}` : 'default'}: ${body(k)} break;`)}\n    }`;
 const LAYERS = (iter) => `
 const float LAKE = 0.08;
 ${rep(N3, i => `uniform sampler2D u_h${i};`)}
@@ -47,13 +52,19 @@ uniform float u_cdf[9];   // Höhen-Entzerrung: log2(1+mu) an den Quantilen 0, 1
 uniform int u_h8;         // 1 = 8-bit-Ersatzformat (Höhe schon normiert)
 uniform int u_alpine;     // 6.2 Alpin-Look: 0 aus, 1 Wald, 2 See, 3 Wiese im Tal
 const float ALP_W = 0.1;  // Wasserspiegel des Talsees (relative Höhe)
-vec4 hLayer(sampler2D t, vec4 lt, vec4 ls, vec2 lh, vec2 P, float foot) {
+vec3 hTex(int i, vec2 uv, float lod) {
+    vec3 v;
+${SWITCH(k => `v = textureLod(u_h${k}, uv, lod).rgb;`)}
+    return v;
+}
+vec4 hLayer(int i, vec2 P, float foot) {
+    vec4 lt = u_lt[i], ls = u_ls[i];
     vec2 tc = P * lt.x + lt.yz;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
     float e = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
     float cov = clamp(e / 10.0, 0.0, 1.0) * lt.w;
     float lod = log2(max(foot / (2.0 * ls.w), 1.0));
-    vec3 v = textureLod(t, tc / lh, lod).rgb;
+    vec3 v = hTex(i, tc / u_lh[i], lod);
     return vec4(v.r + ls.z, v.g, v.b, cov);
 }
 float hSet = 0.0;   // 6.1: Mengen-Anteil inkl. Saum (B) aus der letzten heightAt2-Abfrage – ohne eigene Texturabfrage
@@ -61,7 +72,10 @@ float hSet = 0.0;   // 6.1: Mengen-Anteil inkl. Saum (B) aus der letzten heightA
 // shore = Innen-Anteil auf gröberer Stufe (< 0: wie inside): das Ufer fällt sanft zum See ab statt als Wand.
 vec2 heightAt2(vec2 P, float foot, float shore) {
     float T = 1.0, h = 0.0, g = 0.0, b = 0.0;
-${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec4 r = hLayer(u_h${i}, u_lt[${i}], u_ls[${i}], u_lh[${i}], P, foot); h += T * r.w * r.x; g += T * r.w * r.y; b += T * r.w * r.z; T *= 1.0 - r.w; }`)}
+    for (int i = 0; i < u_n3; i++) {
+        if (T <= 0.01) break;
+        vec4 r = hLayer(i, P, foot); h += T * r.w * r.x; g += T * r.w * r.y; b += T * r.w * r.z; T *= 1.0 - r.w;
+    }
     hSet = T < 0.999 ? b / (1.0 - T) : 0.0;
     // Histogramm-Entzerrung: jede Achtel-Stufe der Höhe bekommt gleich viel Fläche -> Relief auch dort,
     // wo fast alles nahe am Rand liegt (dichte Tiefen); fehlende Daten = tiefste Stufe
@@ -80,7 +94,10 @@ ${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec4 r = hLayer(u_h${i}, u_lt
 vec2 heightAt(vec2 P, float foot) { return heightAt2(P, foot, -1.0); }
 float insideAt(vec2 P, float foot) {
     float T = 1.0, g = 0.0;
-${rep(N3, i => `    if (u_n3 > ${i} && T > 0.01) { vec4 r = hLayer(u_h${i}, u_lt[${i}], u_ls[${i}], u_lh[${i}], P, foot); g += T * r.w * r.y; T *= 1.0 - r.w; }`)}
+    for (int i = 0; i < u_n3; i++) {
+        if (T <= 0.01) break;
+        vec4 r = hLayer(i, P, foot); g += T * r.w * r.y; T *= 1.0 - r.w;
+    }
     return T < 0.999 ? g / (1.0 - T) : 0.0;
 }
 `;
@@ -109,6 +126,7 @@ uniform vec2 u_depth;
 uniform float u_far, u_rows;
 uniform vec3 u_sun;
 uniform vec2 u_jit;
+uniform int u_shN;        // 6.3: Schattenschritte (6) als Uniform – der Compiler entrollt die Schleife nicht
 ${LAYERS(false)}
 out vec2 v_P;
 out float v_z, v_in, v_sh, v_shore;
@@ -130,27 +148,34 @@ void main() {
     // Mindest-Glättung 3 % der Bildhöhe: der Fraktalrand ist in log(mu) dichtes Rauschen -> sonst Nadeln/Steilwände
     // Großform (geglättet, sanftes Ufer) + halbe Amplitude der Feinstruktur: Kämme statt Nadeln
     float gf = max(foot * 2.0, 0.04);
-    float shore = insideAt(P, 0.25);
-    vec2 hc = heightAt2(P, gf, shore);
-    vec2 hf = heightAt2(P, max(foot * 1.5, 0.008), shore);
+    // 6.3: Abfragen gebündelt – je eine Stelle im Code statt 7 (der Compiler bettet jede Aufrufstelle komplett ein).
+    // Ufer-Maske an P (und mit 6.1-Normale an den Nachbarpunkten Px, Py im Abstand einer Gitterzelle)
+    float e = max(foot, 0.002);
+    vec2 QP[3];
+    QP[0] = P; QP[1] = P + vec2(e, 0.0); QP[2] = P + vec2(0.0, e);
+    int nq = u_smooth == 1 ? 3 : 1;
+    float sq[3];
+    for (int k = 0; k < nq; k++) sq[k] = insideAt(QP[k], 0.25);   // Absenken zum See gehört zur Hangneigung
+    float shore = sq[0];
+    // Höhen: 0 = Großform an P, 1 = Feinstruktur an P, 2/3 = Großform an Px/Py (nur 6.1-Normale)
+    vec2 hq4[4];
+    for (int k = 0; k < nq + 1; k++) {
+        int j = max(k - 1, 0);
+        hq4[k] = heightAt2(QP[j], k == 1 ? max(foot * 1.5, 0.008) : gf, sq[j]);
+    }
+    vec2 hc = hq4[0], hf = hq4[1];
     vec2 hz = vec2(0.55 * hc.x + 0.45 * hf.x, hf.y);
     // 6.2 Alpin + See: Talboden unter dem Wasserspiegel wird flache Wasserfläche (nicht in der Menge selbst)
     if (u_alpine == 2) hz.x = mix(hz.x, max(hz.x, ALP_W * u_hn.z), 1.0 - smoothstep(0.15, 0.45, shore));
     v_shore = shore;
     // 6.1: Flächennormale der gezeichneten Geometrie pro Gitterpunkt (gleiche Höhenfunktion, Nachbarpunkte im
     // Abstand einer Gitterzelle) -> über die Dreiecke interpoliert: Felsfarbe an Steilhängen ohne Facetten
+    // (nur die Großform wie hc: halb so viele Höhenabfragen, die Feinneigung liefert das Licht pro Pixel)
     v_N = vec3(0.0, 0.0, 1.0);
-    if (u_smooth == 1) {
-        float e = max(foot, 0.002);
-        vec2 Px = P + vec2(e, 0.0), Py = P + vec2(0.0, e);
-        float sx = insideAt(Px, 0.25), sy = insideAt(Py, 0.25);   // Absenken zum See gehört zur Hangneigung
-        // nur die Großform (wie hc): halb so viele Höhenabfragen, die Feinneigung liefert das Licht pro Pixel
-        float hx = heightAt2(Px, gf, sx).x, hy = heightAt2(Py, gf, sy).x;
-        v_N = vec3(hc.x - hx, hc.x - hy, e);
-    }
+    if (u_smooth == 1) v_N = vec3(hc.x - hq4[2].x, hc.x - hq4[3].x, e);
     // weiche Schatten pro Gitterpunkt: Strahl zur Sonne durchs (grob werdende) Höhenfeld
     float sh = 1.0;
-    for (int i = 1; i <= 6; i++) {
+    for (int i = 1; i <= u_shN; i++) {
         float ts = 0.024 * pow(1.95, float(i));
         float hq = heightAt(P + u_sun.xy * ts, max(max(foot * 2.0, 0.03), ts * 0.4)).x;
         sh = min(sh, 5.0 * (hz.x + u_sun.z * ts - hq) / ts);
@@ -186,6 +211,7 @@ uniform vec2 u_jit;       // Subpixel-Versatz (NDC) der Mittelung im Stillstand
 uniform vec3 u_setCol;    // 6.2 Farbe der Menge
 uniform vec2 u_noff[4];   // 6.2 Welt-verankertes Rauschen: Versatz je Oktave (Fokus / Wellenlänge, mod 256)
 uniform float u_nfr;      // Bruchteil von log2(lokale Einheit) – Oktaven-Überblendung beim Zoomen
+uniform int u_nq;         // 6.3: Zahl der Höhenabfragen pro Pixel (3) als Uniform – der Compiler entrollt nicht
 ${SKYCOL}
 ${LAYERS(true)}
 // Rauschen, das an der Welt (dem Fraktal) haftet und beim Zoomen nicht schwimmt: 4 Oktaven, Wellenlänge der Oktave
@@ -219,8 +245,18 @@ in float v_z, v_in, v_sh, v_shore;
 in vec3 v_V, v_N;
 out vec4 fragColor;
 ${SH.PAL_GLSL}
+// 4 Nachbartexel der Iterationsebene i (6.3: Auswahl per switch, siehe LAYERS); Dekodierung wie fetchV (2D)
+vec4 iTex4(int i, ivec2 a, ivec2 b) {
+    uvec4 r;
+${SWITCH(k => `r = uvec4(texelFetch(u_i${k}, a, 0).r, texelFetch(u_i${k}, ivec2(b.x, a.y), 0).r, texelFetch(u_i${k}, ivec2(a.x, b.y), 0).r, texelFetch(u_i${k}, b, 0).r);`)}
+    vec4 v = uintBitsToFloat(r);
+    return mix(mix(v, vec4(-1.0), lessThan(v, vec4(-1.5))), -v - 4.0, lessThanEqual(v, vec4(-3.0)));
+}
+// Messhilfe (u_dbg 2, Verhalten 6.0): Anteil der Seefarbe im Ergebnis von colorAt – pro Ebene cLW, summiert cLakeW
+float cLW = 0.0, cLakeW = 0.0;
 // Farbe einer Ebene: bilinear eingefärbt (wie 2D), Deckkraft = gefederter Rand × Einblendung
-vec4 cLayer(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
+vec4 cLayer(int i, vec2 P, vec3 lakeCol) {
+    vec4 lt = u_lt[i], ls = u_ls[i];
     vec2 tc = P * lt.x + lt.yz;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
     float e = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
@@ -229,17 +265,17 @@ vec4 cLayer(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
     vec2 fl = floor(q), f = q - fl;
     ivec2 mx = ivec2(ls.xy) - 1;
     ivec2 i0 = clamp(ivec2(fl), ivec2(0), mx), i1 = clamp(ivec2(fl) + 1, ivec2(0), mx);
-    float v00 = fetchV(t, i0), v10 = fetchV(t, ivec2(i1.x, i0.y)), v01 = fetchV(t, ivec2(i0.x, i1.y)), v11 = fetchV(t, i1);
-    vec3 c00 = v00 < 0.0 ? lakeCol : exteriorColor(v00), c10 = v10 < 0.0 ? lakeCol : exteriorColor(v10);
-    vec3 c01 = v01 < 0.0 ? lakeCol : exteriorColor(v01), c11 = v11 < 0.0 ? lakeCol : exteriorColor(v11);
+    vec4 v = iTex4(i, i0, i1);
+    vec3 c00 = v.x < 0.0 ? lakeCol : exteriorColor(v.x), c10 = v.y < 0.0 ? lakeCol : exteriorColor(v.y);
+    vec3 c01 = v.z < 0.0 ? lakeCol : exteriorColor(v.z), c11 = v.w < 0.0 ? lakeCol : exteriorColor(v.w);
+    vec4 lw = vec4(lessThan(v, vec4(0.0)));
+    cLW = mix(mix(lw.x, lw.y, f.x), mix(lw.z, lw.w, f.x), f.y);
     return vec4(mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y), cov);
 }
-// 6.1: Außenfarben nur untereinander interpoliert, Mengen-Anteil pro Bildschirmpixel aus der bilinear
-// interpolierten Distanzschätzung (wie 2D) -> runde, kantengeglättete Ufer auch nah am Boden. Ebenen ohne
-// DE-Sampler (die fernsten): Innen-Anteil der 4 Texel, weich.
 // 6.1: Außenfarben nur untereinander interpoliert (kein Farbmischen mit der Seefarbe pro Texel -> keine Pixeltreppe);
 // die Menge legt main() pro Bildschirmpixel aus dem B-Kanal der Höhentextur darüber. Alle 4 Texel innen: Seefarbe.
-vec4 cLayerS(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
+vec4 cLayerS(int i, vec2 P, vec3 lakeCol) {
+    vec4 lt = u_lt[i], ls = u_ls[i];
     vec2 tc = P * lt.x + lt.yz;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
     float e0 = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
@@ -248,7 +284,7 @@ vec4 cLayerS(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
     vec2 fl = floor(q), f = q - fl;
     ivec2 mx = ivec2(ls.xy) - 1;
     ivec2 i0 = clamp(ivec2(fl), ivec2(0), mx), i1 = clamp(ivec2(fl) + 1, ivec2(0), mx);
-    vec4 v = vec4(fetchV(t, i0), fetchV(t, ivec2(i1.x, i0.y)), fetchV(t, ivec2(i0.x, i1.y)), fetchV(t, i1));
+    vec4 v = iTex4(i, i0, i1);
     vec4 wb = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
     float wo = dot(wb, step(0.0, v));
     vec3 c = vec3(0.0);
@@ -256,23 +292,24 @@ vec4 cLayerS(usampler2D t, vec4 lt, vec4 ls, vec2 P, vec3 lakeCol) {
     if (v.y >= 0.0) c += wb.y * exteriorColor(v.y);
     if (v.z >= 0.0) c += wb.z * exteriorColor(v.z);
     if (v.w >= 0.0) c += wb.w * exteriorColor(v.w);
+    cLW = wo > 0.0 ? 0.0 : 1.0;
     return vec4(wo > 0.0 ? c / wo : lakeCol, cov);
 }
-bool covers(vec4 lt, vec4 ls, vec2 P) { vec2 tc = P * lt.x + lt.yz; return tc.x >= 0.0 && tc.y >= 0.0 && tc.x <= ls.x && tc.y <= ls.y; }
+bool covers(int i, vec2 P) { vec4 lt = u_lt[i], ls = u_ls[i]; vec2 tc = P * lt.x + lt.yz; return tc.x >= 0.0 && tc.y >= 0.0 && tc.x <= ls.x && tc.y <= ls.y; }
 // Farbe am Bodenpunkt: schärfste Ebene oben; zu feine Ebenen (Texel << Pixel, flimmern) treten zurück,
-// wenn darunter eine gröbere die Stelle deckt. setOut: Mengen-Anteil (6.1, für die Wassermaske pro Pixel)
+// wenn darunter eine gröbere die Stelle deckt (6.3: "darunter" = vor der letzten deckenden Ebene, statt 6×6-Kette)
 vec3 colorAt(vec2 P, float foot, vec3 lakeCol, vec3 noData) {
-    bool cv[${N3}];
-${rep(N3, i => `    cv[${i}] = u_n3 > ${i} && covers(u_lt[${i}], u_ls[${i}], P);`)}
+    int last = -1;
+    for (int i = 0; i < u_n3; i++) if (covers(i, P)) last = i;
     vec3 acc = vec3(0.0);
     float T = 1.0;
-${rep(N3, i => `    if (cv[${i}] && T > 0.01) {
-        vec4 c = u_smooth == 1 ? cLayerS(u_i${i}, u_lt[${i}], u_ls[${i}], P, lakeCol) : cLayer(u_i${i}, u_lt[${i}], u_ls[${i}], P, lakeCol);
-        bool below = false;
-        ${rep(N3, j => j > i ? `below = below || cv[${j}];` : '')}
-        if (below) c.a *= smoothstep(0.1, 0.3, u_ls[${i}].w / max(foot, 1e-9));
-        acc += T * c.a * c.rgb; T *= 1.0 - c.a;
-    }`)}
+    for (int i = 0; i < u_n3; i++) {
+        if (T <= 0.01) break;
+        if (!covers(i, P)) continue;
+        vec4 c = u_smooth == 1 ? cLayerS(i, P, lakeCol) : cLayer(i, P, lakeCol);
+        if (i < last) c.a *= smoothstep(0.1, 0.3, u_ls[i].w / max(foot, 1e-9));
+        acc += T * c.a * c.rgb; cLakeW += T * c.a * cLW; T *= 1.0 - c.a;
+    }
     return acc + T * noData;
 }
 ${POST}
@@ -280,9 +317,15 @@ void main() {
     nDx = dFdx(v_P); nDy = dFdy(v_P);
     float foot = max(max(length(nDx), length(nDy)), 1e-6);
     float dl = max(foot * 1.5, 0.004);
-    vec2 h0v = heightAt(v_P, dl);
-    float h0 = h0v.x, setB = hSet;          // Mengen-Anteil: dieselbe Abfrage wie die Lichtnormale
-    float hx1 = heightAt(v_P + vec2(dl, 0.0), dl).x, hy1 = heightAt(v_P + vec2(0.0, dl), dl).x;
+    // Höhe an P und den Nachbarn (Lichtnormale) – 6.3: eine Aufrufstelle in einer Schleife (u_nq = 3)
+    vec2 hq[3];
+    float setB = 0.0;       // Mengen-Anteil: dieselbe Abfrage wie die Lichtnormale
+    for (int k = 0; k < u_nq; k++) {
+        hq[k] = heightAt(v_P + (k == 1 ? vec2(dl, 0.0) : (k == 2 ? vec2(0.0, dl) : vec2(0.0))), dl);
+        if (k == 0) setB = hSet;
+    }
+    vec2 h0v = hq[0];
+    float h0 = h0v.x, hx1 = hq[1].x, hy1 = hq[2].x;
     vec3 n = normalize(vec3(h0 - hx1, h0 - hy1, dl));
     // 6.1: Mengen-Anteil pro Pixel (x: inkl. Saum -> Farbe, y: nur Menge -> Wasser), leicht nachgeschärft
     vec2 setPx = vec2(0.0);
@@ -341,7 +384,7 @@ void main() {
     water *= 1.0 - snowSet;
     if (u_dbg == 1) { fragColor = vec4(vec3(water), 1.0); return; }
     if (u_dbg == 3) { fragColor = vec4(steep, setPx.x, smoothstep(0.35, 0.6, v_shore), 1.0); return; }   // Messhilfe: Fels/Menge/See
-    if (u_dbg == 2) { float sm = u_smooth == 1 ? setPx.x : colorAt(v_P, foot, vec3(1.0), vec3(0.0)).g - colorAt(v_P, foot, vec3(0.0), vec3(0.0)).g; fragColor = vec4(vec3(sm), 1.0); return; }
+    if (u_dbg == 2) { float sm = u_smooth == 1 ? setPx.x : cLakeW; fragColor = vec4(vec3(sm), 1.0); return; }
     // Fels: einfarbig (Palette gedämpft) mit leichter Schichtung nach Höhe – keine gestreckte Bodentextur
     // (6.1: Schichtung gröber und schwächer – an den nun glatt schattierten Steilwänden flimmerte das feine Muster)
     vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (u_smooth == 1 ? 0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0) : 0.55 + 0.12 * sin(v_z / max(u_hn.z, 1e-4) * 40.0));
@@ -484,17 +527,19 @@ uniform int u_n3;
 uniform vec2 u_psize;
 uniform float u_win;
 out uint o;
-uint probe(usampler2D t, sampler2D d, vec4 lt, vec4 ls, vec2 P, out bool ok) {
+uint probe(int i, vec2 P, out bool ok) {
+    vec4 lt = u_lt[i], ls = u_ls[i];
     vec2 tc = P * lt.x + lt.yz;
     ok = tc.x >= 0.0 && tc.y >= 0.0 && tc.x < ls.x && tc.y < ls.y;
     if (!ok) return 0u;
     ivec2 c = ivec2(tc);
-    uint r = texelFetch(t, c, 0).r;
+    uint r; float d;
+${SWITCH(k => `r = texelFetch(u_i${k}, c, 0).r; d = texelFetch(u_d${k}, c, 0).r;`)}
     float v = uintBitsToFloat(r);
     uint code = 0u;
     if (v < 0.0 && v > -3.0) code = 1u;
     else {
-        float e = texelFetch(d, c, 0).r * 255.0;
+        float e = d * 255.0;
         if (e >= 254.5) code = 255u;          // Distanz über dem Kodierbereich (> 245 Pufferpixel): weit weg
         else if (e >= 0.5) code = uint(clamp((log2(exp2(e * 0.0625 - 8.0) * ls.w) + 12.0) * 16.0 + 2.0, 2.0, 254.0));
     }
@@ -504,7 +549,7 @@ void main() {
     vec2 P = (gl_FragCoord.xy / u_psize * 2.0 - 1.0) * u_win;
     bool ok = false;
     uint r = floatBitsToUint(-1e30);
-${rep(N3, i => `    if (!ok && u_n3 > ${i}) { uint v = probe(u_i${i}, u_d${i}, u_lt[${i}], u_ls[${i}], P, ok); if (ok) r = v; }`)}
+    for (int i = 0; i < u_n3; i++) { uint v = probe(i, P, ok); if (ok) { r = v; break; } }
     o = r;
 }`;
 
@@ -661,11 +706,123 @@ function create(R) {
         grid = { cols, rows, vao, vb, ib, n: idx.length };
         return grid;
     }
-    function terrainProgram(look) {
-        if (look && look.alpine) return R.program('t3terrX', TERRAIN_FS_X, TERRAIN_VS);
-        if (look && look.setCol && SH_LUM(look.setCol) > 0.34) return R.program('t3terrS', TERRAIN_FS_S, TERRAIN_VS);
-        return R.program('t3terr', TERRAIN_FS, TERRAIN_VS);
+    // 6.3: Gelände-Variante zum Look; nur sie wird übersetzt. Ist eine neu gewählte Variante noch nicht fertig
+    // (Look-Wechsel in 3D), zeichnet die bisherige weiter, bis der Treiber fertig ist – ohne zu blockieren.
+    const TERR = { t3terr: TERRAIN_FS, t3terrS: TERRAIN_FS_S, t3terrX: TERRAIN_FS_X };
+    const terrainKey = (look) => look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr');
+    function needs(look) {
+        const k = terrainKey(look);
+        const a = [['t3hb', HBUILD_FS], ['t3sky', SKY_FS], [k, TERR[k], TERRAIN_VS], ['t3blit', BLIT_FS], ['t3probe', PROBE_FS]];
+        if (k !== 't3terr') a.splice(2, 0, ['t3noise', NOISE_FS]);    // Schnee/Alpin: Rauschtextur
+        return a;
     }
+    let lastTerr = null;
+    T.waiting = false;                     // true: Bild mit der vorigen Variante, die neue wird noch übersetzt
+    function terrainProgram(look) {
+        const k = terrainKey(look);
+        T.waiting = false;
+        if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (k === 't3terr' || noiseTex) && (warmDone[k] || R.noWarm))) {
+            lastTerr = T.variant = k;
+            return R.program(k, TERR[k], TERRAIN_VS);
+        }
+        // fertig übersetzt, aber noch nicht angewärmt: in diesem Bild anwärmen (vor dem Binden des Ziels), im nächsten nehmen
+        if (R.hasProgram(k) && (k === 't3terr' || noiseTex)) warmOne(k, TERR[k], TERRAIN_VS);
+        T.waiting = true;
+        return R.program(lastTerr, TERR[lastTerr], TERRAIN_VS);
+    }
+    // nicht blockierend: true, wenn alle Programme für ein 3D-Bild in diesem Look fertig sind (T.prep = Fortschritt).
+    // Ohne KHR_parallel_shader_compile blockiert jede Statusabfrage -> dann nur ein Programm pro Aufruf (= pro Bild).
+    T.ready = function (look) {
+        const a = needs(look);
+        let done = 0;
+        for (const n of a) {
+            if (R.programReady(n[0], n[1], n[2])) done++;
+            else if (!R.parallelCompile) break;
+        }
+        T.prep = { done, total: a.length };
+        return done === a.length;
+    };
+    // Anwärmen: Ein fertig gelinktes Programm ist beim ersten Zeichnen noch nicht ganz fertig – der Treiber baut dann
+    // die GPU-Pipeline (Mac/Metal: ~30–50 ms je Programm, alle im ersten 3D-Bild zusammen ~200 ms Standbild). Darum
+    // vorher je Bild EIN Programm einmal unsichtbar in ein winziges Ziel mit denselben Formaten/Zuständen zeichnen.
+    let warmT = null, warmDone = {};
+    function warmTarget() {
+        if (warmT) return warmT;
+        const col = makeTarget(4, 4, true), nd = makeTarget(4, 4, false), h = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, h);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, T.h8 ? gl.RGBA8 : gl.RGBA16F, 1, 1);
+        const hfb = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, hfb);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, h, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        warmT = { col, nd, h, hfb };
+        return warmT;
+    }
+    function warmFree() {
+        if (!warmT) return;
+        const c = warmT.col;
+        gl.deleteFramebuffer(c.fb); gl.deleteTexture(c.tex); gl.deleteRenderbuffer(c.rb);
+        gl.deleteFramebuffer(warmT.nd.fb); gl.deleteTexture(warmT.nd.tex);
+        gl.deleteFramebuffer(warmT.hfb); gl.deleteTexture(warmT.h);
+        warmT = null;
+    }
+    function warmOne(key, src, vs, sub) {
+        const w = warmTarget(), pr = R.program(key, src, vs), U = pr.loc;
+        gl.useProgram(pr.p);
+        if (key === 't3hb') {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, w.hfb); gl.viewport(0, 0, 1, 1);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, R.dummyU()); gl.uniform1i(U.u_src, 0);
+            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, R.dummyD()); gl.uniform1i(U.u_srcD, 1);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        } else if (key === 't3probe') {
+            if (!probeBuf) probeBuf = R.acquireBuffer(PW, PH, true);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, probeBuf.fbo); gl.viewport(0, 0, 1, 1);
+            for (let i = 0; i < N3; i++) {
+                gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, R.dummyU()); gl.uniform1i(U['u_i' + i], i);
+                gl.activeTexture(gl.TEXTURE0 + N3 + i); gl.bindTexture(gl.TEXTURE_2D, R.dummyD()); gl.uniform1i(U['u_d' + i], N3 + i);
+            }
+            gl.uniform1i(U.u_n3, 0);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        } else if (key === 't3noise') {
+            getNoise();
+        } else if (key === 't3blit') {      // Ziele ohne Tiefe (Mittelung, Mischziel); je Bild eine Mischart (eigene Pipeline)
+            gl.bindFramebuffer(gl.FRAMEBUFFER, w.nd.fb); gl.viewport(0, 0, 1, 1);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src, 0);
+            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src2, 1);
+            if (sub < 2) gl.enable(gl.BLEND);
+            if (sub === 0) { gl.blendColor(0, 0, 0, 0.5); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA); }   // Mittelung
+            if (sub === 1) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);                                             // Überblendung
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.disable(gl.BLEND);
+        } else {                            // Himmel (ohne Tiefentest) und Gelände (Gitter, Tiefentest)
+            gl.bindFramebuffer(gl.FRAMEBUFFER, w.col.fb); gl.viewport(0, 0, 1, 1);
+            if (key === 't3sky') { gl.disable(gl.DEPTH_TEST); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+            else {
+                bindLayers(U, [], true, 0);
+                if (U.u_noise) { gl.activeTexture(gl.TEXTURE0 + 2 * N3); gl.bindTexture(gl.TEXTURE_2D, noiseTex || dummyF()); gl.uniform1i(U.u_noise, 2 * N3); }
+                gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+                const g = makeGrid(48, 64);
+                gl.bindVertexArray(g.vao);
+                gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+                gl.bindVertexArray(R.vao);
+                gl.disable(gl.DEPTH_TEST);
+            }
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        warmDone[key + (sub ? ':' + sub : '')] = true;
+    }
+    // nicht blockierend, höchstens ein Programm pro Aufruf (= pro Bild); true, wenn alles für den Look angewärmt ist
+    T.warm = function (look) {
+        if (R.noWarm) return true;
+        for (const n of needs(look)) {
+            for (let sub = 0; sub < (n[0] === 't3blit' ? 3 : 1); sub++)
+                if (!warmDone[n[0] + (sub ? ':' + sub : '')]) { warmOne(n[0], n[1], n[2], sub); return false; }
+        }
+        warmFree();
+        return true;
+    };
+    // beim Antippen des 3D-Knopfs: nur die Programme dieses Looks starten (übersetzt parallel, wartet nie)
+    T.prewarm = function (look) { if (R.parallelCompile) for (const n of needs(look)) R.prewarm(n[0], n[1], n[2]); };
 
     // ---------------- Offscreen-Ziele (Farbe + Tiefe): fbo = Bewegung (skaliert), fboS = Stillstand (volle
     // Auflösung, Subpixel-Versatz), acc = gemitteltes Bild (6.1)
@@ -692,6 +849,8 @@ function create(R) {
     T.freeStill = function () {
         if (fboS) { gl.deleteFramebuffer(fboS.fb); gl.deleteTexture(fboS.tex); gl.deleteRenderbuffer(fboS.rb); fboS = null; }
         if (acc) { gl.deleteFramebuffer(acc.fb); gl.deleteTexture(acc.tex); acc = null; }
+        for (const t of [pres, cpy]) if (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); }
+        pres = cpy = null;
     };
     function makeTarget(w, h, depth) {
         let fbo;
@@ -789,7 +948,8 @@ function create(R) {
         layerUniforms(list, v.focus, v.u);
         const c = T.camera(v, W, H);
         T.lastCam = c;
-        if (look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
+        if ((look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) && R.programReady('t3noise', NOISE_FS)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
+        const prT = terrainProgram(look);      // 6.3: vor dem Binden des Ziels (wärmt ggf. eine neue Variante an)
         const tg = still ? targetS(sw, shh) : target(sw, shh);
         let jit = [0, 0];
         if (still && still.N > 1) { const k = still.n % 64 + 1; jit = [(halton(k, 2) - 0.5) * 2 / sw, (halton(k, 3) - 0.5) * 2 / shh]; }
@@ -812,7 +972,7 @@ function create(R) {
         // Gelände
         gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
         gl.clear(gl.DEPTH_BUFFER_BIT);
-        pr = terrainProgram(look); U = pr.loc;
+        pr = prT; U = pr.loc;
         gl.useProgram(pr.p);
         camUniforms(U, c, sw, shh);
         gl.uniform2fv(U.u_jit, jit);
@@ -823,6 +983,7 @@ function create(R) {
         gl.uniform2f(U.u_depth, (far + n) / (far - n), -2 * far * n / (far - n));
         gl.uniform1f(U.u_far, 28);
         gl.uniform1f(U.u_rows, rows);
+        gl.uniform1i(U.u_shN, 6); gl.uniform1i(U.u_nq, 3);
         gl.uniform3f(U.u_hn, v.L[0], 1 / Math.max(1e-3, v.L[1] - v.L[0]), v.height * v.mix);
         gl.uniform1i(U.u_h8, T.h8 ? 1 : 0);
         const cdf = v.cdf || [v.L[0], 0, 0, 0, 0, 0, 0, 0, v.L[1]].map((x, i, a) => i && i < 8 ? a[0] + (a[8] - a[0]) * i / 8 : x);
@@ -866,23 +1027,54 @@ function create(R) {
         // auf den Canvas (lineare Hochskalierung), alpha < 1 = Überblendung mit dem 2D-Bild
         T.present(src, src2, mix2, alpha);
     };
-    // gemitteltes bzw. letztes Bild auf den Canvas (ohne neu zu zeichnen)
+    // gemitteltes bzw. letztes Bild auf den Canvas (ohne neu zu zeichnen).
+    // 6.3: per blitFramebuffer (lineare Hochskalierung, ohne eigenen Shader). Am Mac (ANGLE/Metal) übersetzt der Treiber
+    // für jedes Programm, das zum ersten Mal auf den Canvas (ohne Alphakanal) zeichnet, eine eigene Variante – für den
+    // winzigen Kopier-Shader ~170 ms Standbild im ersten 3D-Bild. Mischungen (Überblendung mit dem 2D-Bild beim
+    // Einschalten, Restanteil des Bewegungsbilds) entstehen darum vorher in einem eigenen Ziel (pres).
+    let pres = null, cpy = null;
+    function sized(t, w, h) {
+        if (t && t.w === w && t.h === h) return t;
+        if (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); }
+        return makeTarget(w, h, false);
+    }
+    function blitDraw(dst, w, h, a, b, mix2, alpha) {
+        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, dst ? dst.fb : null);
+        gl.viewport(0, 0, w, h);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, a.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, (b || a).tex); gl.uniform1i(U.u_src2, 1);
+        gl.uniform2f(U.u_target, w, h);
+        gl.uniform1f(U.u_alpha, alpha);
+        gl.uniform1f(U.u_mix2, b ? mix2 : 0);
+        if (alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.BLEND);
+    }
     T.present = function (src, src2, mix2, alpha) {
         src = src || acc || fbo;
         if (!src) return;
         const W = R.canvas.width, H = R.canvas.height;
+        const fade = alpha !== undefined && alpha < 1, m2 = !!src2 && mix2 > 0;
+        let out = src;
+        if (fade || m2) {
+            pres = sized(pres, W, H);
+            if (fade) {
+                // 2D-Bild (in diesem Bild schon gezeichnet) übernehmen, 3D mit alpha darüber – wie bisher auf dem Canvas
+                cpy = sized(cpy, W, H);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.bindTexture(gl.TEXTURE_2D, cpy.tex);
+                gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, W, H);
+                blitDraw(pres, W, H, cpy, null, 0, 1);
+            }
+            blitDraw(pres, W, H, src, m2 ? src2 : null, mix2, fade ? alpha : 1);
+            out = pres;
+        }
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, out.fb);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        gl.blitFramebuffer(0, 0, out.w, out.h, 0, 0, W, H, gl.COLOR_BUFFER_BIT, out.w === W && out.h === H ? gl.NEAREST : gl.LINEAR);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, W, H);
-        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
-        gl.useProgram(pr.p);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex); gl.uniform1i(U.u_src, 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, (src2 || src).tex); gl.uniform1i(U.u_src2, 1);
-        gl.uniform2f(U.u_target, W, H);
-        gl.uniform1f(U.u_alpha, alpha === undefined ? 1 : alpha);
-        gl.uniform1f(U.u_mix2, src2 ? mix2 : 0);
-        if (alpha !== undefined && alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.disable(gl.BLEND);
     };
     T.hasAcc = () => !!acc;
 
@@ -928,11 +1120,6 @@ function create(R) {
         });
     };
 
-    // 3D-Shader im Leerlauf vorab übersetzen (parallel, blockiert nicht)
-    T.prewarm = function () {
-        R.prewarm('t3terr', TERRAIN_FS, TERRAIN_VS); R.prewarm('t3terrS', TERRAIN_FS_S, TERRAIN_VS); R.prewarm('t3terrX', TERRAIN_FS_X, TERRAIN_VS); R.prewarm('t3sky', SKY_FS); R.prewarm('t3blit', BLIT_FS);
-        R.prewarm('t3hb', HBUILD_FS); R.prewarm('t3probe', PROBE_FS);
-    };
     // GPU-Zeit-Messung (Test-Hook)
     T.info = () => ({ h8: T.h8, scale: T.scale, grid: grid ? [grid.cols, grid.rows] : null, target: fbo ? [fbo.w, fbo.h] : null, still: fboS ? [fboS.w, fboS.h] : null });
     return T;

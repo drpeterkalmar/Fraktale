@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.2.0';
+const APP_VERSION = '6.3.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -1267,7 +1267,7 @@ function present(now, camChanged) {
     if (p.kind === 'buddha') { buddhaTick(now); return; }
     if (V3.on) {
         // 3D zeichnet bei Bewegung, Übergang, Farbanimation, Einblenden, Flug; sonst ruht es (Akku)
-        const busy = camChanged || S.anim || RC.fading || RC.dirty || V3.dir || (FLY.on && !FLY.paused) || now - V3.probeT > 300 || V3.accPending;
+        const busy = camChanged || S.anim || RC.fading || RC.dirty || V3.dir || (FLY.on && !FLY.paused) || now - V3.probeT > 300 || V3.accPending || T3.waiting;
         RC.dirty = false;
         if (busy) present3d(now, camChanged);
         return;
@@ -1304,17 +1304,32 @@ const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L:
              accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null };
 const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, steerBase: 0, t0: 0, z0: 1, off0: 0, dir: [0, 1], scoreT: 0 };
 function can3d(f) { return !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
+// 6.3: 3D wird erst eingeblendet, wenn alle Shader dafür fertig übersetzt sind (T3.ready fragt nicht blockierend,
+// pro Bild). Bis dahin bleibt das 2D-Bild bedienbar, der ⛰-Knopf zeigt „3D wird vorbereitet …“ (V3.prep = Startzeit).
+// Unter Windows (Direct3D 11) kann das Übersetzen Sekunden dauern – vorher hing der Tab so lange.
 function set3d(on) {
     if (on && !can3d()) return;
+    if (!on && V3.prep) { V3.prep = 0; V3.prepFly = null; emit('3d'); if (!V3.on) return; }
+    if (on && !V3.on && T3 && !ready3d()) { if (!V3.prep) { V3.prep = performance.now(); emit('3d'); } return; }
     if (on === V3.on && V3.dir === (on ? 1 : -1)) return;
     if (on) { V3.on = true; V3.dir = 1; V3.heading = 0; if (T3) T3.scale = baseScale3d(); }
     else { V3.dir = -1; stopFly(); }
     invalidate(); emit('3d');
 }
+// fertig übersetzt (nicht blockierend gefragt) und angewärmt (je Bild ein Programm) – erst dann 3D einblenden
+function ready3d() { const lk = look(); return T3.ready(lk) && T3.warm(lk); }
 function baseScale3d() { return Q.get('s3d') ? +Q.get('s3d') : (Math.min(screen.width, screen.height) < 700 ? 0.65 : 1); }
 const e3 = (x) => x * x * (3 - 2 * x);
 // Übergang 2D <-> 3D (0,7 s): Neigung/Höhe/Drehung wachsen mit mix; bei mix = 0 ist 3D = 2D-Bild
 function update3d(now, dt) {
+    if (V3.prep && !V3.on) {
+        if (!can3d()) { V3.prep = 0; V3.prepFly = null; emit('3d'); return; }
+        if (!ready3d()) { if (stats.frames % 6 === 0) emit('3dprep'); return; }
+        const fl = V3.prepFly;
+        V3.prep = 0; V3.prepFly = null;
+        if (fl) startFly(fl === true ? undefined : fl); else set3d(true);
+        return;
+    }
     if (!V3.on) return;
     if (V3.dir) {
         V3.mix = Math.max(0, Math.min(1, V3.mix + V3.dir * dt / 0.7));
@@ -1375,7 +1390,7 @@ function layers3d(list) {
 // ungeglätteter Kanten, wenn im Stillstand eine vorausgerechnete Ebene einblendet)
 function still3dKey(L3, v, lk) {
     const c = S.cam;
-    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine].join('|');
+    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine, T3.variant].join('|');
 }
 function still3dSoft(L3, v, lk) {
     return [v.L[0].toFixed(3), v.L[1].toFixed(3), (v.cdf || []).map(x => x.toFixed(3)).join(','), L3.map(l => l.seq + ':' + l.alpha.toFixed(2)).join(','), lk.maxIter].join('|');
@@ -1482,6 +1497,8 @@ const FLY_DE = 0.04;          // Zoompunkt höchstens so weit von der Menge (Bil
 const FLY_RMIN = 0.25, FLY_RMAX = 0.7, FLY_RPREF = 0.45;   // Zoompunkt vor dem Fokus (Bildhälften)
 function startFly(place) {
     if (!can3d(place && place.formula !== undefined ? place.formula : S.formula)) return;
+    // 6.3: Shader noch nicht fertig -> erst vorbereiten (2D bleibt bedienbar), dann diesen Flug starten
+    if (!V3.on && T3 && !ready3d()) { V3.prepFly = place || true; if (!V3.prep) { V3.prep = performance.now(); emit('3d'); } return; }
     stopAnims();
     if (place) {
         setMode(place.formula || 0, true);
@@ -1950,6 +1967,7 @@ function init() {
     if (Q.get('renderer')) S.renderer = Q.get('renderer');
     if (Q.has('noanim')) S.anim = false;
     if (Q.has('nobla')) R.noBLA = true;
+    if (Q.has('nowarm')) R.noWarm = true;      // 6.3 A/B: 3D-Programme vor dem Einblenden nicht anwärmen
     if (Q.get('inflight')) R.maxInflight = +Q.get('inflight');
     resize();
     requestAnimationFrame(frame);
@@ -1964,9 +1982,13 @@ const API = {
     V3, FLY, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
-    prewarm3d() { if (T3 && !T3.warm) { T3.warm = true; T3.prewarm(); } },
+    // 6.3: nur die Programme des aktuellen Looks, nicht blockierend (T3.ready pollt danach pro Bild)
+    prewarm3d() { if (T3 && !V3.on) T3.prewarm(look()); },
     layers3dInfo() { const now = performance.now(); return layers3d(orderLayers(now, S.cam)).map(l => ({ stage: l.stage, scale: l.scale / (3 / (S.cam.zoom * canvas.height)), alpha: +l.alpha.toFixed(2), w: l.buf.w, h: l.buf.h, h3d: !!l.h3d, out: !!l.outT, front: l === RC.front })); },
-    view3dInfo() { return { on: V3.on, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode }, gpu: T3 ? T3.info() : null }; },
+    // Test (6.3, tests/compare_3d_shader.py): Ebenen, Ansicht und Look des aktuellen 3D-Bilds – zum Zeichnen mit einer
+    // zweiten 3D-Instanz (alter Shader) auf exakt denselben Daten
+    args3d() { return { L3: layers3d(orderLayers(performance.now(), S.cam)), v: view3d(), lk: look(), o: { smooth: !AA0, de: [0.25 * DEW, 1.25 * DEW] } }; },
+    view3dInfo() { return { on: V3.on, prep: !!V3.prep, prepInfo: T3 ? T3.prep || null : null, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode }, gpu: T3 ? T3.info() : null }; },
     // still = true: Bilder der Stillstands-Mittelung (volle Auflösung) statt Bewegungsbilder
     bench3d(n = 5, still = false, smooth) {
         const gl = R.gl, ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
