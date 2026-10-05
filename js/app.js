@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.5.0';
+const APP_VERSION = '6.5.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -1388,9 +1388,21 @@ function update3d(now, dt) {
     if (V3.slow > 40) { T3.scale = Math.max(0.45, T3.scale * 0.9); V3.slow = 0; }
     else if (V3.slow < -200) { T3.scale = Math.min(baseScale3d(), T3.scale * 1.05); V3.slow = 0; }
 }
+// 6.5 Deko in 3D (Wolken, Horizontleuchten, Luftperspektive, Wolken im Wasser): Stärke 0..1, weich ein-/ausgeblendet.
+// Aus (= exakt das Bild und die Kosten bis 6.4.1) bei ?deko=0, Qualität „Akku“ und solange die Auflösungs-Drosselung
+// greift. Wolkenzug nur, solange ohnehin animiert gezeichnet wird, nicht bei „Bewegung reduzieren“.
+const DK = { m: DEKO ? 1 : 0, t: 0, ct: 0 };
+function deko3d() {
+    const now = performance.now(), dt = DK.t ? Math.min(0.1, (now - DK.t) / 1000) : 0;
+    DK.t = now;
+    const tgt = DEKO && S.quality !== 'eco' && !(T3 && T3.scale < baseScale3d() - 1e-3) ? 1 : 0;
+    if (DK.m !== tgt) { DK.m = tgt > DK.m ? Math.min(tgt, DK.m + dt * 1.2) : Math.max(tgt, DK.m - dt * 1.2); RC.dirty = true; }
+    return DK.m;
+}
 function view3d() {
     const em = e3(V3.mix);
-    return { tilt: V3.tilt * em, heading: V3.heading * (V3.dir < 0 ? em : 1), roll: (FLY.roll || 0) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time };
+    return { tilt: V3.tilt * em, heading: V3.heading * (V3.dir < 0 ? em : 1), roll: (FLY.roll || 0) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time,
+             deko: deko3d(), ctime: DK.ct };
 }
 // Ebenen für 3D: gültiger Inhalt, schärfste zuerst, höchstens N3 – die größte (Horizont) immer dabei
 function layers3d(list) {
@@ -1912,6 +1924,7 @@ function frame(now) {
     if (document.hidden || R.lost) return;
     S.time += dt;
     if (S.anim) S.cycle += dt * S.speed;
+    if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
     updateAnims(now, dt);
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }

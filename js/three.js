@@ -128,6 +128,27 @@ uniform vec3 u_sun;
 uniform vec2 u_jit;
 uniform int u_shN;        // 6.3: Schattenschritte (6) als Uniform – der Compiler entrollt die Schleife nicht
 ${LAYERS(false)}
+// 6.5 Wolkenschatten: am Fraktal verankert (Versatz u_coff aus der BigInt-Kamera wie beim Alpin-Rauschen, zwei grobe
+// Oktaven, beim Zoomen weich überblendet – schwimmen nicht), ziehen langsam mit dem Wind; pro Gitterpunkt gerechnet
+// (weich wie die Geländeschatten, ~50× billiger als pro Pixel)
+uniform int u_deko;
+uniform float u_dk, u_ctime, u_nfr;
+uniform vec2 u_coff[2];
+float chash(vec2 i) { i = mod(i, 256.0); vec2 p = fract(i * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
+float cnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(chash(i), chash(i + vec2(1.0, 0.0)), f.x), mix(chash(i + vec2(0.0, 1.0)), chash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float cloudShade(vec2 P) {
+    float c = 0.0, w2 = 0.0;
+    for (int j = 0; j < 2; j++) {
+        float w = j == 0 ? sin(1.5708 * u_nfr) : cos(1.5708 * u_nfr); w *= w;
+        vec2 q = u_coff[j] + P * exp2(u_nfr + float(j) - 1.0) + vec2(u_ctime * 0.03, u_ctime * 0.012);
+        float n = cnoise(q) * 0.62 + cnoise(q * 2.0 + 17.0) * 0.38;
+        c += w * (n - 0.5); w2 += w * w;
+    }
+    return smoothstep(0.56, 0.82, c / sqrt(max(w2, 1e-3)) * 2.4 + 0.5);
+}
 out vec2 v_P;
 out float v_z, v_in, v_sh, v_shore;
 out vec3 v_V, v_N;
@@ -181,6 +202,7 @@ void main() {
         sh = min(sh, 5.0 * (hz.x + u_sun.z * ts - hq) / ts);
     }
     v_sh = clamp(sh, 0.0, 1.0);
+    if (u_deko > 0) v_sh *= 1.0 - 0.35 * u_dk * cloudShade(P);    // 6.5 Wolkenschatten (dezent)
     vec3 Q = vec3(P, hz.x);
     vec3 v = Q - u_cam;
     float zc = dot(v, u_fwd);
@@ -195,6 +217,42 @@ vec3 skyColor(vec3 d) {
     float s = max(dot(d, u_sun), 0.0);
     c += vec3(1.0, 0.86, 0.65) * (pow(s, 24.0) * 0.25 + pow(s, 600.0) * 1.2);
     return c;
+}`;
+
+// 6.5 Deko: Wolken (Wertrauschen, 4 Oktaven, nur ALU – keine Textur, kein eigener Pass) auf einer Ebene über der
+// Kamera, dazu Horizontleuchten in Sonnenrichtung und ein weicher Sonnenhof. u_deko = 0: Himmel exakt wie bis 6.4.1
+// (?deko=0, Qualität „Akku“, aktive Auflösungs-Drosselung); u_dk = Stärke 0..1 (weiches Ein-/Ausblenden),
+// u_ctime = Wolkenzug (läuft nur, solange ohnehin animiert gezeichnet wird).
+const CLOUDS = `
+uniform int u_deko;
+uniform float u_dk, u_ctime;
+float vhash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(vhash(i), vhash(i + vec2(1.0, 0.0)), f.x), mix(vhash(i + vec2(0.0, 1.0)), vhash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+// Bedeckung 0..1 in Blickrichtung d (z = oben); oct = Zahl der Oktaven (Spiegelung im Wasser: 3)
+float cloudCov(vec3 d, int oct, out float core) {
+    vec2 p = d.xy / (d.z + 0.25) * 1.2 + vec2(u_ctime * 0.02, u_ctime * 0.007);
+    float a = 0.5, n = 0.0;
+    for (int k = 0; k < 4; k++) { if (k >= oct) break; n += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+    n /= 1.0 - 2.0 * a;     // Summe der Amplituden
+    core = smoothstep(0.6, 0.88, n);
+    return smoothstep(0.46, 0.7, n) * smoothstep(0.0, 0.04, d.z);
+}
+vec3 skyDeko(vec3 d, int oct) {
+    vec3 c = skyColor(d);
+    if (u_deko == 0) return c;
+    float s = max(dot(d, u_sun), 0.0);
+    float az = max(dot(normalize(d.xy + 1e-5), normalize(u_sun.xy)), 0.0);
+    // Horizontleuchten (warm, in Sonnenrichtung) + weiter Sonnenhof
+    c += u_dk * (vec3(1.0, 0.74, 0.48) * pow(az, 4.0) * exp(-max(d.z, 0.0) * 9.0) * 0.16 + vec3(1.0, 0.9, 0.76) * pow(s, 6.0) * 0.1);
+    if (d.z <= 0.0 || u_dk <= 0.01) return c;
+    float core;
+    float cov = cloudCov(d, oct, core);
+    // Wolkenfarbe aus dem Dunst (passt zu jeder Palette), Kerne etwas dunkler, Ränder zur Sonne hin hell (Silberrand)
+    vec3 cc = mix(u_haze, vec3(1.0, 0.98, 0.95), 0.6) * (1.0 - 0.28 * core) + vec3(1.0, 0.86, 0.66) * pow(s, 5.0) * (1.0 - core) * 0.35;
+    return mix(c, cc, cov * 0.88 * u_dk);
 }`;
 
 // ALP = 0 Standard, 1 + Schnee (helle Menge), 2 + Alpin-Look: die Standardvariante enthält den neuen Code nicht
@@ -214,6 +272,7 @@ uniform vec2 u_noff[4];   // 6.2 Welt-verankertes Rauschen: Versatz je Oktave (F
 uniform float u_nfr;      // Bruchteil von log2(lokale Einheit) – Oktaven-Überblendung beim Zoomen
 uniform int u_nq;         // 6.3: Zahl der Höhenabfragen pro Pixel (3) als Uniform – der Compiler entrollt nicht
 ${SKYCOL}
+${CLOUDS}
 ${LAYERS(true)}
 // Rauschen, das an der Welt (dem Fraktal) haftet und beim Zoomen nicht schwimmt: 4 Oktaven, Wellenlänge der Oktave
 // j = 2^-(u_nfr+j+3) Bildhälften; beim Tieferzoomen gleitet jede Oktave eine Stufe weiter (Gewicht sin², Summe
@@ -436,7 +495,12 @@ void main() {
     vec3 wn = normalize(vec3(0.012 * sin(v_P.x * 90.0 + u_time * 1.3) , 0.012 * cos(v_P.y * 80.0 + u_time), 1.0));
     vec3 R = reflect(V, wn);
     float fr = 0.12 + 0.88 * pow(1.0 - max(dot(-V, wn), 0.0), 4.0);
-    vec3 wcol = mix(lakeCol, skyColor(R), fr) + vec3(1.0, 0.9, 0.7) * pow(max(dot(R, u_sun), 0.0), 120.0) * sh * 0.8;
+    vec3 skyR = skyColor(R);
+    // 6.5: Wolken spiegeln sich (nur auf Wasser gerechnet). Wolken aus der glatten Spiegelrichtung – mit den Wellen-
+    // Normalen ergäbe das Rauschen ein regelmäßiges Punktmuster (Moiré); die Wellen bleiben im Himmelsverlauf
+    vec3 R0 = reflect(V, vec3(0.0, 0.0, 1.0)), cloudR = vec3(0.0);
+    if (u_deko > 0 && water > 0.01) cloudR = skyDeko(R0, 3) - skyColor(R0);
+    vec3 wcol = mix(lakeCol, skyR, fr) + cloudR * (0.45 + 0.55 * fr) + vec3(1.0, 0.9, 0.7) * pow(max(dot(R, u_sun), 0.0), 120.0) * sh * 0.8;
     lit = mix(lit, wcol, water);
 #if ALP >= 2
     if (lakeAlp > 0.0) {      // Talsee (Alpin): Wasser-Shader, etwas grünlich-tief
@@ -446,12 +510,25 @@ void main() {
         vec3 R2 = reflect(V, wn2);
         float fr2 = 0.12 + 0.88 * pow(1.0 - max(dot(-V, wn2), 0.0), 4.0);
         vec3 lc = mix(vec3(0.02, 0.07, 0.08), u_zenith, 0.35);
-        lit = mix(lit, mix(lc, skyColor(R2), fr2) + vec3(1.0, 0.95, 0.85) * pow(max(dot(R2, u_sun), 0.0), 120.0) * sh * 0.7, lakeAlp);
+        if (u_deko > 0 && cloudR == vec3(0.0)) cloudR = skyDeko(R0, 3) - skyColor(R0);
+        lit = mix(lit, mix(lc, skyColor(R2), fr2) + cloudR * (0.45 + 0.55 * fr2) + vec3(1.0, 0.95, 0.85) * pow(max(dot(R2, u_sun), 0.0), 120.0) * sh * 0.7, lakeAlp);
     }
 #endif
     vec3 col = mix(alb, lit, u_mix);
+    if (u_deko > 0) {
+        // 6.5 Luftperspektive: mit der Entfernung blasser und kühler (vor dem Dunst), leichter Talnebel in Senken
+        float dist = length(v_V), k = u_dk * u_mix;
+        col = mix(col, mix(u_haze, u_zenith, 0.3) * 0.95 + col * 0.2, (1.0 - exp(-dist / 9.0)) * 0.32 * k);
+        float zr0 = u_hn.z > 1e-4 ? clamp(h0 / u_hn.z, 0.0, 1.0) : 0.5;
+        col = mix(col, u_haze, (1.0 - smoothstep(0.02, 0.3, zr0)) * smoothstep(0.8, 4.0, dist) * (1.0 - water) * 0.3 * k);
+    }
     float fog = 1.0 - exp(-pow(length(v_V) / u_fog, 2.0));
-    col = mix(col, skyColor(V), fog * u_mix);
+    vec3 fogC = skyColor(V);
+    if (u_deko > 0) {   // 6.5: Dunst zur Sonne hin warm, auf der Gegenseite kühler – keine flache Wand mehr
+        float az = dot(normalize(V.xy + 1e-5), normalize(u_sun.xy));
+        fogC *= 1.0 + u_dk * (vec3(0.16, 0.06, -0.06) * max(az, 0.0) + vec3(-0.05, -0.01, 0.05) * max(-az, 0.0));
+    }
+    col = mix(col, fogC, fog * u_mix);
     fragColor = vec4(post(col), 1.0);
 }`;
 
@@ -484,13 +561,14 @@ const SKY_FS = `#version 300 es
 ${SH.COMMON}
 ${CAM}
 ${SKYCOL}
+${CLOUDS}
 ${POST}
 out vec4 fragColor;
 uniform vec2 u_jit;
 void main() {
     vec2 ndc = gl_FragCoord.xy / u_target * 2.0 - 1.0 - u_jit;
     vec3 d = normalize(u_fwd + ndc.x * u_tan.x * u_rt + ndc.y * u_tan.y * u_up);
-    fragColor = vec4(post(skyColor(d)), 1.0);
+    fragColor = vec4(post(skyDeko(d, 4)), 1.0);
 }`;
 
 const BLIT_FS = `#version 300 es
@@ -932,6 +1010,24 @@ function create(R) {
     // ---------------- 6.2 Welt-verankertes Rauschen (Alpin, Schnee): Versatz je Oktave exakt aus der BigInt-Kamera
     // (Fokus / Wellenlänge mod 256 – im Deep Zoom wäre das in f32 unmöglich), Wellenlänge = Zweierpotenz der Welt
     const noffB = new Float32Array(8);
+    // 6.5 Wolkenschatten: Versatz der zwei groben Oktaven (Zellgröße 2^(n0-j+1) in Weltkoordinaten), mod 256 Zellen
+    const coffB = new Float32Array(4);
+    function cloudUniforms(U, focus, u) {
+        if (!U.u_coff) return;
+        const L = Math.log2(u), n0 = Math.floor(L);
+        for (let j = 0; j < 2; j++) {
+            const sh = 1088 + (n0 - j + 1);
+            for (let a = 0; a < 2; a++) {
+                const v = a ? focus.cy : focus.cx;
+                if (sh < 24) { coffB[2 * j + a] = 0; continue; }
+                const M = 256n << BigInt(sh);
+                const r = ((v % M) + M) % M;
+                coffB[2 * j + a] = Number(r >> BigInt(sh - 24)) / 16777216;
+            }
+        }
+        gl.uniform2fv(U.u_coff, coffB);
+        gl.uniform1f(U.u_nfr, L - n0);
+    }
     function noiseUniforms(U, focus, u) {
         if (!U.u_noff) return;
         const L = Math.log2(u), n0 = Math.floor(L);
@@ -987,6 +1083,8 @@ function create(R) {
         camUniforms(U, c, sw, shh);
         gl.uniform3fv(U.u_sun, sun); gl.uniform3fv(U.u_haze, haze); gl.uniform3fv(U.u_zenith, zenith);
         gl.uniform2fv(U.u_jit, jit);
+        const dk = v.deko || 0;     // 6.5: Stärke der Deko (0 = Aussehen bis 6.4.1)
+        gl.uniform1i(U.u_deko, dk > 0 ? 1 : 0); gl.uniform1f(U.u_dk, dk); gl.uniform1f(U.u_ctime, v.ctime || 0);
         gl.disable(gl.DEPTH_TEST);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         // Gelände
@@ -1010,11 +1108,13 @@ function create(R) {
         gl.uniform1fv(U.u_cdf, T.h8 ? cdf.map(x => (x - v.L[0]) / Math.max(1e-3, v.L[1] - v.L[0])) : cdf);
         gl.uniform3fv(U.u_sun, sun); gl.uniform3fv(U.u_haze, haze); gl.uniform3fv(U.u_zenith, zenith);
         gl.uniform1f(U.u_fog, 9);
+        gl.uniform1i(U.u_deko, dk > 0 ? 1 : 0); gl.uniform1f(U.u_dk, dk); gl.uniform1f(U.u_ctime, v.ctime || 0);
         gl.uniform1f(U.u_mix, v.mix);
         gl.uniform1f(U.u_time, v.time || 0);
         gl.uniform1i(U.u_smooth, sm ? 1 : 0);
         gl.uniform1i(U.u_alpine, look.alpine || 0);
         noiseUniforms(U, v.focus, v.u);
+        if (dk > 0) cloudUniforms(U, v.focus, v.u);
         R.setPalette(U, look);
         gl.uniform1f(U.u_density, look.density);
         gl.uniform1i(U.u_formula, look.formula);

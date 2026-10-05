@@ -94,6 +94,12 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 6.5.1** – Verschönerung, Teil 2: 3D-Stimmung (A/B: `?deko=0`)
+- **Wolkenschatten**, die am Fraktal haften (beim Zoomen und Schwenken schwimmen sie nicht, sie ziehen nur langsam mit dem Wind) – pro Gitterpunkt gerechnet, weich wie die Geländeschatten.
+- **Luftperspektive:** ferne Grate werden blasser und kühler, leichter Talnebel in Senken; der Dunst ist zur Sonne hin warm, auf der Gegenseite kühler (keine flache graue Wand mehr).
+- **Himmel:** Wolkenfelder über dem Horizont, Horizontleuchten in Sonnenrichtung, weiter Sonnenhof; die Wolken spiegeln sich in Seen und Alpin-See (aus der glatten Spiegelrichtung, ohne Moiré).
+- Kosten: keine neuen Shader-Programme beim 3D-Start (dieselben Programme, etwas mehr Rechnung). Aus bei Qualität „Akku“ und solange die Auflösungs-Drosselung greift (dann exakt das Bild und die Kosten bis 6.4.1, weich ein-/ausgeblendet); Wolkenzug nur, solange ohnehin animiert gezeichnet wird, nicht bei „Bewegung reduzieren“.
+
 **Version 6.5.0** – Verschönerung, Teil 1: Bedienung und Übergänge (A/B: `?deko=0` = Aussehen bis 6.4.1)
 - Glas mit Lichtkante (oben heller, unten ein Hauch Violett), leuchtende Oberkante am Sheet, ein Leuchtbalken gleitet unter den aktiven Reiter, Leuchtpunkt unter dem aktiven Dock-Knopf, Glas-Toast.
 - **Weiche Übergänge:** Wechsel von Welt, Palette, Mengenfarbe, Inseln/Ringe, Alpin-Look und Tal blenden in 0,4–0,65 s über (Schnappschuss des alten Bilds blendet aus, einmalig, danach freigegeben) statt hart umzuspringen; der Start blendet aus dem Dunkel auf.
