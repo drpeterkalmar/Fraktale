@@ -1,0 +1,359 @@
+{
+ "tag": "v640_metal",
+ "platform": "darwin",
+ "runs": [
+  {
+   "version": "6.3.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 568.0,
+   "on3d": true,
+   "maxFrameGapMs": 228.7,
+   "framesOver100ms": 2,
+   "framesOver50ms": 2,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "fpsDuringPrep": 36.2,
+   "blockingStatusMs": 0,
+   "programs": [
+    {
+     "name": "hoehe",
+     "chars": 5610,
+     "translatedChars": 17383,
+     "compileMs": 402.6,
+     "blockMs": 0,
+     "startMs": 0.9
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14543,
+     "compileMs": 264.7,
+     "blockMs": 0,
+     "startMs": 1.0
+    },
+    {
+     "name": "gelaende_0",
+     "chars": 31714,
+     "translatedChars": 85617,
+     "compileMs": 452.0,
+     "blockMs": 0,
+     "startMs": 1.5
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13784,
+     "compileMs": 334.1,
+     "blockMs": 0,
+     "startMs": 1.5
+    },
+    {
+     "name": "sonde",
+     "chars": 2203,
+     "translatedChars": 21384,
+     "compileMs": 418.5,
+     "blockMs": 0,
+     "startMs": 1.6
+    }
+   ],
+   "final": {
+    "on": true,
+    "prep": false,
+    "prepInfo": {
+     "done": 5,
+     "total": 5
+    },
+    "btn": "round glass on"
+   },
+   "bigGaps": [
+    {
+     "at": 36.8,
+     "ms": 228.7
+    },
+    {
+     "at": 586.8,
+     "ms": 134.3
+    }
+   ],
+   "firstUse": {
+    "hoehe": 453.9,
+    "himmel": 470.1,
+    "gelaende_0": 487.5,
+    "blit": 503.6,
+    "sonde": 520.3,
+    "anderes": 566.1
+   },
+   "firstDrawAt": 568.0,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.6,
+     "t": 66.1
+    },
+    {
+     "prog": "shader",
+     "ms": 6.5,
+     "t": 72.6
+    },
+    {
+     "prog": "shader",
+     "ms": 3.3,
+     "t": 265.1
+    },
+    {
+     "prog": "shader",
+     "ms": 3,
+     "t": 318.5
+    },
+    {
+     "prog": "shader",
+     "ms": 5.6,
+     "t": 336.9
+    }
+   ],
+   "errors": []
+  },
+  {
+   "version": "6.3.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 365.3,
+   "on3d": true,
+   "maxFrameGapMs": 180.3,
+   "framesOver100ms": 1,
+   "framesOver50ms": 1,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "fpsDuringPrep": 63.1,
+   "blockingStatusMs": 5.1,
+   "programs": [
+    {
+     "name": "hoehe",
+     "chars": 5610,
+     "translatedChars": 17382,
+     "compileMs": 228.8,
+     "blockMs": 0.1,
+     "startMs": 0.6
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14543,
+     "compileMs": 96.4,
+     "blockMs": 5,
+     "startMs": 0.8
+    },
+    {
+     "name": "gelaende_0",
+     "chars": 31714,
+     "translatedChars": 85616,
+     "compileMs": 278.2,
+     "blockMs": 0,
+     "startMs": 1.2
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13784,
+     "compileMs": 178.4,
+     "blockMs": 0,
+     "startMs": 1.2
+    },
+    {
+     "name": "sonde",
+     "chars": 2203,
+     "translatedChars": 21379,
+     "compileMs": 228.1,
+     "blockMs": 0,
+     "startMs": 1.3
+    }
+   ],
+   "final": {
+    "on": true,
+    "prep": false,
+    "prepInfo": {
+     "done": 5,
+     "total": 5
+    },
+    "btn": "round glass on"
+   },
+   "bigGaps": [
+    {
+     "at": 396.1,
+     "ms": 180.3
+    }
+   ],
+   "firstUse": {
+    "hoehe": 279.8,
+    "himmel": 296,
+    "gelaende_0": 313.4,
+    "blit": 329.4,
+    "sonde": 346.2,
+    "anderes": 363.4
+   },
+   "firstDrawAt": 365.3,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.6,
+     "t": 24.8
+    },
+    {
+     "prog": "shader",
+     "ms": 6.4,
+     "t": 31.3
+    },
+    {
+     "prog": "shader",
+     "ms": 3.3,
+     "t": 237.6
+    },
+    {
+     "prog": "shader",
+     "ms": 6.7,
+     "t": 309.1
+    },
+    {
+     "prog": "shader",
+     "ms": 3.8,
+     "t": 336.2
+    },
+    {
+     "prog": "himmel",
+     "ms": 5,
+     "t": 64.4
+    }
+   ],
+   "errors": []
+  },
+  {
+   "version": "6.3.0",
+   "browser": "chromium",
+   "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
+   "parallelExt": true,
+   "slowSimMs": 0.0,
+   "look": "standard",
+   "device": "desktop",
+   "angle": "standard",
+   "tapToFirst3dMs": 365.5,
+   "on3d": true,
+   "maxFrameGapMs": 166.8,
+   "framesOver100ms": 1,
+   "framesOver50ms": 1,
+   "longTasks": 0,
+   "longestTaskMs": 0,
+   "fpsDuringPrep": 63.5,
+   "blockingStatusMs": 0,
+   "programs": [
+    {
+     "name": "hoehe",
+     "chars": 5610,
+     "translatedChars": 17379,
+     "compileMs": 228.9,
+     "blockMs": 0,
+     "startMs": 0.7
+    },
+    {
+     "name": "himmel",
+     "chars": 1267,
+     "translatedChars": 14539,
+     "compileMs": 86.5,
+     "blockMs": 0,
+     "startMs": 0.8
+    },
+    {
+     "name": "gelaende_0",
+     "chars": 31714,
+     "translatedChars": 85617,
+     "compileMs": 275.5,
+     "blockMs": 0,
+     "startMs": 4.0
+    },
+    {
+     "name": "blit",
+     "chars": 593,
+     "translatedChars": 13784,
+     "compileMs": 158.9,
+     "blockMs": 0,
+     "startMs": 4.1
+    },
+    {
+     "name": "sonde",
+     "chars": 2203,
+     "translatedChars": 21383,
+     "compileMs": 225.4,
+     "blockMs": 0,
+     "startMs": 4.2
+    }
+   ],
+   "final": {
+    "on": true,
+    "prep": false,
+    "prepInfo": {
+     "done": 5,
+     "total": 5
+    },
+    "btn": "round glass on"
+   },
+   "bigGaps": [
+    {
+     "at": 396.2,
+     "ms": 166.8
+    }
+   ],
+   "firstUse": {
+    "hoehe": 279.9,
+    "himmel": 296.2,
+    "gelaende_0": 313.5,
+    "blit": 328,
+    "sonde": 346.3,
+    "anderes": 363.5
+   },
+   "firstDrawAt": 365.5,
+   "blocks": [
+    {
+     "prog": "shader",
+     "ms": 2.5,
+     "t": 66.1
+    },
+    {
+     "prog": "shader",
+     "ms": 6.5,
+     "t": 72.4
+    },
+    {
+     "prog": "shader",
+     "ms": 3.3,
+     "t": 258.6
+    },
+    {
+     "prog": "shader",
+     "ms": 5.6,
+     "t": 313.1
+    },
+    {
+     "prog": "shader",
+     "ms": 3.5,
+     "t": 337.7
+    }
+   ],
+   "errors": []
+  }
+ ],
+ "median": {
+  "tapToFirst3dMs": 365.5,
+  "maxFrameGapMs": 180.3,
+  "blockingStatusMs": 0
+ }
+}

@@ -1,0 +1,63 @@
+{
+ "ganz": {
+  "black": {
+   "fullMs": 455,
+   "jobMs": 114.1
+  },
+  "bunt": {
+   "fullMs": 402,
+   "jobMs": 16.3
+  },
+  "innen": 0.284,
+  "mehr_pct": -11.6
+ },
+ "seepferd_300": {
+  "black": {
+   "fullMs": 426,
+   "jobMs": 114.1
+  },
+  "bunt": {
+   "fullMs": 480,
+   "jobMs": 75.4
+  },
+  "innen": 0.22,
+  "mehr_pct": 12.7
+ },
+ "spirale_1.7e7": {
+  "black": {
+   "fullMs": 328,
+   "jobMs": 114.6
+  },
+  "bunt": {
+   "fullMs": 290,
+   "jobMs": 93.9
+  },
+  "innen": 0,
+  "mehr_pct": -11.6
+ },
+ "mini_3e9": {
+  "black": {
+   "fullMs": 627,
+   "jobMs": 199.6
+  },
+  "bunt": {
+   "fullMs": 648,
+   "jobMs": 309.3
+  },
+  "innen": 0.049,
+  "mehr_pct": 3.3
+ },
+ "julia": {
+  "black": {
+   "fullMs": 424,
+   "jobMs": 74.7
+  },
+  "bunt": {
+   "fullMs": 325,
+   "jobMs": 15.5
+  },
+  "innen": 0.32,
+  "mehr_pct": -23.3
+ },
+ "errors": []
+}

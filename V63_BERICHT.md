@@ -1,4 +1,4 @@
-# Fraktal-Explorer 6.3 – Bericht „3D-Start ohne Hänger“
+# Fraktal-Explorer 6.3 + 6.4 – Bericht „3D-Start ohne Hänger“ und „Bunte Menge“
 
 Datum 05.10.2026. Auftrag: Peters Wunsch vom 04.10. (22:40): „Der Start vom 3D-Modus hängt Chrome am rog für
 30 Sekunden auf – vielleicht geht das ressourcenschonender am Start?“ (rog = Windows 11, Chrome, RTX 3070 Ti → WebGL
@@ -82,18 +82,20 @@ Landschaft auf. Wenn die Vorbereitung dort noch spürbar lange dauert, bitte die
   Metal bettet Funktionen nicht ein. Entscheidend ist die Einbettung bei FXC (Direct3D), und genau die messen die
   Windows-Läufe unten (`translatedChars` = HLSL-Länge, `compileMs` = FXC-Zeit je Programm).
 
-### 2.4 Anwärmen und Übergabe an den Canvas (am Mac gefunden)
+### 2.4 Anwärmen (am Mac gefunden)
 - Auch nach „fertig übersetzt“ stand das erste 3D-Bild am Mac noch ~190 ms (GPU-Prozess; der Haupt-Thread war frei).
   Ursache: Der Treiber baut beim ersten Zeichnen die Pipeline. Darum zeichnet die App vor dem Einblenden jedes Programm
   einmal unsichtbar in ein winziges Ziel mit denselben Formaten, **je Bild nur eines** (`T3.warm`; A/B: `?nowarm`).
-  Der teuerste Fall war der kleine Kopier-Shader auf den Canvas, für den Metal eine eigene Variante neu übersetzt.
-  Deshalb geht das fertige Bild jetzt per `blitFramebuffer` auf den Canvas (ganz ohne Shader); Überblendungen entstehen
-  vorher in einem eigenen Ziel. Ergebnis gleich (siehe Pixelvergleich), Pause 190 → ~130 ms.
 - **Rest (nur Mac, nur einmal):** Ist der Metal-Shadercache leer, also nach einem App-Update mit geänderten Shadern
-  oder beim allerersten Start, bleibt eine einzelne Anzeige-Pause von 125–140 ms. Der Haupt-Thread ist dabei frei
-  (0 Long Tasks). Mit gefülltem Cache (jeder weitere Start) gibt es keine Pause über 30 ms, 3D steht nach ~100 ms.
-  Das Ziel „kein Bild > 100 ms“ ist am Mac damit nur fast erreicht; dieser Rest liegt im Metal-Treiber und lässt sich
-  von der Seite aus nicht weiter aufteilen.
+  oder beim allerersten Start, bleibt eine einzelne Anzeige-Pause von ~170 ms. Der Haupt-Thread ist dabei frei
+  (0 Long Tasks). Sie entsteht, wenn der kleine Kopier-Shader zum ersten Mal auf den Canvas zeichnet: Metal übersetzt
+  dafür eine eigene Variante (Canvas ohne Alphakanal). Mit gefülltem Cache (jeder weitere Start) gibt es keine Pause
+  über 30 ms, 3D steht nach ~100 ms. Das Ziel „kein Bild > 100 ms“ ist am Mac damit nur fast erreicht.
+- **Korrektur in 6.4.0:** 6.3.0 gab das Bild per `blitFramebuffer` an den Canvas (Pause dann nur ~130 ms). Das hat
+  sich als unzuverlässig erwiesen. Die Kopie des 2D-Bilds für die Überblendung (`copyTexSubImage2D` aus dem Canvas
+  ohne Alphakanal in ein RGBA-Ziel) ist unzulässig, darum blendete 3D beim Einschalten ≈0,2 s über Schwarz statt über
+  das 2D-Bild ein. Außerdem räumt ANGLE/Metal den frisch getauschten Canvas-Puffer nach einem Blit teils nachträglich
+  leer (im Test: leere Auslesung in ~1/3 der Läufe). 6.4.0 nutzt wieder den Kopier-Shader wie bis 6.2.
 
 ## 3. Messung
 
@@ -109,7 +111,7 @@ Mac mini M1, Chrome for Testing (ANGLE/Metal), Desktop-Ansicht 1280×800, Seepfe
 | | 6.2.0 | **6.3.0** |
 |---|---|---|
 | Längster Haupt-Thread-Block (Long Task) | 1 348–1 368 ms | **keiner** |
-| Längste Bildlücke | 1 349–1 353 ms | **126–140 ms** (siehe 2.4) |
+| Längste Bildlücke | 1 349–1 353 ms | **126–140 ms** (6.3.0; 6.4.0: 167–180 ms, siehe 2.4) |
 | Warten in Shader-Statusabfragen | 1 344 ms | **0,1 ms** |
 | Tippen → erstes 3D-Bild | 398–406 ms | 397–398 ms |
 | Bildrate während der Vorbereitung | – (eingefroren) | **63 fps** |
@@ -159,4 +161,99 @@ Das Skript nimmt das installierte Chrome (Standard-Backend, also Direct3D 11) un
 - Leerlauf-Vorübersetzen (Punkt 5) bewusst nicht wieder aufgenommen: Mit nicht blockierendem Abfragen wäre es zwar
   möglich, aber die 6.0-Messung (2D-Rechnung wartet in der Treiber-Warteschlange) gilt weiter, und der Start ist auch so
   nicht mehr blockierend.
-- Mac: einmalige Anzeige-Pause von ~130 ms nach Updates (siehe 2.4).
+- Mac: einmalige Anzeige-Pause von ~170 ms nach Updates (siehe 2.4).
+
+---
+
+# 6.4.0 Bunte Menge
+
+Peters Wunsch vom 04.10. (22:55): „Menge auch mehrfärbig machen“. **Einschalten:** unten **Farben** → Abschnitt
+**Farbe der Menge** → **Bunt** (sechster Knopf, Farbpunkt mit Palettenverlauf); darunter **Inseln** oder **Ringe**.
+Standard bleibt Schwarz – das bisherige Bild ändert sich nicht ungefragt. Gespeichert und im Link: `sc=b1` (Inseln),
+`sc=b2` (Ringe).
+
+![Oben Schwarz (wie bisher), Mitte Inseln, unten Ringe – Gesamtbild, Seepferdchen-Tal 300×, Mini-Mandelbrot 3·10⁹, Julia −1 + 0,1i](tests/shots/bunt/blatt_2d_hoch.jpg)
+
+## 1. Was man sieht
+- **Inseln** (Standard bei Bunt): Jede Knospe und jedes Mini-Mandelbrot bekommt eine eigene Farbe der aktuellen Palette
+  (Periode des anziehenden Zyklus → Palettenfarbe; aufeinanderfolgende Perioden liegen über den Goldenen Schnitt weit
+  auseinander, sehr dunkle Palettenstellen werden durch die gegenüberliegende ersetzt). Zur Knospenmitte wird es heller,
+  zum Rand dunkler – das wirkt wie angeleuchtete Kuppeln. Hauptkardioide blau, Periode-2-Kreis türkis, Periode-3-Knospen
+  sandfarben (Palette „Neon“), das Mini-Mandelbrot bei 3·10⁹ (Periode 266) mit seinen Knospen deutlich abgesetzt.
+- **Ringe:** Der Multiplikator |λ| (0 im Knospenkern, 1 am Rand) läuft als Verlauf durch die Palette – Ringe um jeden
+  Knospenkern, zum Rand abgedunkelt.
+- **Julia:** Alle Innenpunkte haben denselben Zyklus; gefärbt wird nach der Klasse der Fatou-Komponente (welcher
+  Zykluspunkt), dazu „Blasen“ aus dem kleinsten |z| der Bahn (Inseln: sanfte Ringe, Ringe: kräftiger Verlauf).
+- **Rand:** Der weiche Saum aus 6.1 mischt jetzt zur Innenfarbe der benachbarten Innentexel; Punkte ohne Innenfarbe
+  (dichte Filamentzonen, Zyklus nicht gefunden) bleiben in der Mengenfarbe Schwarz → klare dunkle Kontur. Funkeln gibt
+  es nur auf den unbekannten (schwarzen) Stellen.
+- **3D:** Seen bzw. Gletscher tragen die Innenfarbe (eigene Gelände-Variante „B“, nur bei Bunt übersetzt – die
+  Standard-Variante bleibt so klein wie in 6.3). Im Alpin-Look werden die Seen farbig.
+- Selbst gesichtet (`tests/shots/bunt/blatt_2d_hoch.jpg`, `_quer.jpg`, `blatt_3d_hoch.jpg`, `_quer.jpg`): schön, nicht
+  kitschig – die Inseln wirken plastisch, die Kontur bleibt sauber dunkel, die Ringe sind kräftiger (Geschmackssache,
+  darum nicht Standard). Flimmern: Innenfarben werden pro Texel bestimmt und bilinear gemischt wie die Außenfarben.
+
+## 2. Technik
+- **Rechnung (nur bei Bunt, eigene Shader-Variante `IN`, CPU gleich):** Innenpunkte (nach maxIter nicht entkommen)
+  laufen weiter, bis zu max(4096, min(maxIter, 16384)) Schritte. Gesucht wird der anziehende Zyklus über **Besuche beim
+  Bahnpunkt mit dem kleinsten |z|** (neuer Tiefstwert oder |z − w| < |w|/2): Im Zyklus kommt die Bahn genau einmal je
+  Periode dort vorbei, auch wenn sie noch nicht eingeschwungen ist. Drei Besuche mit gleichem Abstand P → Periode P,
+  |λ| = Produkt |f'(z)| über den letzten Umlauf. |λ| < 0,8: sofort fertig; sonst zählt der Kandidat am Ende, wenn er
+  bis zuletzt bestätigt wurde. Hauptkardioide und Periode-2-Kreis exakt (λ = 1 − √(1 − 4c) bzw. 4(c + 1)).
+  Zwei Fallen, die beim Bau auffielen und gelöst sind: (1) Am Mini-Mandelbrot nahe der Periode-3-Spitze kriecht die
+  Bahn lange an einem fast neutralen Periode-3-Punkt vorbei – eine naive Zyklussuche (Brent) meldete dort Periode 3;
+  die Besuchs-Methode findet die echte Periode 266. (2) Im Deep Zoom (Perturbation, f32) darf der Orbit-Index in der
+  Zusatzphase nicht am Ende des Referenzorbits neu ansetzen (Phase passt nicht, die Genauigkeit des Mini-Mandelbrots
+  geht verloren) → bei Bunt wird der Orbit des gewählten Referenzpunkts verlängert, am Ende wird ausgewertet.
+- **Ablage:** Innenpunkte waren bisher −1,0. Jetzt bleibt der Wert im Bereich (−1,5; −1,0] – für Höhe, Sonde, Flug,
+  Nachrechnung und Wahrheitstests weiter „innen“ – und die Mantisse trägt Klasse (Bits 12–21: Periode bzw. Julia-Klasse)
+  und Wert (Bits 0–11: |λ| bzw. Blasen). Unbekannt = −1,0 wie bisher.
+- **Bitgleichheit:** Ohne Bunt ist der Rechen-Shader zeichengleich zu 6.3, das Bild pixelgleich. Mit Bunt sind alle
+  Außenwerte bitgleich und dieselben Punkte innen (`tests/test_v64.py`: GPU direkt, GPU-Perturbation, CPU f64 je
+  1 152 Stichproben). Die Verlängerung des Referenzorbits ändert weder die Wahl des Referenzpunkts noch die BLA-Tabellen.
+- **Wahrheitstests** GPU + CPU: alle 16 Ansichten mit identischen okPct/maxDiff wie 6.3.
+
+## 3. Stichproben (Bildmitte, GPU = CPU)
+| Stelle | Periode | |λ| (Soll) |
+|---|---|---|
+| −0,1 + 0,1i (Hauptkardioide) | 1 | 0,257 (0,257) |
+| −1 + 0,05i (Periode-2-Kreis) | 2 | 0,200 (0,200) |
+| −0,12 + 0,75i (Periode-3-Knospe) | 3 | 0,061 |
+| Mini-Mandelbrot 3·10⁹ (Kern) | 266 | 0,008 (0) |
+
+Anteil Innenpunkte mit gefundener Periode: Gesamtbild 326/330, Mini-Mandelbrot 3·10⁹ 38/44 (der Rest liegt am
+Knospenrand bzw. entkommt nach maxIter doch noch und bleibt richtigerweise schwarz).
+
+## 4. Rechenzeit (M1, Pixel-7-Ansicht, Minimum aus 3, gleiche Seite im Wechsel)
+| Ansicht | Innen | fertiges Bild Schwarz | Bunt | Mehr |
+|---|---|---|---|---|
+| Gesamtbild | 28 % | 187 ms | 213 ms | +14 % |
+| Seepferdchen-Tal 300× | 22 % | 321 ms | 423 ms | +32 % |
+| Spirale 1,7·10⁷ | 0 % | 217 ms | 230 ms | +6 % |
+| Mini-Mandelbrot 3·10⁹ | 5 % | 514 ms | 660 ms | +28 % |
+| Julia −1 + 0,1i | 32 % | 183 ms | 185 ms | +1 % |
+
+GPU-Zeit des letzten Rechenjobs innen bis etwa doppelt so lang (Mini-Mandelbrot 216 → 398 ms) – über den Zielwert
++15 %, darum wird die Innen-Information **nur bei aktivem Bunt** gerechnet (eigene Shader-Variante, bei Schwarz keine
+Kosten). Hinweis: Diese Messung entstand vor der letzten Änderung (Zusatzphase jetzt ohne BLA, für bitgleiche
+Außenwerte); eine Wiederholung lief in einer Phase stark schwankender Systemlast (headless nur ~20 fps, auch mit 6.3.0)
+und ist nicht belastbar (`tests/results_bench_bunt.json`). Größenordnung: fertiges Bild +1 … +30 %, im Kern eines
+Mini-Mandelbrots GPU-Zeit bis +55 … +85 %.
+
+## 5. Tests
+- `tests/test_v64.py` (neu, in `run_all`): Außenwerte bitgleich und gleiche Innenpunkte (6 Ansichten, GPU/CPU),
+  Stichproben-Perioden GPU = CPU, Schwarz bleibt schwarz, Inseln/Ringe unterscheiden sich, Knopf + Modus + Speichern +
+  Link `sc=b1/b2`, 3D-Variante mit Innenfarbe, 0 Fehler – PASS.
+- 3D-Start (6.3) erneut gemessen: Standard-Gelände-Shader unverändert (Pixelvergleich gegen 6.2.0 ≥ 99,996 %).
+- `tests/run_all.sh`: Node-Kern, Release (Cache `fraktale-6.4.0`), Wahrheit GPU + CPU, Gesten, UI, Funktionen,
+  Bildaufbau, 3D (2D nach 3D an/aus pixelgleich), Glättung, 6.3 grün. `test_v63`/`test_smooth` mussten robuster gegen
+  die neue 3D-Vorbereitung werden (warten, bis 3D an ist; Bildlücken relativ zum Takt vor dem Antippen). **`test_v62`
+  (Flug) fiel in der Phase mit schwankender Systemlast durch – genauso mit dem unveränderten 6.3.0** (Innen-Anteil im
+  Flug 0,26–0,27 statt < 0,15, Wischtest wechselnd); vorher im selben Lauf grün. Der Flug-Code ist in 6.4 unverändert.
+- Neu: `tests/shots_bunt.py` (Screenshots), `tests/bench_bunt.py` (Rechenzeit).
+
+## 6. Grenzen
+- Sehr hohe Perioden (> ~5 000) und Punkte dicht am Knospenrand (|λ| → 1) bleiben schwarz (Zyklus im Zusatzbudget
+  nicht sicher gefunden). Farben für Perioden > 1 023 wiederholen sich.
+- Burning Ship/Tricorn: Perioden stimmen, |λ| ist dort nur eine Näherung (Betrag wie holomorph). Newton: keine Wirkung.
+- Orbit-Fallen (Auftrag Punkt 3, optional) nur für Julia als „Blasen“; für Mandelbrot weggelassen.

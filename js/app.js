@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.3.0';
+const APP_VERSION = '6.4.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -39,6 +39,7 @@ const S = {
     quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.5,
     deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
     setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
+    inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
     chrome: true,
 };
 // 6.1 „glatt wie Video": A/B-Regler per URL
@@ -56,7 +57,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -65,7 +66,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -429,6 +430,10 @@ function refTarget() {
     return S.cam;
 }
 function requestRef(want64) { return requestRefFor(refTarget(), null, want64); }
+// 6.4 Bunte Menge: Innenpunkte laufen nach maxIter weiter (Zyklussuche, bis zu max(4096, min(maxIter, 16384)) Schritte) –
+// dafür wird der Orbit des gewählten Referenzpunkts verlängert (ein Rebase am Orbit-Ende mitten im Zyklus kostet im Deep
+// Zoom die Genauigkeit). Wahl des Referenzpunkts und BLA bleiben gleich -> Außenwerte bitgleich wie ohne Bunt.
+function refExtra(it) { return innActive() ? Math.min(16384, Math.max(4096, it)) : 0; }
 // tg: Kamera, für die der Orbit gerechnet wird; pfKey: Vorausrechnen für diese Ansicht (verfällt bei Wechsel)
 function requestRefFor(tg, pfKey, want64 = true) {
     const s = 3 / (tg.zoom * cssH);
@@ -440,7 +445,8 @@ function requestRefFor(tg, pfKey, want64 = true) {
         halfW: s * cssW / 2 * 1.3, halfH: s * cssH / 2 * 1.3, pixel: s / dpr,
         cmax: 0, want64
     };
-    const sig = [q.formula, q.cx, q.cy, q.zoom, q.jx, q.jy, q.maxIter, want64].join('|');
+    q.extra = refExtra(q.maxIter);
+    const sig = [q.formula, q.cx, q.cy, q.zoom, q.jx, q.jy, q.maxIter, want64, q.extra].join('|');
     q.pfKey = pfKey || null;
     if (REF.pending && pfKey) return;
     if (REF.pending) {
@@ -469,6 +475,7 @@ function refUsable(strict, want64) {
     if (refDist(r) > 80 * rc) return false;
     if (strict) {
         const mi = currentMaxIter();
+        if (innActive() && !(r.extra > 0) && !(r.period > 0) && r.lenA - 1 >= mi) return false;   // 6.4: Bunt braucht den verlängerten Orbit
         const complete = r.lenA - 1 >= mi || r.period > 0;
         if (!complete && r.maxIter < mi) return false;
         const vd = Math.hypot(HP.toNumber(S.cam.cx - r.viewCx), HP.toNumber(S.cam.cy - r.viewCy));
@@ -540,7 +547,7 @@ function cpuFeed() {
             const tl = job.tiles.shift();
             w.busy++;
             w.postMessage(Object.assign({ type: 'tile', jobId: job.id, refId: job.refId, bufW: job.w, bufH: job.h, scale: job.scale,
-                mode: job.mode, formula: job.formula, maxIter: job.maxIter, useBLA: job.useBLA, de: job.de,
+                mode: job.mode, formula: job.formula, maxIter: job.maxIter, useBLA: job.useBLA, de: job.de, inn: job.inn,
                 offX: job.cpuOff[0], offY: job.cpuOff[1], jx: job.julia[0], jy: job.julia[1] }, tl));
         }
     }
@@ -594,7 +601,9 @@ function cancelJob() {
 function cancelPrefetch() { if (RC.pjob) { R.cancelJob(RC.pjob); RC.pjob = null; } }
 // Inhalt eines Bildes: was es zeigt (unabhängig von Ansicht/Auflösung). Ebenen mit anderem Inhalt
 // (andere Welt, anderes Julia-c, manuelle Iterationen) liegen ganz unten und werden ausgeblendet.
-function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : ''); }
+function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : '') + (innActive() ? '|in' : ''); }
+// 6.4 Bunte Menge: Innen-Information mitrechnen (eigene Rechen-Variante; Außenwerte bitgleich). Nicht bei Newton.
+function innActive() { return S.setCol === 'bunt' && S.formula !== 5; }
 function maxIterFor(zoom) { return S.iterManual ? S.iterValue : autoIter(zoom); }
 
 // view: Kamera, für die gerechnet wird (Standard: aktuelle). opts: { prefetch, w, h, scale }
@@ -610,7 +619,7 @@ function startJob(key, div, p, view, opts) {
     const scale = opts.scale || 3 / (view.zoom * h0) * div;   // Welt pro Pufferpixel
     const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
                   view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
-                  julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive() };
+                  julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive(), inn: innActive() };
     if (opts.prefetch) RC.pjob = job; else RC.job = job;
     if (p.kind === 'gpu') {
         job.err = div === 1 && !opts.prefetch && !opts.preview && S.precise && S.formula !== 5;     // finale Stufe mit Fehlerschätzung
@@ -641,7 +650,7 @@ function makeFrame(job, now) {
     job.buf && (job.kept = true);
     return { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
              kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs,
-             sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de };
+             sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de, inn: !!job.inn };
 }
 
 function jobFinished(job, now) {
@@ -835,7 +844,7 @@ function startFix(fr, now) {
 function fixMsg(fix, chunk, list) {
     const fr = fix.fr;
     return { type: 'pixels', jobId: fix.id, chunk, list, refId: fr.refId, bufW: fr.buf.w, bufH: fr.buf.h, scale: fr.scale,
-             mode: fr.mode, formula: fr.formula, maxIter: fr.maxIter, useBLA: fix.useBLA, offX: fix.off[0], offY: fix.off[1], jx: fr.julia[0], jy: fr.julia[1] };
+             mode: fr.mode, formula: fr.formula, maxIter: fr.maxIter, useBLA: fix.useBLA, offX: fix.off[0], offY: fix.off[1], jx: fr.julia[0], jy: fr.julia[1], inn: fr.inn };
 }
 function fixFeed() {
     const fix = RC.fix;
@@ -1231,7 +1240,8 @@ function look() {
     return { formula: S.formula, maxIter: RC.front ? RC.front.maxIter : currentMaxIter(), pal: p, custom: PAL.customFlat(),
              cycle: S.cycle, density: S.density, time: S.time, relief: S.relief ? S.reliefStrength : 0,
              particles: S.particles && S.anim, banded: S.banded,
-             setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0 };
+             setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0,
+             inner: innActive() ? (S.inMode === 2 ? 2 : 1) : 0 };
 }
 
 // Ebenenliste + Optionen für den Display-Pass (auch für Screenshot/Thumbnail)
@@ -1410,7 +1420,8 @@ function present3d(now, camChanged, force) {
     if (soft !== V3.accSoft) { V3.accSoft = soft; V3.accN = Math.min(V3.accN, 1); }
     const still = key && !isMoving(now) && now - V3.keyT > 120;
     if (still) {
-        if (V3.accN >= N && (!S.anim || (++V3.animTick & 1))) { drawn = false; if (force) T3.present(); }
+        // (wartet eine neue Gelände-Variante auf den Treiber, weiterzeichnen – nur beim Zeichnen wird sie übernommen)
+        if (V3.accN >= N && !T3.waiting && (!S.anim || (++V3.animTick & 1))) { drawn = false; if (force) T3.present(); }
         else {
             const mix2 = V3.moved && V3.accN < 3 ? 1 - (V3.accN + 1) / 4 : 0;
             const scale = V3.testStill ? V3.testStill.scale : (Q.get('s3d') ? +Q.get('s3d') : 1);
@@ -1839,9 +1850,11 @@ function readURL() {
 }
 // 6.2 Farbe der Menge im Link: sc=w (Weiß), d/l (dunkelste/hellste Palettenfarbe), sonst Hex ohne # (eigene);
 // fehlt = Schwarz. al=f|l|m: Alpin-Look mit Wald/See/Wiese im Tal
-function setColParam() { return S.setCol === 'white' ? 'w' : S.setCol === 'dark' ? 'd' : S.setCol === 'light' ? 'l' : S.setCol === 'custom' ? S.setHex.slice(1) : ''; }
+// 6.4: sc=b1 (Bunt, Inseln) / sc=b2 (Bunt, Ringe)
+function setColParam() { return S.setCol === 'white' ? 'w' : S.setCol === 'dark' ? 'd' : S.setCol === 'light' ? 'l' : S.setCol === 'custom' ? S.setHex.slice(1) : S.setCol === 'bunt' ? 'b' + (S.inMode === 2 ? 2 : 1) : ''; }
 function applySetColParam(v) {
     if (v === 'w') S.setCol = 'white'; else if (v === 'd') S.setCol = 'dark'; else if (v === 'l') S.setCol = 'light';
+    else if (/^b[12]$/.test(v)) { S.setCol = 'bunt'; S.inMode = +v[1]; }
     else if (/^[0-9a-fA-F]{6}$/.test(v)) { S.setCol = 'custom'; S.setHex = '#' + v.toLowerCase(); }
     else S.setCol = 'black';
 }

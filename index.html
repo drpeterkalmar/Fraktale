@@ -10,10 +10,10 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.webmanifest?v=6.3.0">
-    <link rel="icon" href="assets/icons/icon-192.png?v=6.3.0" type="image/png">
-    <link rel="apple-touch-icon" href="assets/icons/icon-180.png?v=6.3.0">
-    <link rel="stylesheet" href="style.css?v=6.3.0">
+    <link rel="manifest" href="manifest.webmanifest?v=6.4.0">
+    <link rel="icon" href="assets/icons/icon-192.png?v=6.4.0" type="image/png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-180.png?v=6.4.0">
+    <link rel="stylesheet" href="style.css?v=6.4.0">
 </head>
 <body>
     <canvas id="gl"></canvas>
@@ -37,7 +37,7 @@
             <div class="row"><span class="k" data-i18n="mode">Modus</span><span id="d-engine" class="v">GPU</span></div>
             <div class="row"><span class="k" data-i18n="render_time">Renderzeit</span><span id="d-time" class="v mono">–</span></div>
             <div class="row"><span class="k">FPS</span><span id="d-fps" class="v mono">–</span></div>
-            <div class="row"><span class="k" data-i18n="version">Version</span><span id="info-version" class="v mono">6.3.0</span></div>
+            <div class="row"><span class="k" data-i18n="version">Version</span><span id="info-version" class="v mono">6.4.0</span></div>
         </div>
     </header>
 
@@ -123,8 +123,11 @@
                         <button data-v="dark"><i class="sdot"></i><span data-i18n="set_dark">Dunkel</span></button>
                         <button data-v="light"><i class="sdot"></i><span data-i18n="set_light">Hell</span></button>
                         <button data-v="custom"><i class="sdot"></i><span data-i18n="set_custom">Eigene</span></button>
+                        <button data-v="bunt"><i class="sdot"></i><span data-i18n="set_bunt">Bunt</span></button>
                     </div>
                     <input type="color" id="set-color-custom" aria-label="Farbe der Menge" value="#e8f0ff" hidden>
+                    <div class="seg" id="seg-inmode" hidden><button data-v="1" data-i18n="in_islands">Inseln</button><button data-v="2" data-i18n="in_rings">Ringe</button></div>
+                    <p class="hint" id="in-hint" data-i18n="in_hint" hidden>Bunt: jede Knospe und jedes Mini-Mandelbrot in einer eigenen Farbe der Palette (Inseln) oder mit Ringen zur Mitte (Ringe).</p>
                     <p class="hint" data-i18n="set_hint">Dunkel/Hell = dunkelste bzw. hellste Farbe der Palette. Gilt in 2D und 3D; Weiß wird in 3D zur Schnee- und Gletscherfläche.</p>
                     <label class="toggle"><span data-i18n="alpine">Alpin-Look (3D)</span><input type="checkbox" id="t-alpine"><i></i></label>
                     <div class="seg" id="seg-valley"><button data-v="forest" data-i18n="valley_forest">Wald</button><button data-v="lake" data-i18n="valley_lake">See</button><button data-v="meadow" data-i18n="valley_meadow">Wiese</button></div>
@@ -179,7 +182,7 @@
                     <button id="btn-gestures" class="tile-btn"><svg viewBox="0 0 24 24"><path d="M9 11V5a1.5 1.5 0 0 1 3 0v5M12 10V4a1.5 1.5 0 0 1 3 0v6M15 10V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6 7s-5-2-7-5l-1.5-2.5a1.4 1.4 0 0 1 2.3-1.6L9 14"/></svg><span data-i18n="gestures">Gesten</span></button>
                     <button id="btn-install" class="tile-btn" hidden><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-i18n="install">Installieren</span></button>
                 </div>
-                <p class="hint version-line">Fraktal-Explorer <span id="version-line" class="mono">6.3.0</span> · <a href="https://github.com/drpeterkalmar/Fraktale" target="_blank" rel="noopener">GitHub</a></p>
+                <p class="hint version-line">Fraktal-Explorer <span id="version-line" class="mono">6.4.0</span> · <a href="https://github.com/drpeterkalmar/Fraktale" target="_blank" rel="noopener">GitHub</a></p>
             </div>
         </div>
     </section>
@@ -200,17 +203,17 @@
 
     <div id="toast" role="status" aria-live="polite"></div>
 
-    <noscript><p class="noscript">Fraktal-Explorer 6.3.0 braucht JavaScript und WebGL2.</p></noscript>
+    <noscript><p class="noscript">Fraktal-Explorer 6.4.0 braucht JavaScript und WebGL2.</p></noscript>
 
-    <script src="translations.js?v=6.3.0"></script>
-    <script src="js/hp.js?v=6.3.0"></script>
-    <script src="js/fractal-core.js?v=6.3.0"></script>
-    <script src="js/shaders.js?v=6.3.0"></script>
-    <script src="js/palettes.js?v=6.3.0"></script>
-    <script src="js/gestures.js?v=6.3.0"></script>
-    <script src="js/renderer.js?v=6.3.0"></script>
-    <script src="js/three.js?v=6.3.0"></script>
-    <script src="js/app.js?v=6.3.0"></script>
-    <script src="js/ui.js?v=6.3.0"></script>
+    <script src="translations.js?v=6.4.0"></script>
+    <script src="js/hp.js?v=6.4.0"></script>
+    <script src="js/fractal-core.js?v=6.4.0"></script>
+    <script src="js/shaders.js?v=6.4.0"></script>
+    <script src="js/palettes.js?v=6.4.0"></script>
+    <script src="js/gestures.js?v=6.4.0"></script>
+    <script src="js/renderer.js?v=6.4.0"></script>
+    <script src="js/three.js?v=6.4.0"></script>
+    <script src="js/app.js?v=6.4.0"></script>
+    <script src="js/ui.js?v=6.4.0"></script>
 </body>
 </html>

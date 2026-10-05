@@ -37,8 +37,8 @@ function tile(q) {
             const px = ((x + i) + 0.5 - bufW / 2) * scale;
             const k = (h - 1 - j) * w + i;          // GL-Zeilenfolge (unten zuerst)
             out[k] = perturb
-                ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, deS)
-                : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy, deS);
+                ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, deS, q.inn)
+                : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy, deS, q.inn);
             if (de) de[k] = C.OUT.de;
         }
     }
@@ -55,8 +55,8 @@ function pixels(q) {
     const useBLA = perturb && q.useBLA && ref.bla;
     for (let k = 0; k < n; k++) {
         const px = (list[2 * k] + 0.5 - bufW / 2) * scale, py = -(list[2 * k + 1] + 0.5 - bufH / 2) * scale;
-        out[k] = perturb ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA)
-                         : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy);
+        out[k] = perturb ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, 0, q.inn)
+                         : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy, 0, q.inn);
     }
     self.postMessage({ type: 'pixels', jobId: q.jobId, chunk: q.chunk, list, values: out }, [out.buffer, list.buffer]);
 }

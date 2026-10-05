@@ -25,14 +25,82 @@ precision highp usampler2D;
 vec2 cmul(vec2 a, vec2 b) { return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x); }
 `;
 
+// ---------------------------------------------------------------- 6.4 BUNTE MENGE (Innen-Information)
+// Nur in der Rechen-Variante IN (Farbe der Menge = Bunt). Innenpunkte (nach maxIter nicht entkommen) laufen weiter, bis
+// Periode und Multiplikator des anziehenden Zyklus feststehen (siehe inStep): log2|λ| = Σ log2|f'(z)| über einen Umlauf
+// (0 = Knospenmitte, 1 = Rand); Julia: Klasse der Fatou-Komponente.
+// Kodierung im Iterationspuffer – Innen bleibt im Bereich (−1,5; −1,0], also für alles andere weiter „innen“; die
+// Klassifikation innen/außen und alle Außenwerte sind bitgleich zur Rechnung ohne Bunt:
+//   Bits 12..21 = Klasse (Mandelbrot: Periode, Julia: Fatou-Klasse + 1; 1..1023, 0 = unbekannt), Bits 0..11 = Wert·4095
+//   (Mandelbrot: |λ|; Julia: −log2 des kleinsten |z|² der Bahn / 64 – „Blasen“ um die Urbilder von 0).
+const INNER_CORE = `
+// höchstens so viele Zusatzschritte für die Zyklussuche (mindestens 4096, höchstens 16384)
+uint innerBits(int cls, float val) {
+    if (cls <= 0) return 0xBF800000u;
+    uint pp = uint((cls - 1) % 1023 + 1);
+    uint q = uint(clamp(val, 0.0, 1.0) * 4095.0 + 0.5);
+    return 0xBF800000u | (pp << 12) | q;
+}
+float inLogD(vec2 z) {             // log2 |f'(z)|
+#if F == 4
+    return 1.5849625 + log2(max(dot(z, z), 1e-38));
+#else
+    return 1.0 + 0.5 * log2(max(dot(z, z), 1e-38));
+#endif
+}
+// Zyklussuche über „Besuche“ beim Bahnpunkt w mit dem bisher kleinsten |z| (wie Atom-Domänen): neuer Tiefstwert oder
+// |z − w| < |w|/2. Im anziehenden Zyklus kommt die Bahn genau einmal je Periode dort vorbei – auch wenn sie noch nicht
+// eingeschwungen ist (Knospenrand, |λ| nahe 1). Drei Besuche mit gleichem Abstand P -> Kandidat, |λ| = Produkt |f'(z)|
+// über den letzten Umlauf. |λ| < 0,8: sofort fertig. Sonst wird der Kandidat erst am Ende genommen, wenn er bis dahin
+// der letzte war: Eine Bahn, die langsam an einem fast neutralen Zyklus kleinerer Periode vorbeikriecht (|λ| ≈ 1,
+// z. B. Mini-Mandelbrots nahe einer Spitze), verlässt diese Stelle wieder und liefert danach die echte Periode.
+struct InSt { vec2 w; int hitN; int per; int cnt; float ls; int cand; float candL; int candN; float trap; };
+InSt inStart(vec2 z, float trap) { InSt s; s.w = z; s.hitN = 0; s.per = 0; s.cnt = 0; s.ls = 0.0; s.cand = 0; s.candL = 0.0; s.candN = 0; s.trap = trap; return s; }
+uint inResult(int per, float ls, int nhit, float trap) {
+#if F == 1
+    // Julia: alle Innenpunkte haben denselben Zyklus -> Klasse = Phase des Punkts mit kleinstem |z| (welche
+    // Fatou-Komponente), Wert = kleinstes |z|² der Bahn (Blasen)
+    return innerBits(nhit % per + 1, -log2(max(trap, 1e-38)) / 64.0);
+#else
+    return innerBits(per, exp2(min(ls, 0.0)));
+#endif
+}
+// ein Schritt (oder ein BLA-Sprung): dl = log2|f'| des Schritts (BLA: log2|A|), z = neuer Wert, n = Iterationszähler
+// danach. 1 = fertig (o = Kodierung)
+int inStep(inout InSt s, float dl, vec2 z, int n, out uint o) {
+    o = 0xBF800000u;
+    s.ls += dl;
+    float z2 = dot(z, z), w2 = dot(s.w, s.w);
+    vec2 d = z - s.w;
+    bool rec = z2 < w2;
+    if (!rec && dot(d, d) >= 0.25 * w2) return 0;
+    if (rec) s.w = z;
+    if (s.hitN > 0) {
+        int dn = n - s.hitN;
+        if (dn == s.per) s.cnt++; else { s.per = dn; s.cnt = 1; }
+        if (s.cnt >= 2) {
+            if (s.ls < -0.32193) { o = inResult(s.per, s.ls, n, s.trap); return 1; }    // |λ| < 0,8
+            s.cand = s.per; s.candL = s.ls; s.candN = n;
+        }
+    }
+    s.hitN = n; s.ls = 0.0;
+    return 0;
+}
+// Ende der Zusatzschritte ohne frühes Ergebnis: letzter Kandidat (Knospenrand), wenn er bis zuletzt bestätigt wurde
+// (sonst war es ein Vorbeikriechen, das längst vorbei ist), sonst unbekannt
+uint inFinal(InSt s, int n) { return s.cand > 0 && n - s.candN <= 2 * s.cand + 2 ? inResult(s.cand, s.candL, s.candN, s.trap) : 0xBF800000u; }
+`;
+
 // ---------------------------------------------------------------- COMPUTE
-function computeFS(formula, mode, err, de) {
+function computeFS(formula, mode, err, de, inn) {
     const F = formula | 0;
+    const IN = inn && F !== 5 ? 1 : 0;
     const common = `#version 300 es
 #define F ${F}
 #define ERR ${err && F !== 5 ? 1 : 0}
 #define DE ${de && F !== 5 ? 1 : 0}
 #define DT (ERR == 1 || DE == 1)
+${IN ? '#define IN 1' : ''}
 ${COMMON}
 uniform vec2 u_res;        // Puffergröße
 uniform float u_scale;     // Weltbreite pro Pufferpixel
@@ -79,6 +147,7 @@ float smoothI(int n, vec2 z) {
     return float(n) + 1.0 - log2(l2);
 #endif
 }
+${IN ? INNER_CORE : ''}
 `;
     if (mode === 'direct') return common + `
 uniform vec2 u_center;     // Ansichtsmitte (f32 reicht bis Zoom ~1e3)
@@ -133,6 +202,9 @@ void main() {
 #endif
     float E2 = 0.0;
     bool unsure = false;
+#ifdef IN
+    float trap = dot(z, z);
+#endif
     if (result < 0.0 && !skip) for (int n = 1; n <= u_maxIter; n++) {
 #if DT
 #if F == 4
@@ -168,9 +240,50 @@ void main() {
 #endif
             break;
         }
+#if defined(IN) && F == 1
+        trap = min(trap, dot(z, z));
+#endif
     }
 #if ERR
     if (result < 0.0) unsure = unsureIn(E2, Dt);
+#endif
+#ifdef IN
+    // 6.4 Bunte Menge: Zyklus des Innenpunkts (Hauptkardioide/Periode-2-Kreis exakt: λ = 1 − √(1 − 4c) bzw. 4(c + 1))
+    if (result < 0.0 && !unsure) {
+        uint ob = 0xBF800000u;
+#if F == 0
+        if (skip) {
+            vec2 q = vec2(1.0, 0.0) - 4.0 * pos;
+            float r = length(q);
+            vec2 sq = vec2(sqrt(max(0.5 * (r + q.x), 0.0)), (q.y < 0.0 ? -1.0 : 1.0) * sqrt(max(0.5 * (r - q.x), 0.0)));
+            vec2 b2 = pos + vec2(1.0, 0.0);
+            ob = dot(b2, b2) < 0.0625 ? innerBits(2, 4.0 * length(b2)) : innerBits(1, length(vec2(1.0, 0.0) - sq));
+        } else
+#endif
+        {
+            InSt st = inStart(z, trap);
+            int nn = u_maxIter;
+            int done = 0;
+            for (int k = 0; k < clamp(u_maxIter, 4096, 16384); k++) {
+                vec2 zp = z;
+#if F == 2
+                z = vec2(z.x * z.x - z.y * z.y, abs(2.0 * z.x * z.y)) + c;
+#elif F == 3
+                z = vec2(z.x * z.x - z.y * z.y, -2.0 * z.x * z.y) + c;
+#elif F == 4
+                z = cmul(z, cmul(z, z)) + c;
+#else
+                z = cmul(z, z) + c;
+#endif
+                nn++;
+                if (dot(z, z) > 256.0) { done = 2; break; }
+                if (inStep(st, inLogD(zp), z, nn, ob) == 1) { done = 1; break; }
+            }
+            if (done == 0) ob = inFinal(st, nn);
+        }
+        o_it = ob;
+        return;
+    }
 #endif
     o_it = encode(result, unsure);
     return;
@@ -239,9 +352,34 @@ void main() {
     bool unsure = false;
     float mc = magn(c);
 #endif
+#ifdef IN
+    int ph = 0, nEnd = u_maxIter;     // 6.4: ph 1 = Zyklussuche nach maxIter (ohne BLA, jeder Schritt einzeln)
+    InSt st = inStart(vec2(0.0), 0.0);
+    uint ob = 0xBF800000u;
+    float trap = dot(Zc + dz, Zc + dz);
+#endif
     for (int guard = 0; guard < 4000000; guard++) {
+#ifdef IN
+        if (n >= nEnd) {
+            if (ph == 0) {
+#if ERR
+                unsure = unsureIn(E2, Dt);   // wie ohne Bunt: am Ende der regulären Iteration
+                if (unsure) break;
+#endif
+                ph = 1; nEnd = n + clamp(u_maxIter, 4096, 16384); st = inStart(Zc + dz, trap);
+                continue;
+            }
+            ob = inFinal(st, n);
+            break;
+        }
+#else
         if (n >= u_maxIter) break;
-${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
+#endif
+${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
+#ifdef IN
+            && ph == 0            // Zusatzphase: jeder Schritt einzeln (BLA-Tabellen reichen nur bis zum regulären Ende)
+#endif
+        ) {
             int k = m - 1;
             int L = u_blaL[o];
             int lmax = (k == 0) ? L : min(L, ctz(k));
@@ -280,6 +418,9 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             if (applied) {
                 Zc = orb(base + m);
                 vec2 z = Zc + dz;
+#if defined(IN) && F == 1
+                trap = min(trap, dot(z, z));
+#endif
                 if (dot(z, z) > 256.0) {
                     result = smoothI(n, z);
 #if ERR
@@ -300,6 +441,9 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             }
         }` : ''}
         vec2 Z = Zc;
+#ifdef IN
+        vec2 zp = Z + dz;
+#endif
 #if DT
         {
             vec2 zf = Z + dz;
@@ -338,6 +482,18 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
         m++; n++;
         Zc = orb(base + m);
         vec2 z = Zc + dz;
+#ifdef IN
+#if F == 1
+        trap = min(trap, dot(z, z));
+#endif
+        if (ph > 0) {
+            if (dot(z, z) > 256.0 || inStep(st, inLogD(zp), z, n, ob) == 1) break;
+            // Ende des Referenzorbits: hier auswerten (ein Rebase mitten im Zyklus kostet im Deep Zoom die Genauigkeit)
+            if (m >= len - 1) { ob = inFinal(st, n); break; }
+            if (lessMag(z, dz)) { o = 1; base = u_baseB; len = u_lenB; dz = z; m = 0; Zc = vec2(0.0); }
+            continue;
+        }
+#endif
         if (dot(z, z) > 256.0) {
             result = smoothI(n, z);
 #if ERR
@@ -355,6 +511,13 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0) {
             o = 1; base = u_baseB; len = u_lenB; dz = z; m = 0; Zc = vec2(0.0); bwait = 0; bback = 1;
         }
     }
+#ifdef IN
+#if ERR
+    if (result < 0.0) { o_it = unsure ? floatBitsToUint(-2.0) : ob; return; }
+#else
+    if (result < 0.0) { o_it = ob; return; }
+#endif
+#endif
 #if ERR
     if (result < 0.0) unsure = unsureIn(E2, Dt);
     o_it = encode(result, unsure);
@@ -400,6 +563,41 @@ vec3 exteriorColor(float v) {
     }
     if (u_banded == 1) v = floor(v);
     return palette(v * 0.08 * u_density + u_cycle);
+}
+
+// 6.4 Bunte Menge: Farbe eines Innenpunkts aus der Innen-Information (Kodierung siehe INNER_CORE). u_inMode 0 = aus
+// (Mengenfarbe vc), 1 = Inseln (Periode -> Palettenfarbe, zur Knospenmitte heller), 2 = Ringe (Multiplikator -> Verlauf).
+// Unbekannt (Zyklus nicht gefunden, z. B. dicht am Rand) = Mengenfarbe.
+uniform int u_inMode;
+vec3 inCol(float v, vec3 vc) {
+    if (u_inMode == 0) return vc;
+    uint b = floatBitsToUint(v);
+    uint cls = (b >> 12) & 1023u;
+    if (cls == 0u || v < -1.5) return vc;
+    float q = float(b & 4095u) * (1.0 / 4095.0);
+    float k = float(cls);
+    const vec3 LW = vec3(0.299, 0.587, 0.114);
+    if (u_formula == 1) {
+        // Julia: Klasse der Fatou-Komponente -> Farbe, Blasen aus dem kleinsten |z| der Bahn (q·64 = −log2|z|²)
+        float bub = q * 64.0;
+        if (u_inMode == 1) {
+            vec3 c1 = palette(0.11 + 0.618034 * k + u_cycle), c2 = palette(0.61 + 0.618034 * k + u_cycle);
+            vec3 base = dot(c1, LW) < 0.28 && dot(c2, LW) > dot(c1, LW) ? c2 : c1;
+            return base * (0.72 + 0.28 * cos(6.2831853 * bub * 0.5));
+        }
+        return palette(bub * 0.125 + 0.1 * k + u_cycle) * 0.95;
+    }
+    // Mandelbrot & Co.: q = |λ| (0 Knospenmitte, 1 Rand)
+    float s = 1.0 - q;
+    if (u_inMode == 1) {
+        // Inseln: Periode -> Palettenfarbe (Goldener Schnitt: benachbarte Perioden weit auseinander; ist die Stelle der
+        // Palette sehr dunkel, die gegenüberliegende), zur Knospenmitte heller wie eine angeleuchtete Kuppel
+        vec3 c1 = palette(0.11 + 0.618034 * k + u_cycle), c2 = palette(0.61 + 0.618034 * k + u_cycle);
+        vec3 base = dot(c1, LW) < 0.28 && dot(c2, LW) > dot(c1, LW) ? c2 : c1;
+        return base * (0.22 + 0.78 * smoothstep(0.0, 1.0, sqrt(s)));
+    }
+    // Ringe: |λ| als Verlauf durch die Palette (Ringe um den Knospenkern), zum Rand abgedunkelt
+    return palette(1.6 * sqrt(q) + 0.05 * k + u_cycle) * (0.3 + 0.7 * smoothstep(0.0, 0.35, s));
 }
 
 // Iterationswert als Höhe fürs Relief (log staucht die Randzonen)
@@ -477,10 +675,10 @@ ${PAL_GLSL}vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec
 
 // bilinear eingefärbte Probe aus 4 Texeln (Verhalten 5.0.1; bei Ausrichtung 1:1 exakt der Texel)
 vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 voidCol) {
-    vec3 c00 = v00 < 0.0 ? voidCol : exteriorColor(v00);
-    vec3 c10 = v10 < 0.0 ? voidCol : exteriorColor(v10);
-    vec3 c01 = v01 < 0.0 ? voidCol : exteriorColor(v01);
-    vec3 c11 = v11 < 0.0 ? voidCol : exteriorColor(v11);
+    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : exteriorColor(v00);
+    vec3 c10 = v10 < 0.0 ? inCol(v10, voidCol) : exteriorColor(v10);
+    vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : exteriorColor(v01);
+    vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : exteriorColor(v11);
     vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
     if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
         col = relief(col, v00, v10, v01, v11, f, kx);
@@ -536,6 +734,12 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
     ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
     float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
     float dm = 0.0, rim = 1.0;
+    // 6.4: Mengenfarbe dieses Pixels = Innenfarben der Innentexel (bilinear); keine Innentexel -> Mengenfarbe (Saum)
+    if (u_inMode > 0) {
+        vec4 wq = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y) * (1.0 - step(0.0, vec4(v00, v10, v01, v11)));
+        float wi = wq.x + wq.y + wq.z + wq.w;
+        if (wi > 0.0) voidCol = (wq.x * inCol(v00, voidCol) + wq.y * inCol(v10, voidCol) + wq.z * inCol(v01, voidCol) + wq.w * inCol(v11, voidCol)) / wi;
+    }
     if (u_deOn == 1) {
         float e00 = fetchDE(dtex, i0, v00), e10 = fetchDE(dtex, ivec2(i1.x, i0.y), v10), e01 = fetchDE(dtex, ivec2(i0.x, i1.y), v01), e11 = fetchDE(dtex, i1, v11);
         dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);

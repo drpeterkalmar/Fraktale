@@ -49,6 +49,15 @@ class App:
             time.sleep(0.1)
         raise TimeoutError(json.dumps(self.status()))
 
+    def wait_3d(self, timeout=20):
+        # 6.3: 3D blendet erst ein, wenn die Shader übersetzt sind (nicht blockierend) – darauf warten
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if self.page.evaluate("() => { const v = window.__fraktal.view3dInfo(); return v.on && v.mix >= 1; }"):
+                return True
+            time.sleep(0.1)
+        return False
+
     def read_front(self):
         return self.page.evaluate("() => window.__fraktal.readFront()")
 

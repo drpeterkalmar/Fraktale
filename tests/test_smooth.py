@@ -153,12 +153,13 @@ def main():
             WebGL2RenderingContext.prototype.getExtension = function (n) { return n === 'EXT_color_buffer_float' ? null : g.call(this, n); }; })()""")
         a.open(); pg = a.page
         a.set_view(*SEA); a.wait_done(120)
-        pg.evaluate("() => window.__fraktal.set3d(true)"); time.sleep(1.5); a.wait_done(120)
+        pg.evaluate("() => window.__fraktal.set3d(true)"); a.wait_3d(); time.sleep(0.5); a.wait_done(120)
         pg.evaluate("() => { const A = window.__fraktal; A.V3.tilt = 45 * Math.PI / 180; A.RC.dirty = true; }"); time.sleep(1.5)
         pg.evaluate("() => window.__fraktal.settle3d()")
         W2, H2 = pg.evaluate("() => [window.__fraktal.R.gl.canvas.width, window.__fraktal.R.gl.canvas.height]")
         img = snap(pg, [0, 0, W2, H2])
         h8 = pg.evaluate("() => window.__fraktal.view3dInfo().gpu.h8")
+        print('DBG', pg.evaluate("() => ({ v: window.__fraktal.view3dInfo(), s: window.__fraktal.still3dInfo(), st: window.__fraktal.status().done })"), img.std(), img.shape, img[::200, ::200, 0].tolist()[:3])
         res['h8quer'] = {'h8': h8, 'std': round(float(img.std()), 1), 'size': [W2, H2]}
         need(h8 and img.std() > 20 and W2 > H2, f'8-bit-Ersatzpfad quer: 3D-Bild mit Inhalt (Streuung {img.std():.0f})')
         need(not a.errors, f'0 Fehler (8 bit, quer) {a.errors[:3]}')

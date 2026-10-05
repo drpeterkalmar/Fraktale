@@ -4,7 +4,7 @@ Windows) wird simuliert: jedes nach dem Scharfschalten gelinkte Programm meldet 
 „fertig“, eine blockierende LINK_STATUS-Abfrage würde so lange warten.
 
 Prüft:  * ⛰ antippen bei langsamem Treiber: Knopf zeigt „3D wird vorbereitet …“ (Klasse prep), 2D läuft weiter
-          (keine Bildlücke > 100 ms, keine Long Tasks), danach erscheint 3D von selbst
+          (keine Long Tasks; keine Bildlücke > 100 ms bzw. über dem Takt vor dem Antippen), danach erscheint 3D von selbst
         * nur die Gelände-Variante des aktuellen Looks wird übersetzt
         * erneutes Antippen während der Vorbereitung bricht ab (2D bleibt)
         * Look-Wechsel in 3D (Alpin) bei langsamem Treiber: alter Look bleibt stehen, kein Block, danach neuer Look
@@ -57,6 +57,11 @@ def main():
         a.open(); pg = a.page
         a.set_view(*SEA); a.wait_done(90); time.sleep(1)
         # --- langsamer Treiber: Antippen -> Vorbereitung, 2D flüssig, dann 3D
+        # Grundlinie: Bildtakt vor dem Antippen (headless hängt er von der Systemlage ab, z. B. Bildschirm aus)
+        tb = pg.evaluate("() => performance.now()"); time.sleep(2.0)
+        base = pg.evaluate(GAPS, tb)['maxGap']
+        lim = max(100, round(1.3 * base + 20))
+        res['baselineGap'] = base
         pg.evaluate("() => { window.__slowArm = true; window.__lt.length = 0; window.__links.length = 0; }")
         t0 = pg.evaluate("() => performance.now()")
         pg.click('#btn-3d')
@@ -73,7 +78,7 @@ def main():
         g = pg.evaluate(GAPS, t0)
         res['slowStart'] = dict(prep=s1, after=s2, secs=dt, **g)
         need(s2['on'] and not s2['prep'] and 'prep' not in s2['cls'], f'3D erscheint nach der Übersetzung von selbst ({dt} s, Simulation {SLOW / 1000} s)')
-        need(g['maxGap'] < 100 and g['longTasks'] == 0, f'kein Block: längste Bildlücke {g["maxGap"]} ms < 100, Long Tasks {g["longTasks"]}')
+        need(g['maxGap'] < lim and g['longTasks'] == 0, f'kein Block: längste Bildlücke {g["maxGap"]} ms < {lim} (Grundlinie {base} ms), Long Tasks {g["longTasks"]}')
         links = pg.evaluate("() => window.__links")
         need(links == [0], f'nur die Gelände-Variante des Looks übersetzt (ALP {links})')
         # --- Look-Wechsel in 3D: alter Look bleibt, kein Block, dann Alpin
@@ -90,7 +95,7 @@ def main():
         g = pg.evaluate(GAPS, t1)
         res['lookSwitch'] = dict(before=v0, after=v1, **g)
         need(v0['variant'] == 't3terr' and v0['waiting'] and v1['variant'] == 't3terrX' and not v1['waiting'], f'Look-Wechsel: erst alter Look weiter, dann Alpin {v0} -> {v1}')
-        need(g['maxGap'] < 100 and g['longTasks'] == 0, f'Look-Wechsel ohne Block: {g["maxGap"]} ms, Long Tasks {g["longTasks"]}')
+        need(g['maxGap'] < lim and g['longTasks'] == 0, f'Look-Wechsel ohne Block: {g["maxGap"]} ms < {lim}, Long Tasks {g["longTasks"]}')
         pg.evaluate("() => { const A = window.__fraktal; A.S.alpine = false; A.S.setCol = 'black'; A.emit('settings'); A.RC.dirty = true; }")
         a.errors_slow = list(a.errors)
         need(not a.errors, f'0 Fehler (langsamer Treiber) {a.errors[:3]}')

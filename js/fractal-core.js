@@ -54,9 +54,101 @@ function lessMag(ax, ay, bx, by) {
 }
 
 // ------------------------------------------------------------------
+//  6.4 Bunte Menge: Innen-Information (wie GPU, INNER_CORE in shaders.js). Innenpunkte laufen nach maxIter weiter,
+//  bis der anziehende Zyklus gefunden ist (Brent + Bestätigung über eine Periode); Ergebnis als Float im Bereich
+//  (−1,5; −1,0] mit Klasse (Bits 12..21) und Wert (Bits 0..11). −1 = unbekannt (wie ohne Bunt).
+// ------------------------------------------------------------------
+const _f32 = new Float32Array(1), _u32 = new Uint32Array(_f32.buffer);
+function innerVal(cls, val) {
+    if (!(cls > 0)) return -1;
+    const q = Math.round(Math.min(1, Math.max(0, val)) * 4095);
+    _u32[0] = (0xBF800000 | ((((cls - 1) % 1023) + 1) << 12) | q) >>> 0;
+    return _f32[0];
+}
+// Zyklussuche; step(): ein Schritt, liefert false bei Flucht, sonst steht das neue z in S.zx/S.zy
+// (S.zx/S.zy = Startwert z_n0). deriv(zx, zy) = log2|f'(z)|.
+function cycleInfo(S, n0, julia, f, step, trap) {
+    // wie GPU (inStep in shaders.js): Besuche beim Bahnpunkt mit kleinstem |z|, drei gleiche Abstände = Periode
+    const E = Math.min(16384, Math.max(4096, n0));
+    const L3 = Math.log2(3);
+    let wx = S.zx, wy = S.zy, hitN = 0, per = 0, cnt = 0, ls = 0, cand = 0, candL = 0, candN = 0, n = n0;
+    const result = (P, l, nh) => julia ? innerVal(nh % P + 1, -Math.log2(Math.max(trap, 1e-38)) / 64) : innerVal(P, Math.pow(2, Math.min(l, 0)));
+    for (let k = 0; k < E; k++) {
+        const px = S.zx, py = S.zy;
+        const st = step();
+        if (st === 0) return -1;                    // entkommen: doch nicht innen
+        if (st === 2) break;                        // Ende des Referenzorbits: mit dem bisherigen Kandidaten auswerten
+        n++;
+        const a = px * px + py * py;
+        ls += f === 4 ? L3 + Math.log2(Math.max(a, 1e-300)) : 1 + 0.5 * Math.log2(Math.max(a, 1e-300));
+        const z2 = S.zx * S.zx + S.zy * S.zy, w2 = wx * wx + wy * wy;
+        const dx = S.zx - wx, dy = S.zy - wy;
+        const rec = z2 < w2;
+        if (!rec && dx * dx + dy * dy >= 0.25 * w2) continue;
+        if (rec) { wx = S.zx; wy = S.zy; }
+        if (hitN > 0) {
+            const dn = n - hitN;
+            if (dn === per) cnt++; else { per = dn; cnt = 1; }
+            if (cnt >= 2) {
+                if (ls < -0.32193) return result(per, ls, n);
+                cand = per; candL = ls; candN = n;
+            }
+        }
+        hitN = n; ls = 0;
+    }
+    return cand > 0 && n - candN <= 2 * cand + 2 ? result(cand, candL, candN) : -1;
+}
+function innerDirect(zx, zy, cx, cy, formula, maxIter, trap) {
+    const S = { zx, zy };
+    return cycleInfo(S, maxIter, formula === 1, formula, () => {
+        const x = S.zx, y = S.zy;
+        let nx, ny;
+        if (formula === 2) { nx = x * x - y * y + cx; ny = Math.abs(2 * x * y) + cy; }
+        else if (formula === 3) { nx = x * x - y * y + cx; ny = -2 * x * y + cy; }
+        else if (formula === 4) { const x2 = x * x, y2 = y * y; nx = x * (x2 - 3 * y2) + cx; ny = y * (3 * x2 - y2) + cy; }
+        else { nx = x * x - y * y + cx; ny = 2 * x * y + cy; }
+        S.zx = nx; S.zy = ny;
+        return nx * nx + ny * ny <= BAIL ? 1 : 0;
+    }, trap);
+}
+// Perturbation ohne BLA ab dem Zustand nach maxIter (Orbit-Index m auf base/len, Rebase wie in perturbPixel)
+function innerPerturb(ref, f, dzx, dzy, cx, cy, m, o, n, trap) {
+    const O = ref.orbit;
+    let base = o ? ref.baseB : ref.baseA, len = o ? ref.lenB : ref.lenA;
+    const S = { zx: O[2 * (base + m)] + dzx, zy: O[2 * (base + m) + 1] + dzy };
+    return cycleInfo(S, n, f === 1, f, () => {
+        const i2 = 2 * (base + m), X = O[i2], Y = O[i2 + 1];
+        let nx, ny;
+        if (f === 2) {
+            nx = (2 * X + dzx) * dzx - (2 * Y + dzy) * dzy + cx;
+            ny = 2 * diffabs(X * Y, X * dzy + Y * dzx + dzx * dzy) + cy;
+        } else if (f === 3) {
+            nx = 2 * (X * dzx - Y * dzy) + dzx * dzx - dzy * dzy + cx;
+            ny = -(2 * (X * dzy + Y * dzx) + 2 * dzx * dzy) + cy;
+        } else if (f === 4) {
+            const tx = 3 * (X * X - Y * Y) + 3 * (X * dzx - Y * dzy) + dzx * dzx - dzy * dzy;
+            const ty = 6 * X * Y + 3 * (X * dzy + Y * dzx) + 2 * dzx * dzy;
+            nx = dzx * tx - dzy * ty + cx;
+            ny = dzx * ty + dzy * tx + cy;
+        } else {
+            nx = 2 * (X * dzx - Y * dzy) + dzx * dzx - dzy * dzy + cx;
+            ny = 2 * (X * dzy + Y * dzx) + 2 * dzx * dzy + cy;
+        }
+        dzx = nx; dzy = ny; m++;
+        const j2 = 2 * (base + m);
+        const zx = O[j2] + dzx, zy = O[j2 + 1] + dzy;
+        S.zx = zx; S.zy = zy;
+        if (zx * zx + zy * zy > BAIL) return 0;
+        if (m >= len - 1) return 2;
+        if (lessMag(zx, zy, dzx, dzy)) { base = ref.baseB; len = ref.lenB; dzx = zx; dzy = zy; m = 0; }
+        return 1;
+    }, trap);
+}
+
+// ------------------------------------------------------------------
 //  Direkte f64-Iteration (flache Zooms, Newton, Tricorn/Burning Ship bis 1e12)
 // ------------------------------------------------------------------
-function directPixel(px, py, formula, maxIter, jx, jy, deS) {
+function directPixel(px, py, formula, maxIter, jx, jy, deS, inn) {
     OUT.de = 0;
     if (formula === 5) return newtonPixel(px, py);
     let zx, zy, cx, cy;
@@ -64,6 +156,8 @@ function directPixel(px, py, formula, maxIter, jx, jy, deS) {
     if (formula === 1) { zx = px; zy = py; cx = jx; cy = jy;
         if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, dx, dy, 0); return smoothIter(0, zx, zy, 1); }
     } else { zx = 0; zy = 0; cx = px; cy = py; }
+    let trap = zx * zx + zy * zy;
+    const jt = inn && formula === 1;
     for (let n = 1; n <= maxIter; n++) {
         if (deS) {   // Dp' = f'(z)·Dp (+ Pixelschritt); Burning Ship/Tricorn: Betrag wie holomorph (wie GPU)
             let ax, ay;
@@ -79,8 +173,9 @@ function directPixel(px, py, formula, maxIter, jx, jy, deS) {
         else { nx = zx * zx - zy * zy + cx; ny = 2 * zx * zy + cy; }
         zx = nx; zy = ny;
         if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, dx, dy, dex); return smoothIter(n, zx, zy, formula); }
+        if (jt) trap = Math.min(trap, zx * zx + zy * zy);
     }
-    return -1;
+    return inn ? innerDirect(zx, zy, cx, cy, formula, maxIter, trap) : -1;
 }
 
 // Newton z³ − 1 (wie GPU-Shader): Rückgabe j + 1 + 1000·Wurzelindex, −1 ohne Konvergenz
@@ -105,9 +200,9 @@ function newtonPixel(x, y) {
 //  Perturbation (+BLA) in f64 — CPU-Pfad und Referenzsuche
 //  ref = { formula, orbit(Float64Array x,y), baseA, lenA, baseB, lenB, bla|null }
 // ------------------------------------------------------------------
-function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS) {
+function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS, inn) {
     OUT.de = 0;
-    if (ref.formula <= 1) return perturbZ2(dcx, dcy, ref, maxIter, useBLA ? ref.bla : null, deS || 0);
+    if (ref.formula <= 1) return perturbZ2(dcx, dcy, ref, maxIter, useBLA ? ref.bla : null, deS || 0, inn);
     const O = ref.orbit, f = ref.formula;
     let Dx = f === 1 ? (deS || 0) : 0, Dy = 0, dex = 0;
     const bla = useBLA ? ref.bla : null;
@@ -119,6 +214,7 @@ function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS) {
         if (zx * zx + zy * zy > BAIL) return smoothIter(0, zx, zy, f);
     } else { dzx = 0; dzy = 0; cx = dcx; cy = dcy; }
     let m = 0, n = 0, wait = 0, back = 1;
+    let trap = Infinity;
     while (n < maxIter) {
         if (bla !== null && m > 0 && --wait <= 0) {
             // R fällt monoton mit der Stufe -> aufsteigend suchen, bei erster ungültiger Stufe stoppen
@@ -193,12 +289,12 @@ function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS) {
             o = 1; base = ref.baseB; len = ref.lenB; dzx = zx; dzy = zy; m = 0;
         }
     }
-    return -1;
+    return inn ? innerPerturb(ref, f, dzx, dzy, cx, cy, m, o, n, trap) : -1;
 }
 
 // Spezialisierte heiße Schleife für z² + c (Mandelbrot/Julia) — identische Mathematik wie
 // perturbPixel, nur ohne Formel-Verzweigung und mit inline-Betragsvergleich (≈ 1.5–2× schneller).
-function perturbZ2(dcx, dcy, ref, maxIter, bla, deS) {
+function perturbZ2(dcx, dcy, ref, maxIter, bla, deS, inn) {
     const O = ref.orbit, julia = ref.formula === 1;
     let base = ref.baseA, len = ref.lenA, o = 0;
     let dzx, dzy, cx, cy;
@@ -212,6 +308,8 @@ function perturbZ2(dcx, dcy, ref, maxIter, bla, deS) {
     let m = 0, n = 0;
     let X = O[2 * base], Y = O[2 * base + 1];
     let wait = 0, back = 1;          // BLA-Backoff: nach Fehlversuch 1,2,4..64 Schritte nicht probieren
+    const jt = inn && julia;
+    let trap = jt ? (X + dzx) * (X + dzx) + (Y + dzy) * (Y + dzy) : Infinity;
     while (n < maxIter) {
         if (bla !== null && m > 0 && --wait <= 0) {
             const k = m - 1;
@@ -262,12 +360,13 @@ function perturbZ2(dcx, dcy, ref, maxIter, bla, deS) {
         const zx = X + dzx, zy = Y + dzy;
         const z2 = zx * zx + zy * zy;
         if (z2 > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); return smoothIter(n, zx, zy, 0); }
+        if (jt && z2 < trap) trap = z2;
         const d2 = dzx * dzx + dzy * dzy;
         if (m >= len - 1 || (d2 > 1e-280 ? z2 < d2 : lessMag(zx, zy, dzx, dzy))) {
             o = 1; base = ref.baseB; len = ref.lenB; dzx = zx; dzy = zy; m = 0; X = 0; Y = 0; wait = 0; back = 1;
         }
     }
-    return -1;
+    return inn ? innerPerturb(ref, julia ? 1 : 0, dzx, dzy, cx, cy, m, o, n, trap) : -1;
 }
 
 // |c + d| − |c|, numerisch stabil (Burning-Ship-Perturbation)
@@ -521,6 +620,17 @@ function computeReference(req) {
         }
     }
 
+    // 6.4 Bunte Menge: Innenpunkte laufen nach maxIter weiter (Zyklussuche) -> Orbit des GEWÄHLTEN Referenzpunkts um
+    // req.extra verlängern. Wahl und BLA-Tabellen bleiben wie ohne Verlängerung (blaLen) – die Außenwerte bitgleich.
+    const extra = req.extra | 0;
+    if (extra > 0 && method !== 'nucleus' && A.len === maxIter + 1) {
+        const A2 = julia ? hpOrbit(1, rX, rY, jX, jY, pw, maxIter + extra) : hpOrbit(formula, 0n, 0n, rX, rY, pw, maxIter + extra);
+        const B2 = julia ? hpOrbit(1, 0n, 0n, jX, jY, pw, maxIter + extra) : null;
+        const blaLenA = A.len, blaLenB = B ? B.len : A.len;
+        ref = mk(A2, B2);
+        ref.blaLenA = blaLenA; ref.blaLenB = blaLenB;
+    }
+
     // Referenzpunkt zurück auf globale Präzision (für Offsets auf dem Main-Thread)
     const refX = (rX << BigInt(HP.P - pw)).toString(), refY = (rY << BigInt(HP.P - pw)).toString();
     const ms = Date.now() - t0;
@@ -533,12 +643,12 @@ function concat(a, b) { const r = new Float64Array(a.length + b.length); r.set(a
 function blaFor(ref, eps, cmax, asF32) {
     if (ref.formula !== 0 && ref.formula !== 1 && ref.formula !== 4) return null;
     const julia = ref.formula === 1;
-    const tA = buildBLA(ref.orbit, ref.baseA, ref.lenA, ref.formula, eps, julia ? 0 : cmax);
-    const tB = julia ? buildBLA(ref.orbit, ref.baseB, ref.lenB, 1, eps, 0) : null;
+    const tA = buildBLA(ref.orbit, ref.baseA, ref.blaLenA || ref.lenA, ref.formula, eps, julia ? 0 : cmax);
+    const tB = julia ? buildBLA(ref.orbit, ref.baseB, ref.blaLenB || ref.lenB, 1, eps, 0) : null;
     return packBLA(tA, tB, !julia, asF32);
 }
 
-root.FKCore = { BAIL, MAXL, OUT, encDE, ctz, smoothIter, lessMag, directPixel, newtonPixel, perturbPixel, diffabs,
+root.FKCore = { BAIL, MAXL, OUT, encDE, ctz, smoothIter, lessMag, directPixel, newtonPixel, perturbPixel, diffabs, innerVal, cycleInfo,
                 buildBLA, packBLA, blaFor, hpOrbit, ballPeriod, newtonNucleusPerturb, gridProbe,
                 computeReference, precisionFor, makeToF };
 })(typeof self !== 'undefined' ? self : globalThis);

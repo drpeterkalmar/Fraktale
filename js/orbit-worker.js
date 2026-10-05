@@ -35,7 +35,7 @@ self.onmessage = (e) => {
                 baseA: ref.baseA, lenA: ref.lenA, baseB: ref.baseB, lenB: ref.lenB,
                 orbit32: f32Orbit(ref), bla32: b.b32, blaCmax: cmax,
                 method: r.method, period: r.period, ms: Date.now() - t0,
-                maxIter: q.maxIter, zoom: q.zoom, cx: q.cx, cy: q.cy, jx: q.jx, jy: q.jy
+                maxIter: q.maxIter, extra: q.extra || 0, zoom: q.zoom, cx: q.cx, cy: q.cy, jx: q.jx, jy: q.jy
             };
             const tr = [msg.orbit32.buffer];
             if (msg.bla32) tr.push(msg.bla32.A.buffer, msg.bla32.R.buffer);

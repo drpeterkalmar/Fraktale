@@ -307,8 +307,11 @@ function syncSet() {
     const p = PAL.list[S.palette];
     document.querySelectorAll('#seg-setcol button').forEach(b => {
         b.classList.toggle('on', b.dataset.v === S.setCol);
-        b.querySelector('.sdot').style.background = PAL.cssOf(PAL.setRGB(b.dataset.v, S.setHex, p));
+        b.querySelector('.sdot').style.background = b.dataset.v === 'bunt' ? PAL.gradientCSS(p, 6) : PAL.cssOf(PAL.setRGB(b.dataset.v, S.setHex, p));
     });
+    // 6.4 Bunte Menge: Modus Inseln/Ringe
+    $('seg-inmode').hidden = $('in-hint').hidden = S.setCol !== 'bunt';
+    document.querySelectorAll('#seg-inmode button').forEach(b => b.classList.toggle('on', +b.dataset.v === (S.inMode === 2 ? 2 : 1)));
     $('set-color-custom').hidden = S.setCol !== 'custom';
     $('set-color-custom').value = S.setHex;
     $('t-alpine').checked = S.alpine;
@@ -317,6 +320,9 @@ function syncSet() {
 }
 document.querySelectorAll('#seg-setcol button').forEach(b => b.addEventListener('click', () => {
     S.setCol = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet();
+}));
+document.querySelectorAll('#seg-inmode button').forEach(b => b.addEventListener('click', () => {
+    S.inMode = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncSet();    // nur Darstellung, keine Neuberechnung
 }));
 $('set-color-custom').addEventListener('input', (e) => { if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) { S.setHex = e.target.value.toLowerCase(); S.setCol = 'custom'; A.invalidate(); syncSet(); } });
 $('set-color-custom').addEventListener('change', () => A.saveSettings());

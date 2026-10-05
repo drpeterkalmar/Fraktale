@@ -249,6 +249,8 @@ function create(canvas) {
         if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
         // Vorausrechnen: kleinere Häppchen (halbes Stillstands-Häppchen), damit eine neue Geste nicht wartet
         const px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
+        // 6.4: neue Rechen-Variante (Bunt eingeschaltet) erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job
+        if (job.inn && job.row < job.h && !programs[computeKey(job)] && !R.programReady(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
         while (job.row < job.h && job.q.length < R.maxInflight) {
             const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
             drawCompute(job, job.row, rows);
@@ -261,8 +263,10 @@ function create(canvas) {
         return false;
     };
 
+    // 6.4: Variante mit Innen-Information (Bunte Menge) = Suffix 'i'
+    const computeKey = (job) => 'c' + job.formula + job.mode + (job.err ? 'e' : '') + (job.de ? 'd' : '') + (job.inn ? 'i' : '');
     function drawCompute(job, y0, rows) {
-        const pr = program('c' + job.formula + job.mode + (job.err ? 'e' : '') + (job.de ? 'd' : ''), SH.computeFS(job.formula, job.mode, job.err, job.de));
+        const pr = program(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn));
         const L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, job.buf.fbo);
@@ -473,6 +477,7 @@ function create(canvas) {
         gl.uniform3fv(L.u_custom, look.custom);
         gl.uniform1f(L.u_cycle, look.cycle);
         if (L.u_setCol) gl.uniform3fv(L.u_setCol, look.setCol || [0, 0, 0.015]);   // 6.2 Farbe der Menge
+        if (L.u_inMode) gl.uniform1i(L.u_inMode, look.inner || 0);                  // 6.4 Bunte Menge
     }
     // Integer-Texturen MÜSSEN NEAREST filtern, sonst 'incomplete' -> texelFetch liefert 0
     function nearest() {

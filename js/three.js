@@ -199,8 +199,9 @@ vec3 skyColor(vec3 d) {
 
 // ALP = 0 Standard, 1 + Schnee (helle Menge), 2 + Alpin-Look: die Standardvariante enthält den neuen Code nicht
 // (ungenutzte Zweige kosteten sonst ~40 % Bildzeit – der Compiler plant Register für den schlimmsten Fall)
-const TERRAIN_FS_SRC = (alp) => `#version 300 es
+const TERRAIN_FS_SRC = (alp, inc) => `#version 300 es
 #define ALP ${alp}
+#define INC ${inc ? 1 : 0}
 ${SH.COMMON}
 ${CAM}
 ${UNI}
@@ -254,6 +255,14 @@ ${SWITCH(k => `r = uvec4(texelFetch(u_i${k}, a, 0).r, texelFetch(u_i${k}, ivec2(
 }
 // Messhilfe (u_dbg 2, Verhalten 6.0): Anteil der Seefarbe im Ergebnis von colorAt – pro Ebene cLW, summiert cLakeW
 float cLW = 0.0, cLakeW = 0.0;
+// 6.4 Bunte Menge (Variante INC): Innenfarbe der Innen-Texel je Ebene (cInC, Gewicht cInW), in colorAt aufsummiert
+vec3 cInC = vec3(0.0), inAcc = vec3(0.0);
+float cInW = 0.0, inW = 0.0;
+void inTexels(vec4 v, vec4 wb, vec3 lakeCol) {
+    vec4 wi = wb * vec4(lessThan(v, vec4(0.0)));
+    cInW = wi.x + wi.y + wi.z + wi.w;
+    cInC = cInW > 0.0 ? wi.x * inCol(v.x, lakeCol) + wi.y * inCol(v.y, lakeCol) + wi.z * inCol(v.z, lakeCol) + wi.w * inCol(v.w, lakeCol) : vec3(0.0);
+}
 // Farbe einer Ebene: bilinear eingefärbt (wie 2D), Deckkraft = gefederter Rand × Einblendung
 vec4 cLayer(int i, vec2 P, vec3 lakeCol) {
     vec4 lt = u_lt[i], ls = u_ls[i];
@@ -270,6 +279,9 @@ vec4 cLayer(int i, vec2 P, vec3 lakeCol) {
     vec3 c01 = v.z < 0.0 ? lakeCol : exteriorColor(v.z), c11 = v.w < 0.0 ? lakeCol : exteriorColor(v.w);
     vec4 lw = vec4(lessThan(v, vec4(0.0)));
     cLW = mix(mix(lw.x, lw.y, f.x), mix(lw.z, lw.w, f.x), f.y);
+#if INC
+    inTexels(v, vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y), lakeCol);
+#endif
     return vec4(mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y), cov);
 }
 // 6.1: Außenfarben nur untereinander interpoliert (kein Farbmischen mit der Seefarbe pro Texel -> keine Pixeltreppe);
@@ -293,6 +305,9 @@ vec4 cLayerS(int i, vec2 P, vec3 lakeCol) {
     if (v.z >= 0.0) c += wb.z * exteriorColor(v.z);
     if (v.w >= 0.0) c += wb.w * exteriorColor(v.w);
     cLW = wo > 0.0 ? 0.0 : 1.0;
+#if INC
+    inTexels(v, wb, lakeCol);
+#endif
     return vec4(wo > 0.0 ? c / wo : lakeCol, cov);
 }
 bool covers(int i, vec2 P) { vec4 lt = u_lt[i], ls = u_ls[i]; vec2 tc = P * lt.x + lt.yz; return tc.x >= 0.0 && tc.y >= 0.0 && tc.x <= ls.x && tc.y <= ls.y; }
@@ -308,7 +323,11 @@ vec3 colorAt(vec2 P, float foot, vec3 lakeCol, vec3 noData) {
         if (!covers(i, P)) continue;
         vec4 c = u_smooth == 1 ? cLayerS(i, P, lakeCol) : cLayer(i, P, lakeCol);
         if (i < last) c.a *= smoothstep(0.1, 0.3, u_ls[i].w / max(foot, 1e-9));
-        acc += T * c.a * c.rgb; cLakeW += T * c.a * cLW; T *= 1.0 - c.a;
+        acc += T * c.a * c.rgb; cLakeW += T * c.a * cLW;
+#if INC
+        inAcc += T * c.a * cInC; inW += T * c.a * cInW;
+#endif
+        T *= 1.0 - c.a;
     }
     return acc + T * noData;
 }
@@ -340,6 +359,10 @@ void main() {
     float snowSet = smoothstep(0.35, 0.6, setL);
     if (setL > 0.02) lakeCol = mix(mix(u_setCol, u_zenith, 0.3), u_setCol * 0.86, snowSet);
     vec3 alb = colorAt(v_P, foot, lakeCol, u_haze);
+#if INC
+    // 6.4 Bunte Menge: See bzw. Gletscher in der Innenfarbe (Mittel der Innen-Texel an dieser Stelle)
+    if (inW > 1e-3) lakeCol = mix(lakeCol, inAcc / inW, 0.85);
+#endif
     // Alpin-Look: Höhenzonen statt Palette (relative Höhe im Bild -> funktioniert bei jedem Zoom)
     float snowAlp = 0.0, lakeAlp = 0.0, canopy = 1.0;
     vec3 nz = vec3(0.5);
@@ -433,6 +456,7 @@ void main() {
 }`;
 
 const TERRAIN_FS = TERRAIN_FS_SRC(0), TERRAIN_FS_S = TERRAIN_FS_SRC(1), TERRAIN_FS_X = TERRAIN_FS_SRC(2);
+const TERRAIN_FS_B = TERRAIN_FS_SRC(0, 1), TERRAIN_FS_SB = TERRAIN_FS_SRC(1, 1), TERRAIN_FS_XB = TERRAIN_FS_SRC(2, 1);
 
 // Rauschtextur (einmalig, 512×512 = 2 Texel pro Zelle, Periode 256 Zellen): Gradientenrauschen mit Hash mod 256
 const NOISE_FS = `#version 300 es
@@ -708,12 +732,13 @@ function create(R) {
     }
     // 6.3: Gelände-Variante zum Look; nur sie wird übersetzt. Ist eine neu gewählte Variante noch nicht fertig
     // (Look-Wechsel in 3D), zeichnet die bisherige weiter, bis der Treiber fertig ist – ohne zu blockieren.
-    const TERR = { t3terr: TERRAIN_FS, t3terrS: TERRAIN_FS_S, t3terrX: TERRAIN_FS_X };
-    const terrainKey = (look) => look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr');
+    // 6.4: Bunte Menge = eigene Variante (Suffix B) – nur dann wird der Zusatzcode übersetzt
+    const TERR = { t3terr: TERRAIN_FS, t3terrS: TERRAIN_FS_S, t3terrX: TERRAIN_FS_X, t3terrB: TERRAIN_FS_B, t3terrSB: TERRAIN_FS_SB, t3terrXB: TERRAIN_FS_XB };
+    const terrainKey = (look) => (look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr')) + (look && look.inner ? 'B' : '');
     function needs(look) {
         const k = terrainKey(look);
         const a = [['t3hb', HBUILD_FS], ['t3sky', SKY_FS], [k, TERR[k], TERRAIN_VS], ['t3blit', BLIT_FS], ['t3probe', PROBE_FS]];
-        if (k !== 't3terr') a.splice(2, 0, ['t3noise', NOISE_FS]);    // Schnee/Alpin: Rauschtextur
+        if (k !== 't3terr' && k !== 't3terrB') a.splice(2, 0, ['t3noise', NOISE_FS]);    // Schnee/Alpin: Rauschtextur
         return a;
     }
     let lastTerr = null;
@@ -721,12 +746,13 @@ function create(R) {
     function terrainProgram(look) {
         const k = terrainKey(look);
         T.waiting = false;
-        if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (k === 't3terr' || noiseTex) && (warmDone[k] || R.noWarm))) {
+        const plain = k === 't3terr' || k === 't3terrB';
+        if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (plain || noiseTex) && (warmDone[k] || R.noWarm))) {
             lastTerr = T.variant = k;
             return R.program(k, TERR[k], TERRAIN_VS);
         }
         // fertig übersetzt, aber noch nicht angewärmt: in diesem Bild anwärmen (vor dem Binden des Ziels), im nächsten nehmen
-        if (R.hasProgram(k) && (k === 't3terr' || noiseTex)) warmOne(k, TERR[k], TERRAIN_VS);
+        if (R.hasProgram(k) && (plain || noiseTex)) warmOne(k, TERR[k], TERRAIN_VS);
         T.waiting = true;
         return R.program(lastTerr, TERR[lastTerr], TERRAIN_VS);
     }
@@ -745,6 +771,7 @@ function create(R) {
     // Anwärmen: Ein fertig gelinktes Programm ist beim ersten Zeichnen noch nicht ganz fertig – der Treiber baut dann
     // die GPU-Pipeline (Mac/Metal: ~30–50 ms je Programm, alle im ersten 3D-Bild zusammen ~200 ms Standbild). Darum
     // vorher je Bild EIN Programm einmal unsichtbar in ein winziges Ziel mit denselben Formaten/Zuständen zeichnen.
+    // (Die Übergabe auf den Canvas übersetzt Metal im ersten 3D-Bild als eigene Variante – einmalig bei leerem Shadercache.)
     let warmT = null, warmDone = {};
     function warmTarget() {
         if (warmT) return warmT;
@@ -766,7 +793,7 @@ function create(R) {
         gl.deleteFramebuffer(warmT.hfb); gl.deleteTexture(warmT.h);
         warmT = null;
     }
-    function warmOne(key, src, vs, sub) {
+    function warmOne(key, src, vs) {
         const w = warmTarget(), pr = R.program(key, src, vs), U = pr.loc;
         gl.useProgram(pr.p);
         if (key === 't3hb') {
@@ -785,13 +812,11 @@ function create(R) {
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         } else if (key === 't3noise') {
             getNoise();
-        } else if (key === 't3blit') {      // Ziele ohne Tiefe (Mittelung, Mischziel); je Bild eine Mischart (eigene Pipeline)
+        } else if (key === 't3blit') {      // Mittelung im Stillstand (Ziel ohne Tiefe, konstantes Gewicht)
             gl.bindFramebuffer(gl.FRAMEBUFFER, w.nd.fb); gl.viewport(0, 0, 1, 1);
             gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src, 0);
             gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src2, 1);
-            if (sub < 2) gl.enable(gl.BLEND);
-            if (sub === 0) { gl.blendColor(0, 0, 0, 0.5); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA); }   // Mittelung
-            if (sub === 1) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);                                             // Überblendung
+            gl.enable(gl.BLEND); gl.blendColor(0, 0, 0, 0.5); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             gl.disable(gl.BLEND);
         } else {                            // Himmel (ohne Tiefentest) und Gelände (Gitter, Tiefentest)
@@ -809,15 +834,12 @@ function create(R) {
             }
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        warmDone[key + (sub ? ':' + sub : '')] = true;
+        warmDone[key] = true;
     }
     // nicht blockierend, höchstens ein Programm pro Aufruf (= pro Bild); true, wenn alles für den Look angewärmt ist
     T.warm = function (look) {
         if (R.noWarm) return true;
-        for (const n of needs(look)) {
-            for (let sub = 0; sub < (n[0] === 't3blit' ? 3 : 1); sub++)
-                if (!warmDone[n[0] + (sub ? ':' + sub : '')]) { warmOne(n[0], n[1], n[2], sub); return false; }
-        }
+        for (const n of needs(look)) if (!warmDone[n[0]]) { warmOne(n[0], n[1], n[2]); return false; }
         warmFree();
         return true;
     };
@@ -849,8 +871,6 @@ function create(R) {
     T.freeStill = function () {
         if (fboS) { gl.deleteFramebuffer(fboS.fb); gl.deleteTexture(fboS.tex); gl.deleteRenderbuffer(fboS.rb); fboS = null; }
         if (acc) { gl.deleteFramebuffer(acc.fb); gl.deleteTexture(acc.tex); acc = null; }
-        for (const t of [pres, cpy]) if (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); }
-        pres = cpy = null;
     };
     function makeTarget(w, h, depth) {
         let fbo;
@@ -1027,54 +1047,25 @@ function create(R) {
         // auf den Canvas (lineare Hochskalierung), alpha < 1 = Überblendung mit dem 2D-Bild
         T.present(src, src2, mix2, alpha);
     };
-    // gemitteltes bzw. letztes Bild auf den Canvas (ohne neu zu zeichnen).
-    // 6.3: per blitFramebuffer (lineare Hochskalierung, ohne eigenen Shader). Am Mac (ANGLE/Metal) übersetzt der Treiber
-    // für jedes Programm, das zum ersten Mal auf den Canvas (ohne Alphakanal) zeichnet, eine eigene Variante – für den
-    // winzigen Kopier-Shader ~170 ms Standbild im ersten 3D-Bild. Mischungen (Überblendung mit dem 2D-Bild beim
-    // Einschalten, Restanteil des Bewegungsbilds) entstehen darum vorher in einem eigenen Ziel (pres).
-    let pres = null, cpy = null;
-    function sized(t, w, h) {
-        if (t && t.w === w && t.h === h) return t;
-        if (t) { gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); }
-        return makeTarget(w, h, false);
-    }
-    function blitDraw(dst, w, h, a, b, mix2, alpha) {
-        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
-        gl.useProgram(pr.p);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, dst ? dst.fb : null);
-        gl.viewport(0, 0, w, h);
-        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, a.tex); gl.uniform1i(U.u_src, 0);
-        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, (b || a).tex); gl.uniform1i(U.u_src2, 1);
-        gl.uniform2f(U.u_target, w, h);
-        gl.uniform1f(U.u_alpha, alpha);
-        gl.uniform1f(U.u_mix2, b ? mix2 : 0);
-        if (alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.disable(gl.BLEND);
-    }
+    // gemitteltes bzw. letztes Bild auf den Canvas (ohne neu zu zeichnen)
+    // (6.3 kurz per blitFramebuffer – unter ANGLE/Metal räumt der Treiber den frisch getauschten Canvas-Puffer danach
+    // teils nachträglich leer; der kleine Kopier-Shader wie bis 6.2 ist der bewährte Weg)
     T.present = function (src, src2, mix2, alpha) {
         src = src || acc || fbo;
         if (!src) return;
         const W = R.canvas.width, H = R.canvas.height;
-        const fade = alpha !== undefined && alpha < 1, m2 = !!src2 && mix2 > 0;
-        let out = src;
-        if (fade || m2) {
-            pres = sized(pres, W, H);
-            if (fade) {
-                // 2D-Bild (in diesem Bild schon gezeichnet) übernehmen, 3D mit alpha darüber – wie bisher auf dem Canvas
-                cpy = sized(cpy, W, H);
-                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-                gl.bindTexture(gl.TEXTURE_2D, cpy.tex);
-                gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, W, H);
-                blitDraw(pres, W, H, cpy, null, 0, 1);
-            }
-            blitDraw(pres, W, H, src, m2 ? src2 : null, mix2, fade ? alpha : 1);
-            out = pres;
-        }
-        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, out.fb);
-        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-        gl.blitFramebuffer(0, 0, out.w, out.h, 0, 0, W, H, gl.COLOR_BUFFER_BIT, out.w === W && out.h === H ? gl.NEAREST : gl.LINEAR);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, W, H);
+        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, (src2 || src).tex); gl.uniform1i(U.u_src2, 1);
+        gl.uniform2f(U.u_target, W, H);
+        gl.uniform1f(U.u_alpha, alpha === undefined ? 1 : alpha);
+        gl.uniform1f(U.u_mix2, src2 ? mix2 : 0);
+        if (alpha !== undefined && alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.BLEND);
     };
     T.hasAcc = () => !!acc;
 
