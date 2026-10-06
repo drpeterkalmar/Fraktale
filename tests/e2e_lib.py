@@ -71,7 +71,16 @@ class App:
         url = BASE + ('?' + self.query if self.query else '') + (('#' + hash_) if hash_ else '')
         self.page.goto(url, wait_until='load')
         try:
-            self.page.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
+            try:
+                self.page.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
+            except Exception:
+                # Testumgebung: kam ein Skript nicht an (Server-Warteschlange), einmal neu laden
+                if not any('Failed to load resource' in x for x in self.errors):
+                    raise
+                print('Hinweis: Ressource nicht geladen (%s) – lade einmal neu' % [x for x in self.errors if 'Failed to load' in x][:1], flush=True)
+                self.errors.clear()
+                self.page.goto(url, wait_until='load')
+                self.page.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
         except Exception as e:
             # Diagnose: was steht auf der Seite (z. B. Fatal-Meldung), welche Skripte fehlen, welche Fehler kamen
             info = self.page.evaluate("() => ({ body: (document.body && document.body.innerText || '').slice(0, 300), "

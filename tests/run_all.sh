@@ -1,5 +1,6 @@
 #!/bin/sh
-# Alle Tests (lokaler Server auf :8472 nötig: python3 -m http.server 8472)
+# Alle Tests (lokaler Server auf :8472 nötig: python3 tools/serve.py 8472 – `python3 -m http.server` nimmt nur 5 wartende
+# Verbindungen an, bei 12 Skripten + Workern kam gelegentlich eins nicht an)
 # Flugtests im sichtbaren Fenster (FK_HEADED=1): headless drosselt macOS den Bildtakt auf ~8 Bilder/s, dann fliegt
 # der Flug zu langsam und die Zoom-Schwellen fallen (auch mit 6.5.1 gemessen, 06.10.2026)
 cd "$(dirname "$0")/.." || exit 1
