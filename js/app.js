@@ -716,6 +716,8 @@ function jobFinished(job, now) {
             else if (RC.dtEMA < 1.1 * (RC.vsync || 16.7) && t < (d === 2 ? 15 : 40) && d > 1) RC.previewDiv[k]--;
         }
         RC.estFull = t * job.stage * job.stage / (job.w * job.h) * (canvas.width * canvas.height);
+        // P2-7: die finale Variante (mit Fehlerschätzung) schon übersetzen lassen, solange die Vorschau steht
+        if (k === 'gpu') R.prewarmCompute({ formula: job.formula, mode: job.mode, err: S.precise && job.formula !== 5, de: job.de, inn: job.inn });
     } else {
         stats.lastJobMs = fr.ms;
         stats.gpuFullMs = fr.ms;

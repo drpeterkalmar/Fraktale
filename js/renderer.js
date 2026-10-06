@@ -274,8 +274,9 @@ function create(canvas) {
         const key = computeKey(job);
         if (R.broken[key]) { job.failed = true; job.done = true; return true; }
         try {
-            // 6.4: neue Rechen-Variante (Bunt eingeschaltet) erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job
-            if (job.inn && job.row < job.h && !programs[key] && !R.programReady(key, SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
+            // neue Rechen-Variante erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job (6.4 nur Bunt; P2-7 alle:
+            // erster Wechsel auf eine Formel, erste finale Stufe, „Menge glatt“ – vorher stand das Bild so lange)
+            if (job.row < job.h && !programs[key] && !R.programReady(key, SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
             while (job.row < job.h && job.q.length < R.maxInflight) {
                 const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
                 drawCompute(job, job.row, rows);
@@ -295,6 +296,8 @@ function create(canvas) {
 
     // 6.4: Variante mit Innen-Information (Bunte Menge) = Suffix 'i'
     const computeKey = (job) => 'c' + job.formula + job.mode + (job.err ? 'e' : '') + (job.de ? 'd' : '') + (job.inn ? 'i' : '');
+    // P2-7: Rechen-Variante vorab übersetzen lassen (z. B. die finale Stufe, während die Vorschau läuft); wartet nie
+    R.prewarmCompute = (v) => { if (!R.broken[computeKey(v)]) R.prewarm(computeKey(v), SH.computeFS(v.formula, v.mode, v.err, v.de, v.inn)); };
     function drawCompute(job, y0, rows) {
         const pr = program(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn));
         const L = pr.loc;

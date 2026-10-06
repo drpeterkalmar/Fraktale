@@ -1,0 +1,22 @@
+{
+ "version": "6.5.2",
+ "slowSimMs": 2000.0,
+ "doneS": 4.94,
+ "done": true,
+ "longTasksOver50": [
+  {
+   "t": 46.8,
+   "ms": 2064
+  },
+  {
+   "t": 2389.7,
+   "ms": 2027
+  }
+ ],
+ "maxFrameGapMs": 2064.5,
+ "links": [
+  57.9,
+  2399.7
+ ],
+ "errors": []
+}

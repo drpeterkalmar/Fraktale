@@ -25,4 +25,5 @@ run python3 tests/test_context_loss.py
 run python3 tests/test_fix_ref.py
 run python3 tests/test_shader_fail.py
 run python3 tests/test_bla_stall.py
+run python3 tests/test_shader_async.py
 exit $fail
