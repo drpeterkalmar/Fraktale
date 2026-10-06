@@ -313,6 +313,35 @@ const TRANSLATIONS_UI = {
         worker_failed: "バックグラウンド計算（Worker）が停止しました – アプリを再読み込みしてください。", shader_fallback: "グラフィックエラー – このセッションでは簡易な方法で表示します。", shader_3d_failed: "このグラフィックでは 3D 地形を表示できません（グラフィックエラー）。", gpu_wait: "グラフィックを再接続しています …", gpu_lost: "グラフィックカードとの接続が切れました。", gpu_stuck: "画像が表示されません – グラフィックが応答していません。", gpu_lost_hint: "解決しない場合：ブラウザを完全に閉じてから再度開いてください。", gpu_reload: "再読み込み", gpu_simple: "シンプル表示", webgl_fatal_title: "WebGL 2 が利用できません", webgl_fatal_text: "フラクタル・エクスプローラーには WebGL 2 対応ブラウザ（例：Android の最新 Chrome）が必要です。", webgl_fatal_hint: "グラフィックのクラッシュが繰り返されると Chrome は WebGL をブロックします：ブラウザを完全に再起動してください。状態は chrome://gpu で確認できます。" }, ko: { lang_name: "한국어",
         worker_failed: "백그라운드 계산(워커)이 실패했습니다 – 앱을 새로고침하세요.", shader_fallback: "그래픽 오류 – 이번 세션에서는 이 화면을 더 간단한 방식으로 표시합니다.", shader_3d_failed: "이 그래픽에서는 3D 지형이 작동하지 않습니다(그래픽 오류).", gpu_wait: "그래픽을 다시 연결하는 중 …", gpu_lost: "그래픽 카드 연결이 끊어졌습니다.", gpu_stuck: "화면이 나오지 않습니다 – 그래픽이 응답하지 않습니다.", gpu_lost_hint: "해결되지 않으면: 브라우저를 완전히 닫았다가 다시 여세요.", gpu_reload: "새로고침", gpu_simple: "간단한 그래픽", webgl_fatal_title: "WebGL 2를 사용할 수 없습니다", webgl_fatal_text: "프랙탈 탐색기에는 WebGL 2를 지원하는 브라우저(예: Android의 최신 Chrome)가 필요합니다.", webgl_fatal_hint: "그래픽 충돌이 반복되면 Chrome이 WebGL을 차단합니다: 브라우저를 완전히 다시 시작하세요. chrome://gpu에서 상태를 볼 수 있습니다." }
 };
+// 6.6 Flug auch in 2D: neue Texte in allen Sprachen (dazu die Flug-Texte, die bisher nur auf Deutsch/Englisch da waren)
+const TRANSLATIONS_FLY2D = {
+    de: { fly2d_title: "Flug – endlos in die Tiefe", fly2d_hint: "Flug: tippen = Pause, ziehen = lenken, ⛰ = in 3D weiterfliegen",
+          g_fly2d: "<strong>✈ Flug (auch ohne 3D):</strong> taucht ruhig am Rand der Menge entlang in die Tiefe. Tippen = Pause, ziehen = lenken, ⛰ = in 3D weiterfliegen." },
+    en: { fly2d_title: "Fly – endlessly into the depths", fly2d_hint: "Fly: tap = pause, drag = steer, ⛰ = continue in 3D",
+          g_fly2d: "<strong>✈ Fly (also without 3D):</strong> glides calmly along the edge of the set into the depths. Tap = pause, drag = steer, ⛰ = continue in 3D." },
+    hu: { fly: "Repülés", fly_stop: "Állj", fly_speed: "Tempó", fly_place: "Repülés", fly_paused: "Repülés szünetel – koppints a folytatáshoz", fly_on: "Indulás", fly_max: "Elérted a legmélyebb repülési szintet",
+          fly2d_title: "Repülés – végtelenül a mélybe", fly2d_hint: "Repülés: koppintás = szünet, húzás = kormányzás, ⛰ = folytatás 3D-ben",
+          g_fly2d: "<strong>✈ Repülés (3D nélkül is):</strong> nyugodtan merül a halmaz széle mentén a mélybe. Koppintás = szünet, húzás = kormányzás, ⛰ = folytatás 3D-ben." },
+    es: { fly: "Vuelo", fly_stop: "Parar", fly_speed: "Velocidad", fly_place: "Vuelo", fly_paused: "Vuelo en pausa – toca para seguir", fly_on: "¡Allá vamos!", fly_max: "Profundidad máxima de vuelo alcanzada",
+          fly2d_title: "Vuelo – sin fin hacia lo profundo", fly2d_hint: "Vuelo: tocar = pausa, arrastrar = dirigir, ⛰ = seguir en 3D",
+          g_fly2d: "<strong>✈ Vuelo (también sin 3D):</strong> se sumerge con calma a lo largo del borde del conjunto. Tocar = pausa, arrastrar = dirigir, ⛰ = seguir en 3D." },
+    fr: { fly: "Vol", fly_stop: "Arrêt", fly_speed: "Vitesse", fly_place: "Vol", fly_paused: "Vol en pause – touchez pour continuer", fly_on: "C’est parti", fly_max: "Profondeur de vol maximale atteinte",
+          fly2d_title: "Vol – sans fin vers les profondeurs", fly2d_hint: "Vol : toucher = pause, glisser = diriger, ⛰ = continuer en 3D",
+          g_fly2d: "<strong>✈ Vol (aussi sans 3D) :</strong> plonge calmement le long du bord de l’ensemble. Toucher = pause, glisser = diriger, ⛰ = continuer en 3D." },
+    pt: { fly: "Voo", fly_stop: "Parar", fly_speed: "Velocidade", fly_place: "Voo", fly_paused: "Voo em pausa – toque para continuar", fly_on: "Lá vamos nós", fly_max: "Profundidade máxima de voo alcançada",
+          fly2d_title: "Voo – sem fim rumo às profundezas", fly2d_hint: "Voo: tocar = pausa, arrastar = dirigir, ⛰ = continuar em 3D",
+          g_fly2d: "<strong>✈ Voo (também sem 3D):</strong> mergulha calmamente ao longo da borda do conjunto. Tocar = pausa, arrastar = dirigir, ⛰ = continuar em 3D." },
+    zh: { fly: "飞行", fly_stop: "停止", fly_speed: "速度", fly_place: "飞行", fly_paused: "飞行已暂停——点击继续", fly_on: "出发", fly_max: "已到达最深飞行高度",
+          fly2d_title: "飞行——无尽深入", fly2d_hint: "飞行：点击 = 暂停，拖动 = 转向，⛰ = 切换到 3D 继续飞",
+          g_fly2d: "<strong>✈ 飞行（无需 3D）：</strong>沿着集合边缘平稳地向深处潜入。点击 = 暂停，拖动 = 转向，⛰ = 切换到 3D 继续飞。" },
+    ja: { fly: "飛行", fly_stop: "停止", fly_speed: "速度", fly_place: "飛行", fly_paused: "飛行を一時停止 – タップで再開", fly_on: "出発", fly_max: "最深の飛行高度に到達しました",
+          fly2d_title: "飛行 – どこまでも深く", fly2d_hint: "飛行: タップ = 一時停止、ドラッグ = 操縦、⛰ = 3D で続ける",
+          g_fly2d: "<strong>✈ 飛行（3D なしでも）:</strong> 集合の縁に沿って静かに深みへ潜ります。タップ = 一時停止、ドラッグ = 操縦、⛰ = 3D で続ける。" },
+    ko: { fly: "비행", fly_stop: "정지", fly_speed: "속도", fly_place: "비행", fly_paused: "비행 일시정지 – 탭하면 계속", fly_on: "출발", fly_max: "가장 깊은 비행 고도에 도달했습니다",
+          fly2d_title: "비행 – 끝없이 깊은 곳으로", fly2d_hint: "비행: 탭 = 일시정지, 드래그 = 조종, ⛰ = 3D로 계속",
+          g_fly2d: "<strong>✈ 비행(3D 없이도):</strong> 집합의 가장자리를 따라 차분히 깊은 곳으로 내려갑니다. 탭 = 일시정지, 드래그 = 조종, ⛰ = 3D로 계속." }
+};
+for (const l of Object.keys(TRANSLATIONS_FLY2D)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_FLY2D[l]);
 (function () {
     for (const lang of Object.keys(TRANSLATIONS)) {
         TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS_UI.en, TRANSLATIONS[lang], TRANSLATIONS_UI[lang] || {});

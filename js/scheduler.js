@@ -101,7 +101,9 @@ root.FKScheduler = { create(ctx) {
         const vs = RC.vsync || 16.7;
         // 6.2: in 3D sind „Leerlauf"-Frames nie leer (3D-Bild, eingereihte GPU-Arbeit) – ihre Dauer darf das Budget nicht
         // aufblähen (sonst rechnete der Flug bis zu 8 Bildtakte pro Frame und ruckelte); dort keine Reserve über den Bildtakt
-        const cap = V3.on ? vs : 8 * vs;
+        // 6.6: ebenso im 2D-Flug – dort wird ohne Pause gerechnet, „Leerlauf“-Frames warten nur auf die GPU (gemessen: mit 8
+        // Bildtakten Reserve ab 10⁹ alle ~100 ms ein Bild von 40–75 ms, 52 fps; mit einem Bildtakt wie in 3D ruhig)
+        const cap = V3.on || (FLY.on && !FLY.paused) ? vs : 8 * vs;
         // 6.4 Flug: Rechenanteil garantieren – eine Vorschau soll in ~0,6 s fertig werden, auch wenn schon das 3D-Bild allein
         // länger als ein Bildtakt braucht (langsames Gerät, großer Bildschirm, hohe Bildwiederholrate). Sonst schrumpfte der
         // Häppchen-Regler die Rechnung auf 1024 Pixel pro Bild, keine Vorschau wurde mehr fertig, der Flug sah nur noch
@@ -384,6 +386,8 @@ root.FKScheduler = { create(ctx) {
         GOV.q = cov.q;
         const e = (GOV.kmin - cov.q) / GOV.kmin;
         // 6.4: im Flug darf die Bremse bis 30 % gehen (sonst 40 %) – lieber etwas langsamer tauchen als ins Leere
+        // (6.6 gemessen: im 2D-Flug jenseits der GPU-Tiefe bringt eine tiefere Grenze, 8 %, kein schärferes Bild – die CPU-Rechnung
+        // wird dort mit der Iterationszahl ohnehin nicht fertig: ⅓ Auflösung bei 30 %, ⅕ bei 8 %)
         const gmin = FLY.on && !FLY.paused ? 0.3 : GOV.min;
         if (e > 0.1) GOV.g = Math.max(gmin, GOV.g - dt * 3 * Math.min(1, e));
         else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);

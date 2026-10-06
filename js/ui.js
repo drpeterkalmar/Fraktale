@@ -442,12 +442,12 @@ function placeCard(p, opts) {
     const thumb = opts.thumb ? `url('${opts.thumb}')` : 'none';
     c.innerHTML = `<button class="place-main"><span class="thumb" style="background-image:${thumb}"></span>
         <span class="meta"><span class="name"></span><span class="zoom mono">${A.fmtZoom(+p.zoom, 'sci')}</span></span></button>
-        <div class="place-actions"><button class="chip tour">▶ ${t('tour')}</button>${A.can3d(p.formula || 0) ? `<button class="chip fly">✈ ${t('fly_place')}</button>` : ''}${opts.onDelete ? `<button class="chip del" aria-label="${t('delete')}">✕</button>` : ''}</div>`;
+        <div class="place-actions"><button class="chip tour">▶ ${t('tour')}</button>${A.canFly(p.formula || 0) ? `<button class="chip fly">✈ ${t('fly_place')}</button>` : ''}${opts.onDelete ? `<button class="chip del" aria-label="${t('delete')}">✕</button>` : ''}</div>`;
     c.querySelector('.name').textContent = name;
     c.querySelector('.place-main').addEventListener('click', () => { A.goTo(p); if (innerWidth < 700) closeSheet(); });
     c.querySelector('.tour').addEventListener('click', () => { A.startTour(p); closeSheet(); });
     const fb = c.querySelector('.fly');
-    if (fb) fb.addEventListener('click', () => { A.startFly(p); closeSheet(); });
+    if (fb) fb.addEventListener('click', () => { A.startFly(p); closeSheet(); });     // 6.6: im aktuellen Modus (2D oder 3D)
     if (opts.onDelete) c.querySelector('.del').addEventListener('click', opts.onDelete);
     return c;
 }
@@ -528,7 +528,7 @@ $('btn-install').addEventListener('click', async () => { if (!installEvt) return
 function openModal(kind) {
     const b = $('modal-body');
     const g = `<div class="info-section"><h3>${t('gestures_title')}</h3><ul class="gest">
-        <li>${t('g_pan')}</li><li>${t('g_pinch')}</li><li>${t('g_dtap')}</li><li>${t('g_2tap')}</li><li>${t('g_long')}</li><li>${t('g_tap')}</li><li>${t('g_3d')}</li><li>${t('g_desk')}</li></ul>
+        <li>${t('g_pan')}</li><li>${t('g_pinch')}</li><li>${t('g_dtap')}</li><li>${t('g_2tap')}</li><li>${t('g_long')}</li><li>${t('g_tap')}</li><li>${t('g_3d')}</li><li>${t('g_fly2d')}</li><li>${t('g_desk')}</li></ul>
         <p class="hint">${t('deep_note')}</p></div>`;
     if (kind === 'gestures') b.innerHTML = g;
     else {
@@ -558,12 +558,12 @@ window.addEventListener('keydown', (e) => {
         else A.V3.tilt = Math.max(0, Math.min(A.MAX_TILT, A.V3.tilt + (k === 'ArrowUp' ? 0.07 : -0.07)));
         A.RC.dirty = true; return;
     }
-    const pan = (dx, dy) => { const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
+    const pan = (dx, dy) => { A.stopFly(); const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
     switch (k) {
         case 'ArrowLeft': pan(-1, 0); break; case 'ArrowRight': pan(1, 0); break;
         case 'ArrowUp': pan(0, 1); break; case 'ArrowDown': pan(0, -1); break;
-        case 'PageUp': A.zoomAt(innerWidth / 2, innerHeight / 2, 2); break;
-        case 'PageDown': A.zoomAt(innerWidth / 2, innerHeight / 2, 0.5); break;
+        case 'PageUp': A.stopFly(); A.zoomAt(innerWidth / 2, innerHeight / 2, 2); break;
+        case 'PageDown': A.stopFly(); A.zoomAt(innerWidth / 2, innerHeight / 2, 0.5); break;
         case '+': case '=': A.changeIter(1.25); break;
         case '-': case '_': A.changeIter(0.8); break;
         default:
@@ -580,7 +580,7 @@ window.addEventListener('keydown', (e) => {
                 case 'l': { const ks = Object.keys(TRANSLATIONS); S.lang = ks[(ks.indexOf(S.lang) + 1) % ks.length]; $('sel-lang').value = S.lang; A.saveSettings(); applyI18n(); break; }
                 case 'escape': closeSheet(); closeModal(); break;
                 case 'd': toggle3d(); break;
-                case 'v': if (A.FLY.on) A.stopFly(); else A.startFly(); break;
+                case 'v': if (A.FLY.on) A.stopFly(); else A.startFly(); break;      // 6.6: fliegt im aktuellen Modus
             }
     }
 });
@@ -614,13 +614,19 @@ function prep3dProgress() {
 $('btn-3d').addEventListener('click', toggle3d);
 $('btn-3d').addEventListener('pointerdown', () => A.prewarm3d());
 $('btn-fly').addEventListener('click', () => { if (A.FLY.on) A.stopFly(); else A.startFly(); });
+$('btn-fly2d').addEventListener('click', () => A.startFly(undefined, { d3: false }));
 $('btn-north').addEventListener('click', () => A.north3d());
 $('r-height').addEventListener('input', (e) => { S.h3d = +e.target.value; A.RC.dirty = true; });
 $('r-height').addEventListener('change', () => A.saveSettings());
 $('r-speed').addEventListener('input', (e) => { S.flySpeed = +e.target.value; });
 $('r-speed').addEventListener('change', () => A.saveSettings());
+let hintFly2d = false;
 function sync3d() {
     const can = A.can3d(), on = A.V3.on && A.V3.dir >= 0, fly = A.FLY.on, prep = !!A.V3.prep && !A.V3.on;
+    // 6.6: ✈ auch in 2D (eigener Knopf); während eines 2D-Flugs zeigt die Flug-Leiste Stopp und Tempo
+    const fly2d = fly && !A.V3.on;
+    $('btn-fly2d').hidden = !A.canFly2d() || A.V3.on || fly;
+    if (fly2d && !hintFly2d) { hintFly2d = true; toast(t('fly2d_hint'), 3800); }
     $('btn-3d').hidden = !can;
     // 6.3: „3D wird vorbereitet …“ (Shader werden übersetzt, 2D bleibt bedienbar)
     const b3 = $('btn-3d');
@@ -633,7 +639,8 @@ function sync3d() {
     if (on && want3dHint) { want3dHint = false; hint3d = true; toast(t('d3_hint'), 3800); }
     $('btn-3d').classList.toggle('on', on);
     $('btn-3d').setAttribute('aria-pressed', String(on));
-    $('bar3d').hidden = !on;
+    $('bar3d').hidden = !on && !fly;
+    $('btn-north').hidden = !on;
     $('btn-fly').classList.toggle('on', fly);
     $('fly-icon').textContent = fly ? '■' : '✈';
     $('fly-label').textContent = t(fly ? 'fly_stop' : 'fly');

@@ -2,7 +2,7 @@
 
 **Live:** https://drpeterkalmar.github.io/Fraktale/ · installierbar als App (PWA), funktioniert offline.
 
-Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Handy flüssig bis in Tiefen von 10³⁰ (GPU) und 10²⁹⁰ (CPU) zoomt – ohne Kachel-Aufbau, ohne Flackern, mit mathematisch geprüften Bildern. Seit 6.1 sieht die Menge aus wie in den bekannten vorgerenderten Zoom-Videos: geschlossen, ruhig, mit glattem Rand. Seit 6.2 kann sie jede Farbe haben – in 3D wird Weiß zum Gletscher, der Alpin-Look macht daraus ein Alpenpanorama mit Wald oder See im Tal – und der Flug gleitet ruhig am Mengenrand in die Tiefe. Seit 6.4 kann das Innere auch bunt sein: jede Knospe, jedes Mini-Mandelbrot in einer eigenen Farbe.
+Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Handy flüssig bis in Tiefen von 10³⁰ (GPU) und 10²⁹⁰ (CPU) zoomt – ohne Kachel-Aufbau, ohne Flackern, mit mathematisch geprüften Bildern. Seit 6.1 sieht die Menge aus wie in den bekannten vorgerenderten Zoom-Videos: geschlossen, ruhig, mit glattem Rand. Seit 6.2 kann sie jede Farbe haben – in 3D wird Weiß zum Gletscher, der Alpin-Look macht daraus ein Alpenpanorama mit Wald oder See im Tal – und der Flug gleitet ruhig am Mengenrand in die Tiefe. Seit 6.4 kann das Innere auch bunt sein: jede Knospe, jedes Mini-Mandelbrot in einer eigenen Farbe. Seit 6.6 fliegt der ✈ Flug auch flach in 2D – wie ein endloses Zoom-Video, das ruhig am Rand der Menge in die Tiefe taucht.
 
 ![6.2 Alpin-Look: oben Standard, Mitte Wald, unten See (Zoom 1, 300×, 10⁶)](docs/img/vergleich_alpin_quer.jpg)
 
@@ -37,8 +37,10 @@ Oben rechts **⛰ (3D-Landschaft)** antippen: die aktuelle Ansicht richtet sich 
 | Doppeltipp / Zwei-Finger-Tipp | Zoom ×3 / ÷3 |
 | Leiste unten: **✈ Flug**, ⛰ Höhe, 🧭 Ausrichten | Flug starten/stoppen, Bergehöhe, zurück auf Norden + Standardneigung |
 
-**✈ Flug:** Die Kamera gleitet über die Landschaft und taucht dabei endlos in die Tiefe (Zoom + Vorwärtsflug); die Berge wirken in jeder Tiefe gleich hoch. Der **Zufallsflug** (✈ in der Leiste) gleitet seit 6.2 ruhig am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) – der Zoompunkt sitzt auf dem Rand, der Kurs dreht gedämpft (höchstens 17 °/s) mit leichter Schräglage; das Innere und leere Ebenen meidet er, aus einer leeren Fläche gleitet er erst zum nächsten Rand. **✈ Flug** an einem gespeicherten Ort (Orte-Tab) startet im Gesamtbild und landet exakt dort. **Tippen = Pause**, **nach links/rechts wischen = lenken**, ⏩-Regler = Tempo. Vergleich mit dem Flug bis 6.1: `?flyedge=0`, Drehrate: `?flyturn=` (rad/s). Bei Mandelbulb (schon 3D) und Buddhabrot gibt es keinen 3D-Schalter.
-Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, `D` = 3D an/aus, `V` = Flug.
+**✈ Flug in 3D:** Die Kamera gleitet über die Landschaft und taucht dabei endlos in die Tiefe (Zoom + Vorwärtsflug); die Berge wirken in jeder Tiefe gleich hoch. Der **Zufallsflug** (✈ in der Leiste) gleitet seit 6.2 ruhig am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) – der Zoompunkt sitzt auf dem Rand, der Kurs dreht gedämpft (höchstens 17 °/s) mit leichter Schräglage; das Innere und leere Ebenen meidet er, aus einer leeren Fläche gleitet er erst zum nächsten Rand. **✈ Flug** an einem gespeicherten Ort (Orte-Tab) startet im Gesamtbild und landet exakt dort – seit 6.6 im aktuellen Modus (in 2D flach, in 3D über die Landschaft). **Tippen = Pause**, **nach links/rechts wischen = lenken**, ⏩-Regler = Tempo. Drehrate: `?flyturn=` (rad/s). Bei Mandelbulb (schon 3D) und Buddhabrot gibt es keinen 3D-Schalter und keinen Flug.
+Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, `D` = 3D an/aus, `V` = Flug (im aktuellen Modus).
+
+**✈ Flug in 2D (seit 6.6):** Der runde **✈-Knopf** sitzt in der flachen Ansicht in der Daumenzone (hochkant unten rechts über der Leiste, quer unten links). Das Bild taucht ruhig und endlos in die Tiefe, der Zoompunkt gleitet am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) und die Bildmitte folgt ihm weich – ohne Berge und Neigung. Gesteuert wird mit derselben Randsuche wie in 3D, nur ohne Kurs: **Tippen = Pause**, **ein Finger ziehen = das Bild schieben** (der Flug taucht an der neuen Stelle weiter), zwei Finger beenden den Flug; im Flug zeigt die Leiste unten **■ Stopp** und das Tempo. **⛰ während des Flugs** wechselt nahtlos in den 3D-Flug, ⛰ aus im 3D-Flug fliegt flach weiter. Der 2D-Flug braucht keine 3D-Shader (nur eine kleine Sonde) und geht deshalb auch dort, wo die 3D-Landschaft nicht läuft. Er fliegt über die GPU-Tiefe 10³⁰ hinaus mit der CPU-Rechnung weiter – dort langsamer und etwas weicher. Vergleich mit 6.5 (Flug nur in 3D): `?fly2d=0`.
 
 **Desktop:** Mausrad = Zoom um den Mauszeiger, Ziehen = verschieben, Shift+Ziehen = Rechteck-Zoom.
 Tasten: `M J B T 3 N` Modi · `P` Palette · `R` Reset · `S` Bild · `F` Vollbild · `I` Oberfläche · `H` Hilfe · `L` Sprache · `+/−` Iterationen · Pfeile verschieben · `Bild↑/↓` Zoom · `Z` Rechteck-Zoom.
@@ -93,6 +95,13 @@ Details, Methode und Grenzfälle: `V5_BERICHT.md`. Tests laufen lokal mit `pytho
 Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 -m http.server 8000` und http://localhost:8000 öffnen. Kein Build-Schritt nötig.
 
 ## 📜 Änderungen
+
+**Version 6.6.0** – Flug auch in 2D
+- **✈ Flug in der flachen Ansicht:** neuer runder ✈-Knopf (hochkant unten rechts, quer unten links). Das Bild taucht wie ein endloses Zoom-Video am Rand der Menge in die Tiefe; dieselbe Randsuche wie im 3D-Flug (Zoompunkt am Rand, ruhiges Nachführen, vorausschauende Bremse, aus leeren Flächen zurück zum Rand), die Bildmitte folgt dem Zoompunkt weich. Tippen = Pause, ziehen = schieben, Tempo-Regler in der Leiste.
+- **Wechsel im Flug:** ⛰ im 2D-Flug → der Flug geht in 3D weiter; 3D aus im Flug → er fliegt flach weiter (bisher endete er).
+- **Orte:** „✈ Flug“ fliegt im aktuellen Modus und landet exakt; Taste `V` ebenso. Ohne 3D-Shader (nur die kleine Sonde) – also auch, wo die 3D-Landschaft nicht läuft.
+- Gemessen (M1, Pixel-7-Ansicht, sichtbares Fenster, 3 Startorte × 2 min): 2D-Flug ~57 Bilder/s, Rand in der Bildmitte 99,6 % der Zeit, nie „verloren“, ~37 Zehnerpotenzen in 2 min; über 10³⁰ fliegt er mit der CPU-Rechnung weiter (langsamer, weicher). Details: `FLUG2D_BERICHT.md`.
+- Flug-Texte jetzt auch auf Ungarisch, Spanisch, Französisch, Portugiesisch, Chinesisch, Japanisch und Koreanisch. A/B: `?fly2d=0` = Verhalten 6.5.
 
 **Version 6.5.4** – Aufräumen nach dem Code-Gutachten (keine neuen Funktionen)
 - **Links mit Dezimalkomma** (z. B. `x=-0,7453`) landen an der richtigen Stelle statt im Ursprung; Links mit absurd hoher Iterationszahl werden auf 500 000 begrenzt (verhindert minutenlange Grafik-Häppchen und Treiber-Abbrüche).

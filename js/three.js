@@ -1160,6 +1160,8 @@ function create(R) {
     // ---------------- Sonde (asynchron): Iterationswerte im Fenster ±win um den Fokus
     const PW = 48, PH = 48;
     let probeBuf = null, probeBusy = false;
+    // 6.6 (2D-Flug): Sonden-Programm nicht blockierend übersetzen – true, sobald es fertig ist
+    T.probeReady = () => { try { return R.programReady('t3probe', PROBE_FS); } catch (e) { return false; } };
     T.probe = function (list, focus, u, win) {
         if (probeBusy) return null;
         list = list.slice(0, N3);

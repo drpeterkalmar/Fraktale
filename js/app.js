@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.5.4';
+const APP_VERSION = '6.6.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -282,6 +282,7 @@ const gestures = self.FKGestures.attach(canvas, {
         if (!gestureBase) return;
         const b = gestureBase;
         if (V3.on) { gesture3d(b, ax0, ay0, ax, ay, scale, rot || 0, n || 1); return; }
+        if (FLY.on && gesture2dFly(b, ax0, ay0, ax, ay, scale, n || 1)) return;
         const c = anchoredCam(b.cam, ax0, ay0, ax, ay, scale);
         setCam(c.cx, c.cy, c.zoom);
     },
@@ -294,8 +295,8 @@ const gestures = self.FKGestures.attach(canvas, {
             inertia = { vx, vy, vs, ax: last ? last.ax : cssW / 2, ay: last ? last.ay : cssH / 2 };
     },
     onTap() { if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
-    onDoubleTap(x, y) { if (V3.on) { stopFly(); zoomAt(cssW / 2, cssH / 2, 3); } else zoomAt(x, y, 3); },
-    onTwoFingerTap(x, y) { if (V3.on) { stopFly(); zoomAt(cssW / 2, cssH / 2, 1 / 3); } else zoomAt(x, y, 1 / 3); },
+    onDoubleTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 3); else zoomAt(x, y, 3); },
+    onTwoFingerTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 1 / 3); else zoomAt(x, y, 1 / 3); },
     onOrbit(dx, dy, phase) {
         if (!V3.on) return;
         if (phase === 'start') { gestureBase = { cam: S.cam, tilt: V3.tilt, heading: V3.heading }; return; }
@@ -305,7 +306,7 @@ const gestures = self.FKGestures.attach(canvas, {
         RC.dirty = true;
     },
     onLongPress(x, y) {
-        if (S.formula !== 0 || V3.on) return;
+        if (S.formula !== 0 || V3.on || FLY.on) return;
         const [ox, oy] = screenOffset(x, y, S.cam.zoom);
         const jx = S.cam.cx + HP.fromNumber(ox), jy = S.cam.cy + HP.fromNumber(oy);
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
@@ -315,7 +316,8 @@ const gestures = self.FKGestures.attach(canvas, {
     },
     onWheel(x, y, f) {
         inertia = null; flight = null;
-        if (V3.on) { stopFly(); x = cssW / 2; y = cssH / 2; }
+        stopFly();
+        if (V3.on) { x = cssW / 2; y = cssH / 2; }
         if (!wheelAnim || Math.abs(wheelAnim.x - x) + Math.abs(wheelAnim.y - y) > 4) wheelAnim = { x, y, ls: 0 };
         wheelAnim.ls += Math.log(f);
     },
@@ -331,6 +333,21 @@ const gestures = self.FKGestures.attach(canvas, {
         if (S.rectMode) { S.rectMode = false; emit('settings'); }
     }
 });
+// 6.6 Gesten im 2D-Flug: ein Finger schiebt das Bild (der Flug taucht weiter, der Zoompunkt liegt danach auf einer neuen
+// Stelle), zwei Finger beenden den Flug und zoomen ab hier normal weiter. true = Geste erledigt
+function gesture2dFly(b, ax0, ay0, ax, ay, scale, n) {
+    if (n >= 2 || Math.abs(scale - 1) > 0.02) {
+        stopFly();
+        b.cam = anchoredCam(S.cam, ax, ay, ax0, ay0, 1 / scale);    // Ausgangskamera passend zur aktuellen Fingerlage
+        return false;
+    }
+    const px = b.px === undefined ? ax0 : b.px, py = b.py === undefined ? ay0 : b.py;
+    const c = anchoredCam(S.cam, px, py, ax, ay, 1);
+    setCam(c.cx, c.cy, c.zoom);
+    b.px = ax; b.py = ay;
+    flyPanned();
+    return true;
+}
 function zoomAt(x, y, f) {
     stopAnims();
     flyTo(null, null, S.cam.zoom * f, { anchor: { x, y }, duration: 0.42 });
@@ -501,6 +518,7 @@ function present(now, camChanged) {
     }
     const wasFading = RC.fading;
     const a = presentArgs(now);
+    probe2d(now, a.list);
     const anim = S.anim || RC.fading || wasFading;
     if (!camChanged && !anim && !RC.dirty) return;
     RC.dirty = false;
@@ -539,14 +557,14 @@ function set3d(on) {
     if (on && !V3.on && T3 && !ready3d()) { if (!V3.prep) { V3.prep = performance.now(); emit('3d'); } return; }
     if (on === V3.on && V3.dir === (on ? 1 : -1)) return;
     if (on) { V3.on = true; V3.dir = 1; V3.heading = 0; if (T3) T3.scale = baseScale3d(); }
-    else { V3.dir = -1; stopFly(); }
+    else { V3.dir = -1; if (!FLY2D) stopFly(); }       // 6.6: 3D aus im Flug -> der Flug läuft in 2D weiter
     invalidate(); emit('3d');
 }
 // P1-2: ein 3D-Programm ist auf diesem Treiber defekt -> Vorbereitung abbrechen bzw. 3D sofort aus (2D läuft weiter)
 function fail3d() {
     V3.prep = 0; V3.prepFly = null;
     if (V3.on) {
-        stopFly();
+        if (!FLY2D) stopFly();
         for (const l of RC.layers) T3.free(l);
         T3.freeStill();
         V3.on = false; V3.mix = 0; V3.dir = 0; V3.heading = 0; V3.accKey = null; V3.accPending = false;
@@ -566,7 +584,7 @@ function update3d(now, dt) {
         if (!ready3d()) { if (T3.failed) { fail3d(); return; } if (stats.frames % 6 === 0) emit('3dprep'); return; }
         const fl = V3.prepFly;
         V3.prep = 0; V3.prepFly = null;
-        if (fl) startFly(fl === true ? undefined : fl); else set3d(true);
+        if (fl) startFly(fl === true ? undefined : fl, { d3: true }); else set3d(true);
         return;
     }
     if (!V3.on) return;
@@ -589,8 +607,8 @@ function update3d(now, dt) {
         if (Math.abs(a - V3.L[0]) + Math.abs(b - V3.L[1]) > 1e-3) { V3.L = [a, b]; RC.dirty = true; }
         if (V3.cdfT && V3.cdf) for (let i = 0; i < 9; i++) { const d = (V3.cdfT[i] - V3.cdf[i]) * k; if (Math.abs(d) > 1e-4) { V3.cdf[i] += d; RC.dirty = true; } }
     }
-    if (FLY.on && !FLY.paused) flyUpdate(now, dt);
-    else if (Math.abs(FLY.roll || 0) > 1e-4 || FLY.om) { FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); FLY.om = 0; if (Math.abs(FLY.roll) <= 1e-4) FLY.roll = 0; RC.dirty = true; }   // Schräglage klingt aus
+    // (Flugschritt: frame(), auch in 2D)
+    if (!(FLY.on && !FLY.paused) && (Math.abs(FLY.roll || 0) > 1e-4 || FLY.om)) { FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); FLY.om = 0; if (Math.abs(FLY.roll) <= 1e-4) FLY.roll = 0; RC.dirty = true; }   // Schräglage klingt aus
     if (V3.northT) {
         const u = Math.min(1, (now - V3.northT) / 450), e = ease(u);
         const h0 = V3.northFrom[0] - Math.round(V3.northFrom[0] / (2 * Math.PI)) * 2 * Math.PI;
@@ -687,6 +705,21 @@ function present3d(now, camChanged, force) {
         const pr = T3.probe(L3, cam, 1.5 / cam.zoom, 2);
         if (pr) pr.then((pb) => { if (pb) { pb.cam = cam; pb.seq = (V3.probe ? V3.probe.seq || 0 : 0) + 1; V3.probe = pb; heightStats(pb); } });
     }
+}
+// 6.6 Sonde im 2D-Flug: dieselbe wie in 3D (T3.probe liest nur die Iterationspuffer), Fenster = sichtbares Bild. Ihr
+// Programm wird nicht blockierend übersetzt (bis dahin taucht der Flug geradeaus); 3D-Shader werden dafür nicht gebraucht.
+// Die Höhen-Normierung folgt in 2D direkt (sie dient hier nur der Detail-Wertung; in 3D gleitet sie weich nach)
+function probe2d(now, list) {
+    if (!FLY.on || FLY.paused || V3.on || !T3 || now - V3.probeT < 150) return;
+    if (!T3.probeReady()) return;
+    V3.probeT = now;
+    const cam = S.cam;
+    const pr = T3.probe(layers3d(list), cam, 1.5 / cam.zoom, Math.max(1, cssW / cssH) * 1.05);
+    if (pr) pr.then((pb) => {
+        if (!pb) return;
+        pb.cam = cam; pb.seq = (V3.probe ? V3.probe.seq || 0 : 0) + 1; V3.probe = pb; heightStats(pb);
+        if (!V3.on && V3.Lt) { V3.L = V3.Lt.slice(); if (V3.cdfT) V3.cdf = V3.cdfT.slice(); }
+    });
 }
 function heightStats(pb) {
     const hs = [];
@@ -799,6 +832,8 @@ function frame(now) {
     updateAnims(now, dt);
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
+    if (FLY.on && !canFly()) stopFly();
+    if (FLY.on && !FLY.paused) flyUpdate(now, dt);
     const camChanged = camDirty;
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
@@ -1054,7 +1089,7 @@ const { REF, ensureRef, refUsable, requestRefFor } = M_Refs;
 const M_Layers = self.FKLayers.create(CTX);
 const { addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers } = M_Layers;
 const M_Flight = self.FKFlight.create(CTX);
-const { FLY, flyStep, flyUpdate, north3d, pauseFly, startFly, stopFly } = M_Flight;
+const { FLY, FLY2D, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, startFly, stopFly } = M_Flight;
 const M_Scheduler = self.FKScheduler.create(CTX);
 const { governorUpdate, schedule } = M_Scheduler;
 // MODULE_LINK
@@ -1072,7 +1107,7 @@ const API = {
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
-    V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,
+    V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d,
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
     // 6.3: nur die Programme des aktuellen Looks, nicht blockierend (T3.ready pollt danach pro Bild)
@@ -1081,7 +1116,7 @@ const API = {
     // Test (6.3, tests/compare_3d_shader.py): Ebenen, Ansicht und Look des aktuellen 3D-Bilds – zum Zeichnen mit einer
     // zweiten 3D-Instanz (alter Shader) auf exakt denselben Daten
     args3d() { return { L3: layers3d(orderLayers(performance.now(), S.cam)), v: view3d(), lk: look(), o: { de: [0.25, 1.25] } }; },
-    view3dInfo() { return { on: V3.on, prep: !!V3.prep, prepInfo: T3 ? T3.prep || null : null, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode }, gpu: T3 ? T3.info() : null }; },
+    view3dInfo() { return { on: V3.on, prep: !!V3.prep, prepInfo: T3 ? T3.prep || null : null, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode, d3: FLY.d3 }, gpu: T3 ? T3.info() : null }; },
     // still = true: Bilder der Stillstands-Mittelung (volle Auflösung) statt Bewegungsbilder
     bench3d(n = 5, still = false) {
         const gl = R.gl, ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');

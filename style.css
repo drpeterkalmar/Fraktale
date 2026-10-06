@@ -98,6 +98,11 @@ body.immersive #bar3d { transform: translateX(-50%) translateY(24px); }
 .fly-btn { flex: none; min-width: 96px; font-size: 14px; color: #fff; background: rgba(167, 139, 250, 0.22); border-color: rgba(167, 139, 250, 0.55); }
 .fly-btn.on { background: rgba(244, 114, 182, 0.3); border-color: rgba(244, 114, 182, 0.7); }
 .bar-slider { flex: 1; display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 4px; }
+/* 6.6 Flug in 2D: runder Knopf in der Daumenzone (hoch: unten rechts über dem Dock; quer: unten links) */
+#btn-fly2d { position: fixed; z-index: 19; right: calc(10px + var(--sa-r)); bottom: calc(var(--dock-h) + 36px + var(--sa-b)); font-size: 21px; color: #fff; }
+#btn-fly2d:active { transform: scale(.92); }
+body.immersive #btn-fly2d { transform: translateY(24px); }
+body.sheet-open #btn-fly2d { opacity: 0; pointer-events: none; }
 .bar-slider input { flex: 1; min-width: 60px; accent-color: #a78bfa; height: 48px; }
 .place-actions .chip.fly { margin-left: 4px; }
 
@@ -266,6 +271,9 @@ html.deko #gpu-note { background: linear-gradient(160deg, rgba(255, 255, 255, 0.
     #corner { right: calc(92px + var(--sa-r)); flex-direction: row-reverse; align-items: flex-start; }
     #julia-chip { bottom: calc(12px + var(--sa-b)); }
     #bar3d { left: calc(12px + var(--sa-l)); transform: none; bottom: calc(12px + var(--sa-b)); width: min(380px, 46vw); }
+    #btn-fly2d { right: auto; left: calc(12px + var(--sa-l)); bottom: calc(12px + var(--sa-b)); }
+    body.julia-on #btn-fly2d { bottom: calc(70px + var(--sa-b)); }
+    body.sheet-open #btn-fly2d { opacity: 1; pointer-events: auto; }
     body.immersive #bar3d { transform: translateY(24px); }
     body.julia-on #bar3d { bottom: calc(70px + var(--sa-b)); }
     #toast, #share-pop { bottom: calc(16px + var(--sa-b)); }
