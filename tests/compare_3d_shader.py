@@ -20,7 +20,7 @@ SCALE = float(next((a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--
 ONLY = next((a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--only=')), None)   # hoch|quer
 VIEWS = [('ganz', '-0.6', '0', 1, 0), ('seepferd_300', '-0.7453', '0.1127', 300, 0),
          ('rand_1e9', '-0.743637214380908705', '0.131822306549061970', 1e9, 0), ('julia', '0', '0', 1.2, 1)]
-LOOKS = [('standard', {}), ('ohne_glatt', {'smooth': False}), ('weiss', {'setCol': 'white'}), ('dunkel', {'setCol': 'dark'}),
+LOOKS = [('standard', {}), ('weiss', {'setCol': 'white'}), ('dunkel', {'setCol': 'dark'}),
          ('alpin_wald', {'setCol': 'white', 'alpine': True, 'valley': 'forest'}), ('alpin_see', {'setCol': 'white', 'alpine': True, 'valley': 'lake'})]
 
 SETUP = r"""(src) => {
@@ -37,7 +37,7 @@ SETUP = r"""(src) => {
 DRAW = r"""([smooth, scale]) => {
   // neu, alt, neu mit EINEM Satz Argumente (Ebenen, Ansicht, Höhen-Normierung) – nichts ändert sich dazwischen
   const A = window.__fraktal, gl = A.R.gl;
-  const a = A.args3d(); if (smooth === false) a.o.smooth = false;
+  const a = A.args3d(); a.o.smooth = true;   // three.js bis 6.5.3 (Vergleichsstand) braucht den Schalter noch
   const out = [];
   for (const T of [A.T3, window.__T3old, A.T3]) {
     T.scale = scale;
@@ -56,7 +56,7 @@ DRAW = r"""([smooth, scale]) => {
 }"""
 BENCH = r"""([which, smooth, n]) => {
   const A = window.__fraktal, gl = A.R.gl, T = which === 'old' ? window.__T3old : A.T3;
-  const a = A.args3d(); if (smooth === false) a.o.smooth = false;
+  const a = A.args3d(); a.o.smooth = true;   // three.js bis 6.5.3 (Vergleichsstand) braucht den Schalter noch
   T.scale = 0.65;
   const sync = () => { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4)); };
   sync(); const t0 = performance.now();

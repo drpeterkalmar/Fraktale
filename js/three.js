@@ -42,7 +42,6 @@ const LAYERS = (iter) => `
 const float LAKE = 0.08;
 ${rep(N3, i => `uniform sampler2D u_h${i};`)}
 ${iter ? rep(N3, i => `uniform usampler2D u_i${i};`) : ''}
-uniform int u_smooth;     // 6.1: Ufer/Menge aus der Distanzschätzung (0 = Verhalten 6.0)
 uniform vec4 u_lt[${N3}];
 uniform vec4 u_ls[${N3}];
 uniform vec2 u_lh[${N3}];
@@ -150,7 +149,7 @@ float cloudShade(vec2 P) {
     return smoothstep(0.56, 0.82, c / sqrt(max(w2, 1e-3)) * 2.4 + 0.5);
 }
 out vec2 v_P;
-out float v_z, v_in, v_sh, v_shore;
+out float v_z, v_sh, v_shore;
 out vec3 v_V, v_N;
 void main() {
     float x = mix(-1.08, 1.08, a_uv.x), y = mix(u_yr.x, u_yr.y, a_uv.y);
@@ -174,7 +173,7 @@ void main() {
     float e = max(foot, 0.002);
     vec2 QP[3];
     QP[0] = P; QP[1] = P + vec2(e, 0.0); QP[2] = P + vec2(0.0, e);
-    int nq = u_smooth == 1 ? 3 : 1;
+    const int nq = 3;
     float sq[3];
     for (int k = 0; k < nq; k++) sq[k] = insideAt(QP[k], 0.25);   // Absenken zum See gehört zur Hangneigung
     float shore = sq[0];
@@ -192,8 +191,7 @@ void main() {
     // 6.1: Flächennormale der gezeichneten Geometrie pro Gitterpunkt (gleiche Höhenfunktion, Nachbarpunkte im
     // Abstand einer Gitterzelle) -> über die Dreiecke interpoliert: Felsfarbe an Steilhängen ohne Facetten
     // (nur die Großform wie hc: halb so viele Höhenabfragen, die Feinneigung liefert das Licht pro Pixel)
-    v_N = vec3(0.0, 0.0, 1.0);
-    if (u_smooth == 1) v_N = vec3(hc.x - hq4[2].x, hc.x - hq4[3].x, e);
+    v_N = vec3(hc.x - hq4[2].x, hc.x - hq4[3].x, e);
     // weiche Schatten pro Gitterpunkt: Strahl zur Sonne durchs (grob werdende) Höhenfeld
     float sh = 1.0;
     for (int i = 1; i <= u_shN; i++) {
@@ -207,7 +205,7 @@ void main() {
     vec3 v = Q - u_cam;
     float zc = dot(v, u_fwd);
     gl_Position = vec4(dot(v, u_rt) / u_tan.x + u_jit.x * zc, dot(v, u_up) / u_tan.y + u_jit.y * zc, u_depth.x * zc + u_depth.y, zc);
-    v_P = P; v_z = hz.x; v_in = hz.y; v_V = v;
+    v_P = P; v_z = hz.x; v_V = v;
 }`;
 
 const SKYCOL = `
@@ -301,7 +299,7 @@ vec3 wnoise(vec2 P, float foot, bool full) {
     return vec3(ws.x > 0.0 ? acc.x / ws.x : 0.5, ws.y > 0.0 ? acc.y / ws.y : 0.5, ws.z > 0.0 ? acc.z / ws.z : 0.5);
 }
 in vec2 v_P;
-in float v_z, v_in, v_sh, v_shore;
+in float v_z, v_sh, v_shore;
 in vec3 v_V, v_N;
 out vec4 fragColor;
 ${SH.PAL_GLSL}
@@ -312,8 +310,6 @@ ${SWITCH(k => `r = uvec4(texelFetch(u_i${k}, a, 0).r, texelFetch(u_i${k}, ivec2(
     vec4 v = uintBitsToFloat(r);
     return mix(mix(v, vec4(-1.0), lessThan(v, vec4(-1.5))), -v - 4.0, lessThanEqual(v, vec4(-3.0)));
 }
-// Messhilfe (u_dbg 2, Verhalten 6.0): Anteil der Seefarbe im Ergebnis von colorAt – pro Ebene cLW, summiert cLakeW
-float cLW = 0.0, cLakeW = 0.0;
 // 6.4 Bunte Menge (Variante INC): Innenfarbe der Innen-Texel je Ebene (cInC, Gewicht cInW), in colorAt aufsummiert
 vec3 cInC = vec3(0.0), inAcc = vec3(0.0);
 float cInW = 0.0, inW = 0.0;
@@ -321,27 +317,6 @@ void inTexels(vec4 v, vec4 wb, vec3 lakeCol) {
     vec4 wi = wb * vec4(lessThan(v, vec4(0.0)));
     cInW = wi.x + wi.y + wi.z + wi.w;
     cInC = cInW > 0.0 ? wi.x * inCol(v.x, lakeCol) + wi.y * inCol(v.y, lakeCol) + wi.z * inCol(v.z, lakeCol) + wi.w * inCol(v.w, lakeCol) : vec3(0.0);
-}
-// Farbe einer Ebene: bilinear eingefärbt (wie 2D), Deckkraft = gefederter Rand × Einblendung
-vec4 cLayer(int i, vec2 P, vec3 lakeCol) {
-    vec4 lt = u_lt[i], ls = u_ls[i];
-    vec2 tc = P * lt.x + lt.yz;
-    if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
-    float e = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
-    float cov = clamp(e / 10.0, 0.0, 1.0) * lt.w;
-    vec2 q = tc - 0.5;
-    vec2 fl = floor(q), f = q - fl;
-    ivec2 mx = ivec2(ls.xy) - 1;
-    ivec2 i0 = clamp(ivec2(fl), ivec2(0), mx), i1 = clamp(ivec2(fl) + 1, ivec2(0), mx);
-    vec4 v = iTex4(i, i0, i1);
-    vec3 c00 = v.x < 0.0 ? lakeCol : exteriorColor(v.x), c10 = v.y < 0.0 ? lakeCol : exteriorColor(v.y);
-    vec3 c01 = v.z < 0.0 ? lakeCol : exteriorColor(v.z), c11 = v.w < 0.0 ? lakeCol : exteriorColor(v.w);
-    vec4 lw = vec4(lessThan(v, vec4(0.0)));
-    cLW = mix(mix(lw.x, lw.y, f.x), mix(lw.z, lw.w, f.x), f.y);
-#if INC
-    inTexels(v, vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y), lakeCol);
-#endif
-    return vec4(mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y), cov);
 }
 // 6.1: Außenfarben nur untereinander interpoliert (kein Farbmischen mit der Seefarbe pro Texel -> keine Pixeltreppe);
 // die Menge legt main() pro Bildschirmpixel aus dem B-Kanal der Höhentextur darüber. Alle 4 Texel innen: Seefarbe.
@@ -363,7 +338,6 @@ vec4 cLayerS(int i, vec2 P, vec3 lakeCol) {
     if (v.y >= 0.0) c += wb.y * exteriorColor(v.y);
     if (v.z >= 0.0) c += wb.z * exteriorColor(v.z);
     if (v.w >= 0.0) c += wb.w * exteriorColor(v.w);
-    cLW = wo > 0.0 ? 0.0 : 1.0;
 #if INC
     inTexels(v, wb, lakeCol);
 #endif
@@ -380,9 +354,9 @@ vec3 colorAt(vec2 P, float foot, vec3 lakeCol, vec3 noData) {
     for (int i = 0; i < u_n3; i++) {
         if (T <= 0.01) break;
         if (!covers(i, P)) continue;
-        vec4 c = u_smooth == 1 ? cLayerS(i, P, lakeCol) : cLayer(i, P, lakeCol);
+        vec4 c = cLayerS(i, P, lakeCol);
         if (i < last) c.a *= smoothstep(0.1, 0.3, u_ls[i].w / max(foot, 1e-9));
-        acc += T * c.a * c.rgb; cLakeW += T * c.a * cLW;
+        acc += T * c.a * c.rgb;
 #if INC
         inAcc += T * c.a * cInC; inW += T * c.a * cInW;
 #endif
@@ -406,10 +380,9 @@ void main() {
     float h0 = h0v.x, hx1 = hq[1].x, hy1 = hq[2].x;
     vec3 n = normalize(vec3(h0 - hx1, h0 - hy1, dl));
     // 6.1: Mengen-Anteil pro Pixel (x: inkl. Saum -> Farbe, y: nur Menge -> Wasser), leicht nachgeschärft
-    vec2 setPx = vec2(0.0);
-    if (u_smooth == 1) setPx = vec2(smoothstep(0.15, 0.85, setB), smoothstep(0.3, 0.7, h0v.y));
+    vec2 setPx = vec2(smoothstep(0.15, 0.85, setB), smoothstep(0.3, 0.7, h0v.y));
     // steile Flächen des Netzes (Ufer, Kammflanken): Felsfarbe statt senkrecht gestreckter Bodentextur
-    vec3 gn = u_smooth == 1 ? normalize(v_N) : normalize(cross(dFdx(v_V), dFdy(v_V)));
+    vec3 gn = normalize(v_N);
     float steep = smoothstep(0.55, 0.2, abs(gn.z));
     vec3 lakeCol = mix(vec3(0.015, 0.025, 0.06), u_zenith, 0.5);
     // 6.2 Farbe der Menge: Schwarz = See wie bisher; dunkle Farben = getöntes Wasser; helle (Weiß) = matte Schnee-/
@@ -456,20 +429,19 @@ void main() {
         alb = zc;
     }
 #endif
-    if (u_smooth == 1) alb = mix(alb, lakeCol, setPx.x);
-    else if (u_alpine > 0) alb = mix(alb, lakeCol, smoothstep(0.45, 0.6, v_in));
-    // Wasser: 6.0 pro Gitterpunkt (v_in interpoliert), 6.1 pro Bildschirmpixel aus der Distanzschätzung
-    float water = (u_smooth == 1 ? setPx.y : smoothstep(0.45, 0.6, v_in)) * smoothstep(0.35, 0.6, v_shore);
+    alb = mix(alb, lakeCol, setPx.x);
+    // Wasser pro Bildschirmpixel aus der Distanzschätzung (6.1)
+    float water = setPx.y * smoothstep(0.35, 0.6, v_shore);
     // an fast senkrechten Wänden (> ~80°) Fels statt gestreckter Ufermaske; die Seeschüssel selbst bleibt spiegelnd
-    if (u_smooth == 1) water *= smoothstep(0.08, 0.22, abs(gn.z));
-    float snowM = (u_smooth == 1 ? setPx.x : smoothstep(0.45, 0.6, v_in)) * snowSet;   // Schneefläche der Menge
+    water *= smoothstep(0.08, 0.22, abs(gn.z));
+    float snowM = setPx.x * snowSet;   // Schneefläche der Menge
     water *= 1.0 - snowSet;
     if (u_dbg == 1) { fragColor = vec4(vec3(water), 1.0); return; }
     if (u_dbg == 3) { fragColor = vec4(steep, setPx.x, smoothstep(0.35, 0.6, v_shore), 1.0); return; }   // Messhilfe: Fels/Menge/See
-    if (u_dbg == 2) { float sm = u_smooth == 1 ? setPx.x : cLakeW; fragColor = vec4(vec3(sm), 1.0); return; }
+    if (u_dbg == 2) { fragColor = vec4(vec3(setPx.x), 1.0); return; }
     // Fels: einfarbig (Palette gedämpft) mit leichter Schichtung nach Höhe – keine gestreckte Bodentextur
     // (6.1: Schichtung gröber und schwächer – an den nun glatt schattierten Steilwänden flimmerte das feine Muster)
-    vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (u_smooth == 1 ? 0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0) : 0.55 + 0.12 * sin(v_z / max(u_hn.z, 1e-4) * 40.0));
+    vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0));
     if (u_alpine == 0) alb = mix(alb, rock, steep * u_mix * (1.0 - snowM));
     float sh = v_sh;
     float dif = max(dot(n, u_sun), 0.0);
@@ -1058,7 +1030,7 @@ function create(R) {
 
     // ---------------- Zeichnen
     // list: Ebenen (schärfste zuerst, max. N3) · v: { tilt, heading, height, mix, focus{cx,cy}, u, L[2], time }
-    // o (6.1): { smooth, de:[lo,hi], still:{ n, N, mix2 } | null }. still = Mittelung im Stillstand: Bild n wird
+    // o (6.1): { de:[lo,hi], still:{ n, N, mix2 } | null }. still = Mittelung im Stillstand: Bild n wird
     // in voller Auflösung mit Subpixel-Versatz (Halton 2,3) gezeichnet und gleitend gemittelt (Gewicht 1/(n+1),
     // ab N 1/N – nur nötig, solange sich die Farben animieren); mix2 = Restanteil des letzten Bewegungsbilds
     // (weiche Überblendung statt hartem Wechsel auf die volle Auflösung).
@@ -1069,7 +1041,6 @@ function create(R) {
         const still = o.still || null;
         const ss = still ? (still.scale || 1) : T.scale;
         const sw = Math.max(16, Math.round(W * ss)), shh = Math.max(16, Math.round(H * ss));
-        const sm = !!o.smooth;
         list = list.slice(0, N3);
         for (const l of list) if (!l.h3d || (T.h8 && (!l.h3d.L || Math.abs(l.h3d.L[0] - v.L[0]) + Math.abs(l.h3d.L[1] - v.L[1]) > 0.05 * (v.L[1] - v.L[0])))) buildHeight(l, look, v.L);
         layerUniforms(list, v.focus, v.u);
@@ -1122,7 +1093,6 @@ function create(R) {
         gl.uniform1i(U.u_deko, dk > 0 ? 1 : 0); gl.uniform1f(U.u_dk, dk); gl.uniform1f(U.u_ctime, v.ctime || 0);
         gl.uniform1f(U.u_mix, v.mix);
         gl.uniform1f(U.u_time, v.time || 0);
-        gl.uniform1i(U.u_smooth, sm ? 1 : 0);
         gl.uniform1i(U.u_alpine, look.alpine || 0);
         noiseUniforms(U, v.focus, v.u);
         if (dk > 0) cloudUniforms(U, v.focus, v.u);

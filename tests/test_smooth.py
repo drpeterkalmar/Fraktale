@@ -8,7 +8,6 @@ Prüft:  * Seepferdchen-Tal 300× bei 3000 Iterationen: Farbsprünge benachbarte
         * Iterationspuffer unverändert: readFront-Werte mit und ohne Distanzschätzung identisch
         * 3D: Stillstands-Mittelung läuft bis N Bilder, danach 0 Zeichenaufrufe (GPU ruht, Farbanimation aus);
           Akku-Stufe = 4 Bilder
-        * ?aa=0 = Verhalten 6.0 (keine Distanzschätzung, keine Mittelung)
         * iPhone-Ersatzpfad ohne Float-Renderziel (8-bit-Höhen) + quer: 3D mit Glättung ohne Fehler
 Aufruf: python3 tests/test_smooth.py
 """
@@ -137,15 +136,6 @@ def main():
         pg.evaluate("() => { const A = window.__fraktal; A.S.quality = 'balanced'; A.set3d(false); }"); time.sleep(1.0)
         res['errors'] = a.errors
         need(not a.errors, f'0 Fehler (hoch) {a.errors[:3]}')
-        a.close()
-        # --- ?aa=0 = 6.0
-        a = App(p, query='nosw&noanim&aa=0').open(); pg = a.page
-        a.set_view(*SEA); a.wait_done(120)
-        pg.evaluate("() => window.__fraktal.set3d(true)"); time.sleep(1.5); a.wait_done(120); time.sleep(1.0)
-        v = pg.evaluate("() => { const A = window.__fraktal; return { de: A.deActive(), aa: A.aaFrames(), still: A.still3dInfo().key, gpu: A.view3dInfo().gpu }; }")
-        res['aa0'] = v
-        need(not v['de'] and v['aa'] == 0 and not v['still'] and v['gpu']['still'] is None, f'?aa=0: keine Distanzschätzung/Mittelung {v}')
-        need(not a.errors, f'0 Fehler (?aa=0) {a.errors[:3]}')
         a.close()
         # --- iPhone-Ersatzpfad (kein Float-Renderziel) + quer
         a = App(p, landscape=True)

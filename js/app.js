@@ -42,18 +42,14 @@ const S = {
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
     chrome: true,
 };
-// 6.1 „glatt wie Video": A/B-Regler per URL
-//   ?aa=0     Verhalten 6.0.0 komplett (keine Distanzschätzung, 3D-Ufer/Licht wie 6.0, keine Mittelung)
-//   ?aa=N     Zahl der gemittelten 3D-Bilder im Stillstand (Standard 8, Akku 4)
-//   ?de=0     nur die Distanzschätzung aus        ?dew=W  Saumbreite in Pixeln (Standard 1)
-const AA0 = Q.get('aa') === '0';
 // 6.5 Deko (Glas, weiche Übergänge, 3D-Himmel/Dunst/Wasser): ?deko=0 = Aussehen bis 6.4.1 (A/B-Vergleich)
 const DEKO = Q.get('deko') !== '0';
 document.documentElement.classList.toggle('deko', DEKO);
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
-const DEW = Q.has('dew') ? Math.max(0.05, +Q.get('dew') || 1) : 1;
-function deActive() { return !AA0 && S.deOn && Q.get('de') !== '0' && S.formula !== 5; }
-function aaFrames() { if (AA0 || !S.aa) return 0; const n = Q.has('aa') ? +Q.get('aa') : (S.quality === 'eco' ? 4 : 8); return Math.max(0, Math.min(64, n | 0)); }
+// 6.1 „glatt wie Video": Menge glatt (Distanzschätzung), Glatte Kanten = gemittelte 3D-Bilder im Stillstand (8, Akku 4)
+// (die A/B-Regler ?aa=0/N, ?de=0, ?dew sind seit 6.5.4 entfernt)
+function deActive() { return S.deOn && S.formula !== 5; }
+function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
 
@@ -1256,7 +1252,7 @@ function presentArgs(now) {
     for (const l of RC.layers) if (!l.shown) { l.shown = true; l.t0 = now; }
     const list = orderLayers(now, S.cam);
     RC.fading = list.some(l => l.alpha < 1 && !l.prefetch);   // Vorausberechnetes liegt unter dem fertigen Bild
-    return { list, opts: { feather: FEATHER * dpr, recon: RECON, de: deActive() ? [0.25 * DEW, 1.25 * DEW] : null } };
+    return { list, opts: { feather: FEATHER * dpr, recon: RECON, de: deActive() ? [0.25, 1.25] : null } };
 }
 // blendet gerade eine sichtbare Ebene ein (auch eine, die noch nie gezeigt wurde)?
 function isFading(now) {
@@ -1435,7 +1431,7 @@ function present3d(now, camChanged, force) {
     const alpha = Math.min(1, v.mix / 0.25);
     const lk = look();
     const N = V3.testStill ? V3.testStill.N : aaFrames();
-    const o = { smooth: !AA0, de: [0.25 * DEW, 1.25 * DEW] };
+    const o = { de: [0.25, 1.25] };
     let drawn = true;
     const key = N > 0 && alpha >= 1 && !V3.dir && !(FLY.on && !FLY.paused) && !gestures.active() ? still3dKey(L3, v, lk) : null;
     if (key !== V3.accKey) { V3.accKey = key; V3.accN = 0; V3.keyT = now; }
@@ -2099,7 +2095,7 @@ function init() {
 
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
-    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, AA0,
+    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
@@ -2111,16 +2107,16 @@ const API = {
     layers3dInfo() { const now = performance.now(); return layers3d(orderLayers(now, S.cam)).map(l => ({ stage: l.stage, scale: l.scale / (3 / (S.cam.zoom * canvas.height)), alpha: +l.alpha.toFixed(2), w: l.buf.w, h: l.buf.h, h3d: !!l.h3d, out: !!l.outT, front: l === RC.front })); },
     // Test (6.3, tests/compare_3d_shader.py): Ebenen, Ansicht und Look des aktuellen 3D-Bilds – zum Zeichnen mit einer
     // zweiten 3D-Instanz (alter Shader) auf exakt denselben Daten
-    args3d() { return { L3: layers3d(orderLayers(performance.now(), S.cam)), v: view3d(), lk: look(), o: { smooth: !AA0, de: [0.25 * DEW, 1.25 * DEW] } }; },
+    args3d() { return { L3: layers3d(orderLayers(performance.now(), S.cam)), v: view3d(), lk: look(), o: { de: [0.25, 1.25] } }; },
     view3dInfo() { return { on: V3.on, prep: !!V3.prep, prepInfo: T3 ? T3.prep || null : null, mix: V3.mix, tilt: V3.tilt, heading: V3.heading, L: V3.L, fly: { on: FLY.on, paused: FLY.paused, mode: FLY.mode }, gpu: T3 ? T3.info() : null }; },
     // still = true: Bilder der Stillstands-Mittelung (volle Auflösung) statt Bewegungsbilder
-    bench3d(n = 5, still = false, smooth) {
+    bench3d(n = 5, still = false) {
         const gl = R.gl, ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
         if (!ext || !V3.on) return Promise.resolve(null);
         const qs = [];
         const L3 = layers3d(orderLayers(performance.now(), S.cam)), v = view3d(), lk = look();
         for (let i = 0; i < n; i++) { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
-            T3.render(L3, v, lk, undefined, { smooth: smooth === undefined ? !AA0 : !!smooth, de: [0.25 * DEW, 1.25 * DEW], still: still ? { n: i, N: 8, mix2: 0 } : null });
+            T3.render(L3, v, lk, undefined, { de: [0.25, 1.25], still: still ? { n: i, N: 8, mix2: 0 } : null });
             gl.endQuery(ext.TIME_ELAPSED_EXT); qs.push(q); }
         V3.accKey = null;
         return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
