@@ -129,10 +129,16 @@ def case_d(p):
     t, st = a.wait_done(60)
     check(st['done'], '2D rechnet weiter')
     # Flug-Start mit defektem Gelände ebenso
-    pg.evaluate("() => window.__fraktal.startFly()")
+    pg.evaluate("() => window.__fraktal.startFly(undefined, { d3: true })")
     time.sleep(2.0)
     v = pg.evaluate("() => window.__fraktal.view3dInfo()")
     check(not v['on'] and not v['fly']['on'], 'Flug startet nicht in kaputtes 3D')
+    # 6.6: der 2D-Flug braucht kein Gelände – er geht auch, wenn 3D auf diesem Treiber defekt ist
+    pg.evaluate("() => window.__fraktal.startFly(undefined, { d3: false })")
+    time.sleep(2.0)
+    v = pg.evaluate("() => window.__fraktal.view3dInfo()")
+    check(not v['on'] and v['fly']['on'] and not v['fly']['d3'], '2D-Flug geht trotz defektem 3D')
+    pg.evaluate("() => window.__fraktal.stopFly()")
     check(not a.errors, 'keine Fehler %s' % a.errors[:3])
     a.close()
 

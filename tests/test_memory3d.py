@@ -18,7 +18,7 @@ with sync_playwright() as p:
     a = App(p).open()
     pg = a.page
     a.wait_done(60)
-    pg.evaluate("() => window.__fraktal.startFly()")
+    pg.evaluate("() => window.__fraktal.startFly(undefined, { d3: true })")     # 6.6: ohne Angabe flöge er in 2D
     ok3d = a.wait_3d(60)
     t0 = time.time()
     samples = []

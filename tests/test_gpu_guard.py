@@ -167,7 +167,7 @@ def case_e(p):
     print('(e) Verlust mitten im 3D-Flug')
     a = App(p).open()
     pg = a.page
-    pg.evaluate("() => window.__fraktal.startFly()")
+    pg.evaluate("() => window.__fraktal.startFly(undefined, { d3: true })")     # 6.6: ohne Angabe flöge er in 2D
     check(a.wait_3d(60), '3D-Flug läuft')
     time.sleep(3)
     z0 = pg.evaluate("() => window.__fraktal.S.cam.zoom")

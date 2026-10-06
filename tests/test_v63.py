@@ -113,7 +113,8 @@ def main():
         res['cancel'] = s3
         need(not s3['on'] and not s3['prep'] and 'prep' not in s3['cls'], f'zweites Antippen bricht ab, 2D bleibt: {s3}')
         # Weiß = noch nicht übersetzte Gelände-Variante -> ✈ trifft auf eine laufende Vorbereitung
-        pg.evaluate("() => { const A = window.__fraktal; A.S.setCol = 'white'; A.emit('settings'); A.startFly(); }"); time.sleep(0.2)
+        # (seit 6.6 fliegt startFly() ohne Angabe im aktuellen Modus – hier also ausdrücklich der 3D-Flug wie der ✈ der 3D-Leiste)
+        pg.evaluate("() => { const A = window.__fraktal; A.S.setCol = 'white'; A.emit('settings'); A.startFly(undefined, { d3: true }); }"); time.sleep(0.2)
         s4 = info(pg)
         tw = time.time()
         while time.time() - tw < 10 and not info(pg)['fly']: time.sleep(0.1)
