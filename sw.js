@@ -1,7 +1,7 @@
 // sw.js — Service Worker: offline-fähig, sauberes Cache-Busting.
 // Regeln (Lehre aus v4: Browser cachen Worker-Skripte hartnäckig):
 //  * Jede Ressource wird mit ?v=VERSION geladen; der Cache-Name enthält die Version.
-//  * Neue Version -> neuer sw.js-Inhalt -> Browser installiert neu, alte Caches werden gelöscht.
+//  * Neue Version -> neuer sw.js-Inhalt -> Browser installiert neu; aktiv (und alte Caches gelöscht) erst beim nächsten Start.
 //  * HTML (Navigation) immer zuerst frisch aus dem Netz (no-cache), offline aus dem Cache.
 //  * VERSION MUSS APP_VERSION in js/app.js entsprechen (tests/test_release.py prüft das).
 const VERSION = '6.5.2';
@@ -37,7 +37,9 @@ const ASSETS = [
 ].map(u => u + Q).concat(['./', 'index.html']);
 
 self.addEventListener('install', (e) => {
-    e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+    // kein skipWaiting (P2-1): eine neue Version übernimmt erst beim nächsten Start – eine laufende Seite behält ihre
+    // Dateien und ihren Cache (vorher übernahm das Update sofort und löschte den alten Cache unter der laufenden Seite)
+    e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));
 });
 self.addEventListener('activate', (e) => {
     e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('fraktale-') && k !== CACHE).map(k => caches.delete(k))))

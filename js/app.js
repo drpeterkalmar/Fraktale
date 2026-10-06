@@ -536,6 +536,8 @@ function cpuPool() {
         const w = new Worker('js/tile-worker.js' + V);
         w.busy = 0;
         w.onmessage = onCpuMessage;
+        // P2-1: Worker-Skript fehlt/defekt (z. B. offline nach einem Update) -> laufende Arbeit abbrechen statt ewig zu warten
+        w.onerror = (e) => { console.warn('CPU-Worker:', e.message || e); e.preventDefault && e.preventDefault(); w.busy = 0; cancelJob(); cancelFix(); toast(t('worker_failed'), 4500); };
         cpuWorkers.push(w);
         if (REF.cur && REF.cur.orbit64) sendRefTo(w, REF.cur);
     }
@@ -2147,6 +2149,7 @@ function init() {
     if (Q.has('nowarm')) R.noWarm = true;      // 6.3 A/B: 3D-Programme vor dem Einblenden nicht anwärmen
     if (Q.get('inflight')) R.maxInflight = +Q.get('inflight');
     resize();
+    cpuPool();      // P2-1: Worker gleich beim Start laden (im Leerlauf kostenlos) – ein späteres Update kann sie nicht mehr entziehen
     requestAnimationFrame(frame);
 }
 
