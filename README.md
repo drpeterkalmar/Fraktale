@@ -94,6 +94,16 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 6.5.3** – Fehlerkorrekturen aus dem Code-Gutachten (keine neuen Funktionen)
+- **Zwei-Finger-Tipp (÷3)** wird zuverlässig erkannt – vorher ging er verloren, sobald der zweite Finger beim Auflegen minimal zitterte (auf echten Touchscreens fast immer).
+- **Exaktes Bild hängt nicht mehr:** Kam mitten in der exakten Nachrechnung eine neue Referenz an, drehte der Fortschritt endlos bei 50 %. Jetzt wird neu gerechnet (im Test 3,5 s statt nie).
+- **Kein Dauer-Weichbild mehr nach schnellem Zoomen:** Nach einer verworfenen Vorausrechnung wartete die App ewig auf eine BLA-Tabelle; das finale Bild kam nie (im Test 1,7 s statt nie).
+- **Grafikfehler auf fremden Treibern:** Lässt sich eine Shader-Variante nicht übersetzen, fällt die App für diese Sitzung auf einen einfacheren Weg zurück (Bunt aus, Rechnung auf dem Prozessor bzw. 3D aus) und meldet es – statt bei jedem Start einzufrieren.
+- **Formelwechsel ohne Hänger:** neue 2D-Rechen-Varianten werden im Hintergrund übersetzt (auf langsamen Treibern wie Windows/Direct3D stand das Bild sonst Sekunden).
+- **Update ohne Mischbetrieb:** Eine neue Version übernimmt erst beim nächsten Start; die Rechenhelfer laden beim Start, fällt einer aus, gibt es eine Meldung statt eines ewigen Spinners.
+- **Weniger Grafikspeicher in 3D** (30-s-Flug: 155 → 123 MB, höchstens 6 Ebenen, Rechenpuffer ≤ 1600 px Kante) und kleinere CPU-Kacheln bei vielen Iterationen (schnelleres Umschalten). Bilder in 2D bitgleich wie 6.5.2.
+- Sicherheitsnetz: Unit-Tests in purem Node, Bildvergleich (bitgleich), Prüfung vor jedem Deploy (GitHub Actions). Details: `V653_BERICHT.md`.
+
 **Version 6.5.2** – Nie mehr eine leere oder weiße Fläche, wenn die Grafik ausfällt
 - **Grafik-Verbindung verloren** (Treiber-/GPU-Absturz, App-Wechsel am Handy): nach 1,5 s erscheint „Grafik wird neu verbunden …“; kommt sie wieder, ist das Bild sofort zurück. Kommt sie nach 6 s nicht (Chrome sperrt WebGL nach wiederholten Grafik-Abstürzen), zeigt die App „Die Grafikkarte hat die Verbindung verloren“ mit **Neu laden** – man landet am selben Ort, in derselben Welt und Zoomstufe.
 - **Start-Wächter:** Kommt nach 12 s (Handy 20 s) kein erstes Bild, erscheint dieselbe Art Meldung mit **Neu laden** und **Einfache Grafik** (CPU-Rechenweg, Auflösung „Akku“, nur für diese Sitzung).
