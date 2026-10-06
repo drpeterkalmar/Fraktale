@@ -9,7 +9,8 @@ Ansichten (Pixel 7 hoch, ?nosw&noanim):
             (zwei Läufe desselben Stands: bis 73/255 Blockabweichung) – darum wird hier nur der bitgleiche Rechenpuffer
             mit fester Höhen-Normierung, Zeit und Deko gezeichnet (args3d()-Ansicht/Look): bitgenau reproduzierbar.
 Je Ansicht: SHA-256 der Rohbytes von readFront() (Iterationswerte, Float32) und readFrontDE() (Distanzcodes, Uint8),
-dazu Größe und eine Stichprobe (jeder 4999. Wert) zur Diagnose. Ablage tests/snapshots/<name>.json – die Rohdaten
+in 2D zusätzlich das vom Display-Shader gezeichnete Bild (nur die exakte Ebene, feste Zeit; Canvas-Pixel), dazu Größe
+und eine Stichprobe (jeder 4999. Wert) zur Diagnose. Ablage tests/snapshots/<name>.json – die Rohdaten
 (je ~1,4 Mio. Werte) wären als JSON zu groß fürs Repo; der Hash ist bitgenau.
 Erster Lauf (oder --update) schreibt, jeder weitere vergleicht.
 Aufruf: python3 tests/test_snapshot.py [--update] [--only=ganz,sea1e9,sea1e9cpu,sea3d]
@@ -31,8 +32,17 @@ JS_FRONT = """async () => {
   const hex = async (u8) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', u8))).map(b => b.toString(16).padStart(2, '0')).join('');
   const it = R.readIterSync(f.buf), de = R.readDESync(f.buf);
   const sample = []; for (let i = 0; i < it.length; i += 4999) sample.push(it[i]);
+  // 2D-Anzeige (Display-Shader): nur die exakte Ebene, feste Zeit, Optionen wie presentArgs – im selben Task gelesen
+  let canvasSha = null;
+  if (!A.V3.on) {
+    const gl = R.gl, lk = Object.assign(A.look(), { time: 100 }), dpr = gl.drawingBufferWidth / innerWidth;
+    R.present([Object.assign(f, { alpha: 1 })], A.S.cam, lk, null, { feather: 12 * dpr, recon: true, de: A.deActive() ? [0.25, 1.25] : null });
+    const px = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
+    gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    canvasSha = await hex(px);
+  }
   return { w: f.buf.w, h: f.buf.h, stage: f.stage, exact: !!f.exact, kind: f.kind, mode: f.mode, maxIter: f.maxIter,
-           iterSha: await hex(new Uint8Array(it.buffer)), deSha: de ? await hex(de) : null, sample };
+           iterSha: await hex(new Uint8Array(it.buffer)), deSha: de ? await hex(de) : null, canvasSha, sample };
 }"""
 # 3D: Zeit/Höhen-Normierung festhalten (sonst hängt das Bild von der Bildfolge ab), mitteln, Canvas im selben Task lesen
 JS_3D = """async () => {
@@ -104,7 +114,11 @@ with sync_playwright() as p:
             print('geschrieben', name, r['w'], 'x', r['h'], r['iterSha'][:12], (r.get('view3d') or {}).get('canvasSha', '')[:12])
             continue
         ref = json.load(open(fn))
-        keys = ['w', 'h', 'iterSha', 'deSha']
+        if ref.get('canvasSha') is None and r.get('canvasSha'):      # Feld neu (ab 6.5.3): einmal nachtragen
+            ref['canvasSha'] = r['canvasSha']
+            json.dump(ref, open(fn, 'w'), indent=1)
+            print('     %s: Canvas-Hash nachgetragen' % name)
+        keys = ['w', 'h', 'iterSha', 'deSha', 'canvasSha']
         diff = [k for k in keys if ref.get(k) != r.get(k)]
         if name == 'sea3d' and ref['view3d']['canvasSha'] != r['view3d']['canvasSha']:
             bd = max(abs(x - y) for x, y in zip(ref['view3d']['blocks'], r['view3d']['blocks'])) / 10
