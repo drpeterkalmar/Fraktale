@@ -22,8 +22,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job since we're just deploying
+  # Prüfung vor dem Deploy (ohne Browser): Syntax, Unit-Tests, Mathe-Kurztest gegen Python-Decimal, Release-Check
+  # (Versionen + Precache-Liste). Schlägt etwas fehl, geht nichts live.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: for f in js/*.js translations.js sw.js; do node --check "$f" || exit 1; done
+      - name: Unit-Tests
+        run: node tests/unit/run.js
+      - name: Mathe-Kurztest
+        run: node tests/node_core_test.js --quick
+      - name: Release-Check
+        run: python3 tools/check_release.py
+
   deploy:
+    needs: check
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
