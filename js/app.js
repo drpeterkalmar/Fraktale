@@ -136,7 +136,7 @@ function anchoredCam(c0, ax0, ay0, ax, ay, scale) {
 let inertia = null, flight = null, wheelAnim = null;
 let gestureBase = null;
 
-function stopAnims() { inertia = null; flight = null; wheelAnim = null; tour = null; }
+function stopAnims() { inertia = null; flight = null; wheelAnim = null; }
 
 function flyTo(cx, cy, zoom, opts = {}) {
     stopAnims();
@@ -337,7 +337,6 @@ function zoomAt(x, y, f) {
 }
 
 // ------------------------------------------------------------------ Tour (Auto-Zoom zu einem Ort)
-let tour = null;
 function startTour(p) {
     stopAnims();
     setMode(p.formula || 0, true);
@@ -346,10 +345,9 @@ function startTour(p) {
     setCam(HP.fromString(home[0]), HP.fromString(home[1]), home[2]);
     S.iterManual = false;
     const b = { cx: HP.fromString(p.cx), cy: HP.fromString(p.cy), zoom: +p.zoom };
-    // Referenzorbit gleich fürs Ziel anfordern: das Ziel liegt in jeder Ansicht der Fahrt
-    tour = { target: b };
+    // (der Referenzorbit wird per refTarget() gleich fürs Ziel angefordert: das Ziel liegt in jeder Ansicht der Fahrt)
     setTimeout(() => {
-        flyTo(b.cx, b.cy, b.zoom, { perDecade: 1.1, maxDur: 40, onDone: () => { tour = null; } });
+        flyTo(b.cx, b.cy, b.zoom, { perDecade: 1.1, maxDur: 40 });
     }, 250);
 }
 
@@ -427,7 +425,6 @@ orbitWorker.onmessage = (e) => {
         if (RC.fix && RC.fix.fr.mode === 'perturb' && RC.fix.fr.refId !== m.id) { const fr = RC.fix.fr; cancelFix(); recompute(fr); }
         if (m.orbit64) cpuSendRef(m);
         if (REF.queued) { const q = REF.queued; REF.queued = null; sendRef(q); }
-        stats.lastRef = { ms: m.ms, method: m.method, period: m.period, len: m.lenA };
     } else if (m.type === 'bla') {
         REF.blaPending = false;
         if (!REF.cur || REF.cur.id !== m.refId) return;
@@ -594,13 +591,13 @@ const OVER = 1.5;                          // Stillstand/Lückenfüller; in Bewe
 const OVER_MOVE = 1.2;                     // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
 const FADE_MS = 220, FADE_MOVE_MS = 150;
 const FEATHER = 12;
-const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (6)
+const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (8)
 const SIDE3D = 1600;                       // P2-3: größte Kantenlänge des quadratischen 3D-Rechenpuffers (px)
 const RC = { front: null, job: null, pjob: null, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
-             layers: [], layerSeq: 0, list: [], estPreviewMs: 60, lastPreview: null, pxRate: 0,
-             foreign: false, dirty: true, lastKeyFull: null, timeToFull: null, keyT0: 0, lastKey: '' };
-const stats = { fps: 0, frames: 0, fpsT: 0, lastRef: null, lastFullMs: null };
-// GPU-Speicher: Iterationspuffer (4 B/Pixel). Pixel 7 (824×1830): Vollbild 6 MB; Stapel max. 6 Ebenen
+             layers: [], layerSeq: 0, estPreviewMs: 60, lastPreview: null, pxRate: 0,
+             foreign: false, dirty: true, keyT0: 0, lastKey: '' };
+const stats = { fps: 0, frames: 0, fpsT: 0, lastFullMs: null };
+// GPU-Speicher: Iterationspuffer (5 B/Pixel: Iteration + Distanzschätzung). Pixel 7 (824×1830): Vollbild 7,5 MB; Stapel max. 8 Ebenen (3D: 6)
 // (exakt + Vorschauen + 3 vorausberechnete) typ. 15–25 MB, Pool-Grenze 40 MB (Desktop 64 MB).
 R.poolBudget = (Math.min(screen.width, screen.height) < 700 ? 40 : 64) * 1048576;
 
@@ -1274,7 +1271,6 @@ function present(now, camChanged) {
     const anim = S.anim || RC.fading || wasFading;
     if (!camChanged && !anim && !RC.dirty) return;
     RC.dirty = false;
-    RC.list = a.list;
     R.present(a.list, S.cam, look(), null, a.opts);
     if (FS.on) frameStatsRecord(now, a.list);
 }
@@ -1298,9 +1294,9 @@ function frameStatsRecord(now, list) {
 const T3 = self.FK3D ? self.FK3D.create(R) : null;
 const MAXL3 = T3 ? T3.N3 : MAXL;         // P2-3: Ebenen-Höchstzahl in 3D
 const MAX_TILT = 60 * Math.PI / 180;
-const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null, settleT: 0,
+const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null,
              accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null };
-const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, steerBase: 0, t0: 0, z0: 1, off0: 0, dir: [0, 1], scoreT: 0 };
+const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, z0: 1, off0: 0, dir: [0, 1] };
 function can3d(f) { return !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
 // 6.3: 3D wird erst eingeblendet, wenn alle Shader dafür fertig übersetzt sind (T3.ready fragt nicht blockierend,
 // pro Bild). Bis dahin bleibt das 2D-Bild bedienbar, der ⛰-Knopf zeigt „3D wird vorbereitet …“ (V3.prep = Startzeit).
@@ -1450,7 +1446,6 @@ function present3d(now, camChanged, force) {
         if (V3.accKey) V3.accN = 0;
     }
     V3.accPending = !!key && V3.accN < N;
-    RC.list = a.list;
     if (FS.on) frameStatsRecord(now, a.list);
     // Sonde: Höhenstatistik + Interesse für den Zufallsflug (alle 300 ms, asynchron)
     // (im Zufallsflug alle 150 ms: die Zielwahl am Mengenrand braucht frische Daten)
@@ -1539,7 +1534,7 @@ function startFly(place) {
         V3.heading = Math.atan2(FLY.dir[0], FLY.dir[1]);
     } else { FLY.mode = 'random'; FLY.target = null; }
     set3d(true);
-    FLY.on = true; FLY.paused = false; FLY.hdgT = V3.heading; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0; FLY.t0 = performance.now();
+    FLY.on = true; FLY.paused = false; FLY.hdgT = V3.heading; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0;
     // 6.2: Zoompunkt startet geradeaus, Kurs ruhend
     const f = [Math.sin(V3.heading), Math.cos(V3.heading)];
     FLY.A = [f[0] * FLY_AHEAD, f[1] * FLY_AHEAD]; FLY.VA = [0, 0]; FLY.T = null; FLY.Tt = 0; FLY.om = 0; FLY.roll = 0;
