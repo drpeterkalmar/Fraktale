@@ -415,6 +415,7 @@ orbitWorker.onmessage = (e) => {
         const req = REF.pending;
         REF.pending = null;
         if (req && req.id !== m.id) return;
+        REF.blaPending = false;            // P2-2: der Worker kennt jetzt nur noch diese Referenz
         // vorausberechneter Orbit: nur übernehmen, wenn die Ansicht noch dieselbe ist und nichts läuft
         if (req && req.pfKey && (RC.lastKey !== req.pfKey || RC.job || RC.fix)) { if (REF.queued) { const q = REF.queued; REF.queued = null; sendRef(q); } return; }
         m.sig = req ? req.sig : '';
@@ -434,6 +435,9 @@ orbitWorker.onmessage = (e) => {
     } else if (m.type === 'bla') {
         REF.blaPending = false;
         if (!REF.cur || REF.cur.id !== m.refId) return;
+        // P2-2: der Worker kennt die Referenz nicht mehr (dazwischen kam eine verworfene Vorausrechen-Referenz) ->
+        // die vorhandene Tabelle behalten und nicht mehr auf eine neue warten
+        if (m.ignored) { REF.cur.blaFixed = true; return; }
         if (RC.job && RC.job.mode === 'perturb' && RC.job.kind === 'gpu') cancelJob();
         if (RC.pjob && RC.pjob.mode === 'perturb' && RC.pjob.kind === 'gpu') cancelPrefetch();
         R.setBLA(m.bla32);
@@ -514,11 +518,11 @@ function ensureRef(p, moving) {
         const need = refDist(r) + rc * 1.3;
         // BLA-Tabelle deckt die Ansicht nicht ab (herausgezoomt/weit geschwenkt) oder ist viel zu
         // grosszügig (langsam) -> im Worker neu bauen (O(N), wenige ms)
-        if (r.bla32 && S.formula !== 1 && !REF.blaPending && (r.blaCmax < need || (!moving && r.blaCmax > 8 * need))) {
+        if (r.bla32 && S.formula !== 1 && !REF.blaPending && !r.blaFixed && (r.blaCmax < need || (!moving && r.blaCmax > 8 * need))) {
             REF.blaPending = true;
             orbitWorker.postMessage({ type: 'bla', refId: r.id, cmax: need * 2, want64: !!r.orbit64 });
         }
-        if (!moving && r.bla32 && S.formula !== 1 && r.blaCmax > 8 * need) return false;   // kurz warten: schnellere Tabelle
+        if (!moving && r.bla32 && S.formula !== 1 && r.blaCmax > 8 * need && !r.blaFixed) return false;   // kurz warten: schnellere Tabelle
         // vorausschauend erneuern, bevor die Referenz unbrauchbar wird
         if (moving && !REF.pending && now - REF.lastReqT > 250 && (refDist(r) > 16 * rc || S.cam.zoom > r.zoom * 16)) requestRef(want64);
         return true;

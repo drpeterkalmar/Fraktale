@@ -47,7 +47,8 @@ self.onmessage = (e) => {
             }
             self.postMessage(msg, tr);
         } else if (q.type === 'bla') {
-            if (!last || last.id !== q.refId) return;
+            // P2-2: Referenz nicht (mehr) bekannt -> trotzdem antworten, sonst wartet die App ewig auf die Tabelle
+            if (!last || last.id !== q.refId) { self.postMessage({ type: 'bla', refId: q.refId, ignored: true }); return; }
             const b = blaPack(last.ref, q.cmax, q.want64);
             const msg = { type: 'bla', refId: q.refId, bla32: b.b32, blaCmax: q.cmax, bla64: b.b64 || null };
             const tr = [];

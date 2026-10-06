@@ -34,7 +34,7 @@ test('ref -> Antwort mit Orbit + BLA; bla für die letzte Referenz -> neue Tabel
     assert.equal(W.out[1].type, 'bla'); assert.equal(W.out[1].refId, 1); assert.ok(W.out[1].bla32);
 });
 
-known('2.2', 'ref A -> ref B -> bla für A: Antwort (ignored), sonst bleibt blaPending der App hängen', () => {
+test('ref A -> ref B -> bla für A: Antwort (ignored), sonst bleibt blaPending der App hängen (bis 6.5.2 keine Antwort)', () => {
     const W = loadWorker();
     W.send(refReq(1, 1e3));
     W.send(refReq(2, 4e3));
