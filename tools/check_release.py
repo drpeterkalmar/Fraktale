@@ -5,14 +5,16 @@
     == Fallback-Texte in index.html (info-version, version-line).
  2. Jede Datei der Precache-Liste (sw.js) existiert.
  3. Alles, was die Seite lädt, steht in der Precache-Liste (sonst fehlt es offline): <script src>,
-    <link rel=stylesheet|manifest|icon|apple-touch-icon>, die Icons im Manifest, die Worker-Skripte aus js/app.js
-    und deren importScripts.
+    <link rel=stylesheet|manifest|icon|apple-touch-icon>, die Icons im Manifest, die Worker-Skripte (new Worker in
+    allen js/*.js) und deren importScripts.
  4. Diese Verweise tragen ?v=<Version> (Cache-Busting; Worker/importScripts bekommen sie zur Laufzeit).
-Aufruf: python3 tools/check_release.py   (Exit 0 = ok)
+Aufruf: python3 tools/check_release.py [--root=_site]   (Exit 0 = ok)
 """
 import os, re, sys, json
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+# --root=_site: das gesammelte Deploy-Artefakt prüfen (Workflow) – dort muss jede Datei der Precache-Liste liegen
+ROOT = next((a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--root=')), ROOT)
 
 
 def rd(p):
@@ -40,7 +42,9 @@ def main():
     refs += [(u, True) for u in re.findall(r'<script\s+src="([^"]+)"', html)]
     refs += [(u, True) for u in re.findall(r'<link\s+rel="(?:stylesheet|manifest|icon|apple-touch-icon)"\s+href="([^"]+)"', html)]
     refs += [(i['src'], True) for i in json.loads(man).get('icons', [])]
-    workers = re.findall(r"new Worker\('([^']+)'", app)
+    # Worker werden in mehreren Modulen angelegt (seit 6.5.4 js/cpu-pool.js, js/refs.js) -> alle Skripte durchsuchen
+    workers = sorted({w for f in sorted(os.listdir(os.path.join(ROOT, 'js'))) if f.endswith('.js')
+                      for w in re.findall(r"new Worker\('([^']+)'", rd('js/' + f))})
     refs += [(u, False) for u in workers]
     for w in workers:
         src = rd(w.split('?')[0])
@@ -53,7 +57,9 @@ def main():
             bad_v.append(u)
         if path not in listed:
             not_cached.append(path)
-    print('geladene Dateien', len(refs), '| ohne ?v=', bad_v, '| nicht im Precache', sorted(set(not_cached)))
+    print('geladene Dateien', len(refs), '| Worker', workers, '| ohne ?v=', bad_v, '| nicht im Precache', sorted(set(not_cached)))
+    if len(workers) < 2:
+        errs.append('Worker-Skripte nicht gefunden (erwartet tile-worker + orbit-worker): %s' % workers)
     if bad_v:
         errs.append('Verweise ohne ?v=%s: %s' % (app_v, bad_v))
     if not_cached:
