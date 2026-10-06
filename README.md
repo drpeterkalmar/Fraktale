@@ -94,6 +94,13 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 6.5.4** – Aufräumen nach dem Code-Gutachten (keine neuen Funktionen)
+- **Links mit Dezimalkomma** (z. B. `x=-0,7453`) landen an der richtigen Stelle statt im Ursprung; Links mit absurd hoher Iterationszahl werden auf 500 000 begrenzt (verhindert minutenlange Grafik-Häppchen und Treiber-Abbrüche).
+- **Orte merken in 3D:** das Vorschaubild zeigt jetzt die 3D-Landschaft (vorher das flache 2D-Bild).
+- **iPhone:** der Vollbild-Knopf erscheint nur noch, wenn der Browser Vollbild kann (vorher tat er dort stumm nichts).
+- **Dauerbetrieb:** Farb- und Zeitzähler laufen um, statt endlos zu wachsen (nach einem Tag drohten Farbstufen); Französisch und Portugiesisch haben den Tricorn-Hilfetext.
+- Intern: alte Vergleichsschalter (5.0.1-, 6.0-, 6.1-Modus) entfernt, `js/app.js` in sechs Module aufgeteilt (Bilder bitgleich); veröffentlicht werden nur noch die Laufzeitdateien, jeder Deploy wird vorher geprüft. Details: `V654_BERICHT.md`.
+
 **Version 6.5.3** – Fehlerkorrekturen aus dem Code-Gutachten (keine neuen Funktionen)
 - **Zwei-Finger-Tipp (÷3)** wird zuverlässig erkannt – vorher ging er verloren, sobald der zweite Finger beim Auflegen minimal zitterte (auf echten Touchscreens fast immer).
 - **Exaktes Bild hängt nicht mehr:** Kam mitten in der exakten Nachrechnung eine neue Referenz an, drehte der Fortschritt endlos bei 50 %. Jetzt wird neu gerechnet (im Test 3,5 s statt nie).
@@ -102,7 +109,7 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 - **Formelwechsel ohne Hänger:** neue 2D-Rechen-Varianten werden im Hintergrund übersetzt (auf langsamen Treibern wie Windows/Direct3D stand das Bild sonst Sekunden).
 - **Update ohne Mischbetrieb:** Eine neue Version übernimmt erst beim nächsten Start; die Rechenhelfer laden beim Start, fällt einer aus, gibt es eine Meldung statt eines ewigen Spinners.
 - **Weniger Grafikspeicher in 3D** (30-s-Flug: 155 → 123 MB, höchstens 6 Ebenen, Rechenpuffer ≤ 1600 px Kante) und kleinere CPU-Kacheln bei vielen Iterationen (schnelleres Umschalten). Bilder in 2D bitgleich wie 6.5.2.
-- Sicherheitsnetz: Unit-Tests in purem Node, Bildvergleich (bitgleich), Prüfung vor jedem Deploy (GitHub Actions). Details: `V653_BERICHT.md`.
+- Sicherheitsnetz: Unit-Tests in purem Node, Bildvergleich (bitgleich), Prüfung vor jedem Deploy (GitHub Actions). Details: `V654_BERICHT.md`.
 
 **Version 6.5.2** – Nie mehr eine leere oder weiße Fläche, wenn die Grafik ausfällt
 - **Grafik-Verbindung verloren** (Treiber-/GPU-Absturz, App-Wechsel am Handy): nach 1,5 s erscheint „Grafik wird neu verbunden …“; kommt sie wieder, ist das Bild sofort zurück. Kommt sie nach 6 s nicht (Chrome sperrt WebGL nach wiederholten Grafik-Abstürzen), zeigt die App „Die Grafikkarte hat die Verbindung verloren“ mit **Neu laden** – man landet am selben Ort, in derselben Welt und Zoomstufe.
