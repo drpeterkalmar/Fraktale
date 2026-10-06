@@ -21,6 +21,7 @@ const ASSETS = [
     'js/shaders.js',
     'js/three.js',
     'js/tile-worker.js',
+    'js/url-state.js',
     'js/ui.js',
     'assets/icons/icon-180.png',
     'assets/icons/icon-192.png',
