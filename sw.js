@@ -18,6 +18,7 @@ const ASSETS = [
     'js/hp.js',
     'js/orbit-worker.js',
     'js/palettes.js',
+    'js/refs.js',
     'js/renderer.js',
     'js/shaders.js',
     'js/three.js',
