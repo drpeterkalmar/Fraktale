@@ -1,0 +1,25 @@
+{
+ "sea_1e9": {
+  "doneS": 3.56,
+  "maxIter": 4050,
+  "hash": "38efa2c3488784ea"
+ },
+ "sea_1e14": {
+  "doneS": 11.43,
+  "maxIter": 9800,
+  "hash": "139a86f8abf8f988"
+ },
+ "sea_1e31": {
+  "doneS": 2.56,
+  "maxIter": 30000,
+  "hash": "098e99286aa01ebb"
+ },
+ "switch_first_tile_ms": [
+  579.2,
+  1242.1,
+  799.6,
+  324.2,
+  2844.6
+ ],
+ "errors": []
+}

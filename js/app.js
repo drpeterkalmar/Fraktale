@@ -569,6 +569,8 @@ function cpuFeed() {
     // Vorausrechnen nur, wenn der sichtbare Job und die Nachrechnung keine Worker brauchen
     if ((!job || job.kind !== 'cpu' || job.done || !job.tiles.length) && !RC.fix && RC.pjob && RC.pjob.kind === 'cpu' && !RC.pjob.done) job = RC.pjob;
     if (!job || job.kind !== 'cpu' || job.done) return;
+    // (P2-8: „in Bewegung nur eine Kachel je Worker“ wurde gemessen und verworfen – die erste Kachel einer neuen Ansicht kam
+    // damit später, Median 635 statt 225 ms; begrenzt wird stattdessen die Arbeit je Kachel, siehe startJob)
     for (const w of cpuWorkers) {
         while (w.busy < 2 && job.tiles.length) {
             const tl = job.tiles.shift();
@@ -673,7 +675,8 @@ function startJob(key, div, p, view, opts) {
             job.cpuOff = [HP.toNumber(job.view.cx - r.refXb), HP.toNumber(job.view.cy - r.refYb)];
             job.useBLA = !!(r.bla64 && r.blaCmax >= Math.hypot(job.cpuOff[0], job.cpuOff[1]) + scale * Math.hypot(w, h) / 2);
         } else job.cpuOff = [HP.toNumber(job.view.cx), HP.toNumber(job.view.cy)];
-        // Kacheln von der Mitte nach außen
+        // Kacheln von der Mitte nach außen; P2-8: Arbeit je Kachel begrenzt (T²·maxIter ≤ 3·10⁷, mindestens 16 px) – eine
+        // Kachel lässt sich im Worker nicht abbrechen, so wartet eine neue Ansicht auf weniger Rest-Arbeit
         const T = div > 2 ? 48 : 64, tiles = [];
         for (let y = 0; y < h; y += T) for (let x = 0; x < w; x += T) tiles.push({ x, y, w: Math.min(T, w - x), h: Math.min(T, h - y) });
         tiles.sort((a, b) => Math.hypot(a.x + a.w / 2 - w / 2, a.y + a.h / 2 - h / 2) - Math.hypot(b.x + b.w / 2 - w / 2, b.y + b.h / 2 - h / 2));
