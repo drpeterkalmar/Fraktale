@@ -16,6 +16,7 @@ const ASSETS = [
     'js/fractal-core.js',
     'js/gestures.js',
     'js/hp.js',
+    'js/layers.js',
     'js/orbit-worker.js',
     'js/palettes.js',
     'js/refs.js',
