@@ -4,11 +4,11 @@
 
 Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Handy flüssig bis in Tiefen von 10³⁰ (GPU) und 10²⁹⁰ (CPU) zoomt – ohne Kachel-Aufbau, ohne Flackern, mit mathematisch geprüften Bildern. Seit 6.1 sieht die Menge aus wie in den bekannten vorgerenderten Zoom-Videos: geschlossen, ruhig, mit glattem Rand. Seit 6.2 kann sie jede Farbe haben – in 3D wird Weiß zum Gletscher, der Alpin-Look macht daraus ein Alpenpanorama mit Wald oder See im Tal – und der Flug gleitet ruhig am Mengenrand in die Tiefe. Seit 6.4 kann das Innere auch bunt sein: jede Knospe, jedes Mini-Mandelbrot in einer eigenen Farbe.
 
-![6.2 Alpin-Look: oben Standard, Mitte Wald, unten See (Zoom 1, 300×, 10⁶)](tests/shots/setcol/vergleich_alpin_quer.jpg)
+![6.2 Alpin-Look: oben Standard, Mitte Wald, unten See (Zoom 1, 300×, 10⁶)](docs/img/vergleich_alpin_quer.jpg)
 
-![6.0 (links) und 6.1 (rechts): Seepferdchen-Tal, 300×](tests/shots/smooth/sheets/vergleich_hoch_seepferd_300_2d.jpg)
+![6.0 (links) und 6.1 (rechts): Seepferdchen-Tal, 300×](docs/img/vergleich_hoch_seepferd_300_2d.jpg)
 
-![Vorschau](tests/shots/portrait_08_deep1e15_relief_gold.png)
+![Vorschau](docs/img/portrait_08_deep1e15_relief_gold.png)
 
 ## 🖐 Gesten (Kurzanleitung)
 
@@ -24,7 +24,7 @@ Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Ha
 
 ## 🏔 3D & Flug
 
-![3D-Landschaft im Flug](tests/shots/3d/quer_flug_4.jpg)
+![3D-Landschaft im Flug](docs/img/quer_flug_4.jpg)
 
 Oben rechts **⛰ (3D-Landschaft)** antippen: die aktuelle Ansicht richtet sich als Gebirge auf – der Rand der Menge bildet die Kämme, die Menge selbst ist ein See, Farben = aktuelle Palette, Sonne mit weichen Schatten, Dunst zum Horizont. Die exakte Deep-Zoom-Rechnung bleibt dieselbe wie in 2D (die Landschaft liest nur das fertige Bild).
 
