@@ -826,10 +826,13 @@ function create(R) {
         const k = terrainKey(look);
         T.waiting = false;
         const plain = k === 't3terr' || k === 't3terrB';
-        if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (plain || noiseTex) && (warmDone[k] || R.noWarm))) {
-            lastTerr = T.variant = k;
-            return R.program(k, TERR[k], TERRAIN_VS);
-        }
+        try {
+            if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (plain || noiseTex) && (warmDone[k] || R.noWarm))) {
+                const pr = R.program(k, TERR[k], TERRAIN_VS);
+                lastTerr = T.variant = k;
+                return pr;
+            }
+        } catch (e) { if (e.shaderKey) T.failed = e.shaderKey; throw e; }   // P1-2: Gelände-Variante defekt -> app.js schaltet 3D aus
         // fertig übersetzt, aber noch nicht angewärmt: in diesem Bild anwärmen (vor dem Binden des Ziels), im nächsten nehmen
         if (R.hasProgram(k) && (plain || noiseTex)) warmOne(k, TERR[k], TERRAIN_VS);
         T.waiting = true;
@@ -837,13 +840,18 @@ function create(R) {
     }
     // nicht blockierend: true, wenn alle Programme für ein 3D-Bild in diesem Look fertig sind (T.prep = Fortschritt).
     // Ohne KHR_parallel_shader_compile blockiert jede Statusabfrage -> dann nur ein Programm pro Aufruf (= pro Bild).
+    // P1-2: scheitert ein Programm (fremder Treiber), steht sein Schlüssel in T.failed (app.js bricht die Vorbereitung ab)
+    T.failed = null;
     T.ready = function (look) {
         const a = needs(look);
         let done = 0;
-        for (const n of a) {
-            if (R.programReady(n[0], n[1], n[2])) done++;
-            else if (!R.parallelCompile) break;
-        }
+        T.failed = null;
+        try {
+            for (const n of a) {
+                if (R.programReady(n[0], n[1], n[2])) done++;
+                else if (!R.parallelCompile) break;
+            }
+        } catch (e) { if (!e.shaderKey) throw e; T.failed = e.shaderKey; return false; }
         T.prep = { done, total: a.length };
         return done === a.length;
     };
@@ -918,7 +926,9 @@ function create(R) {
     // nicht blockierend, höchstens ein Programm pro Aufruf (= pro Bild); true, wenn alles für den Look angewärmt ist
     T.warm = function (look) {
         if (R.noWarm) return true;
-        for (const n of needs(look)) if (!warmDone[n[0]]) { warmOne(n[0], n[1], n[2]); return false; }
+        try {
+            for (const n of needs(look)) if (!warmDone[n[0]]) { warmOne(n[0], n[1], n[2]); return false; }
+        } catch (e) { if (!e.shaderKey) throw e; T.failed = e.shaderKey; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return false; }
         warmFree();
         return true;
     };

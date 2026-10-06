@@ -387,9 +387,10 @@ function plan() {
     const f = S.formula, z = S.cam.zoom;
     if (f === 6) return { kind: 'bulb' };
     if (f === 7) return { kind: 'buddha' };
-    if (f === 5) return z <= NEWTON_GPU_MAX && S.renderer !== 'cpu' ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
-    const cpu = S.renderer === 'cpu' || !gpuPerturbOK;
-    if (z < DIRECT_MAX && S.renderer !== 'cpu') return { kind: 'gpu', mode: 'direct' };
+    const rcpu = S.renderer === 'cpu' || forceCPU;
+    if (f === 5) return z <= NEWTON_GPU_MAX && !rcpu ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
+    const cpu = rcpu || !gpuPerturbOK;
+    if (z < DIRECT_MAX && !rcpu) return { kind: 'gpu', mode: 'direct' };
     if (cpu || z > GPU_MAX) {
         // CPU: unter DIRECT_MAX direkt in f64, darüber Perturbation (+BLA) — auch für Tricorn/Burning
         // Ship: die direkte f64-Iteration ist in parabolischen Randzonen messbar ungenauer (Test: 96 %
@@ -623,7 +624,18 @@ function cancelPrefetch() { if (RC.pjob) { R.cancelJob(RC.pjob); RC.pjob = null;
 // (andere Welt, anderes Julia-c, manuelle Iterationen) liegen ganz unten und werden ausgeblendet.
 function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : '') + (innActive() ? '|in' : ''); }
 // 6.4 Bunte Menge: Innen-Information mitrechnen (eigene Rechen-Variante; Außenwerte bitgleich). Nicht bei Newton.
-function innActive() { return S.setCol === 'bunt' && S.formula !== 5; }
+function innActive() { return S.setCol === 'bunt' && S.formula !== 5 && !innBlocked; }
+// P1-2 Rückfall bei defekten Rechen-Shadern (nur für die Sitzung, nichts wird gespeichert): Bunt-Variante defekt ->
+// Menge schwarz; Perturbation defekt -> CPU-Perturbation (gpuPerturbOK); direkte Variante defekt -> CPU-Rechenweg
+let innBlocked = false, forceCPU = false;
+function jobFailed(job) {
+    R.cancelJob(job);
+    if (job.inn) innBlocked = true;
+    else if (job.mode === 'perturb') gpuPerturbOK = false;
+    else forceCPU = true;
+    toast(t('shader_fallback'), 4500);
+    invalidate();
+}
 function maxIterFor(zoom) { return S.iterManual ? S.iterValue : autoIter(zoom); }
 
 // view: Kamera, für die gerechnet wird (Standard: aktuelle). opts: { prefetch, w, h, scale }
@@ -674,6 +686,7 @@ function makeFrame(job, now) {
 }
 
 function jobFinished(job, now) {
+    if (job.failed) return jobFailed(job);
     if (!BLEND) return jobFinishedLegacy(job, now);
     const fr = makeFrame(job, now);
     const moving = isMoving(now);
@@ -841,7 +854,10 @@ function pruneLayers(now) {
 function startFix(fr, now) {
     const fix = { fr, key: fr.key, t0: now, chunks: [], sent: 0, done: 0, total: 0, id: ++RC.jobSeq, buf: null };
     RC.fix = fix;
-    R.findUnsure(fr.buf).then((list) => {
+    let unsure;
+    try { unsure = R.findUnsure(fr.buf); }
+    catch (e) { if (!e.shaderKey) throw e; RC.fix = null; fr.fixed = fr.exact = true; fullDone(fr, now); return; }   // P1-2: ohne Nachrechnung bleibt das f32-Bild
+    unsure.then((list) => {
         if (RC.fix !== fix) return;
         if (!list) { RC.fix = null; return; }
         fix.count = list.length / 2;
@@ -889,7 +905,8 @@ function onFixPixels(m, w) {
         if (REF.cur.orbit64) sendRefTo(w, REF.cur);
         w.busy++; w.postMessage(fixMsg(fix, m.chunk, m.list)); return;
     }
-    R.scatter(fix.buf, m.list, m.values);
+    try { R.scatter(fix.buf, m.list, m.values); }
+    catch (e) { console.warn('Nachrechnung:', e.message); const fr = fix.fr; cancelFix(); fr.fixed = fr.exact = true; RC.dirty = true; fullDone(fr, performance.now()); cpuFeed(); return; }
     fix.done++;
     if (fix.done >= fix.total) {
         const now = performance.now();
@@ -1314,7 +1331,7 @@ function present(now, camChanged) {
         // 3D zeichnet bei Bewegung, Übergang, Farbanimation, Einblenden, Flug; sonst ruht es (Akku)
         const busy = camChanged || S.anim || RC.fading || RC.dirty || V3.dir || (FLY.on && !FLY.paused) || now - V3.probeT > 300 || V3.accPending || T3.waiting;
         RC.dirty = false;
-        if (busy) present3d(now, camChanged);
+        if (busy) { try { present3d(now, camChanged); } catch (e) { if (!e.shaderKey) throw e; fail3d(); } }
         return;
     }
     const wasFading = RC.fading;
@@ -1361,6 +1378,19 @@ function set3d(on) {
     else { V3.dir = -1; stopFly(); }
     invalidate(); emit('3d');
 }
+// P1-2: ein 3D-Programm ist auf diesem Treiber defekt -> Vorbereitung abbrechen bzw. 3D sofort aus (2D läuft weiter)
+function fail3d() {
+    V3.prep = 0; V3.prepFly = null;
+    if (V3.on) {
+        stopFly();
+        for (const l of RC.layers) T3.free(l);
+        T3.freeStill();
+        V3.on = false; V3.mix = 0; V3.dir = 0; V3.heading = 0; V3.accKey = null; V3.accPending = false;
+        invalidate();
+    }
+    toast(t('shader_3d_failed'), 4500);
+    emit('3d');
+}
 // fertig übersetzt (nicht blockierend gefragt) und angewärmt (je Bild ein Programm) – erst dann 3D einblenden
 function ready3d() { const lk = look(); return T3.ready(lk) && T3.warm(lk); }
 function baseScale3d() { return Q.get('s3d') ? +Q.get('s3d') : (Math.min(screen.width, screen.height) < 700 ? 0.65 : 1); }
@@ -1369,7 +1399,7 @@ const e3 = (x) => x * x * (3 - 2 * x);
 function update3d(now, dt) {
     if (V3.prep && !V3.on) {
         if (!can3d()) { V3.prep = 0; V3.prepFly = null; emit('3d'); return; }
-        if (!ready3d()) { if (stats.frames % 6 === 0) emit('3dprep'); return; }
+        if (!ready3d()) { if (T3.failed) { fail3d(); return; } if (stats.frames % 6 === 0) emit('3dprep'); return; }
         const fl = V3.prepFly;
         V3.prep = 0; V3.prepFly = null;
         if (fl) startFly(fl === true ? undefined : fl); else set3d(true);
@@ -1939,6 +1969,8 @@ const VS = { buf: new Array(90).fill(0), i: 0 };
 // Test (6.4, tests/measure_fly.py): ?fpscap=N begrenzt die Bildrate (langsames Gerät nachstellen)
 const FPSCAP = +Q.get('fpscap') || 0;
 let capT = 0;
+const seenErr = new Set();
+function reportOnce(e) { const m = String(e && e.message || e); if (!seenErr.has(m)) { seenErr.add(m); console.error('Fraktal-Explorer:', e); } }
 function frame(now) {
     requestAnimationFrame(frame);
     if (FPSCAP) { if (now - capT < 1000 / FPSCAP - 2) return; capT = now; }
@@ -1979,9 +2011,9 @@ function frame(now) {
     governorUpdate(now, dt);
     if (BLEND && (stats.frames % 8 === 0)) pruneLayers(now);
     const tS = performance.now();
-    schedule(now);
+    try { schedule(now); } catch (e) { reportOnce(e); }       // P1-2: ein Fehler friert die Schleife nicht ein
     const tP = performance.now();
-    present(now, camChanged);
+    try { present(now, camChanged); } catch (e) { reportOnce(e); }
     if (!GW.firstPic && (RC.layers.length || S.formula >= 6)) gwFirstPicture();
     if (PROF) { const tE = performance.now(); if (tE - js0 > 25) PROF.push({ t: Math.round(now), pre: +(tS - js0).toFixed(1), sched: +(tP - tS).toFixed(1), present: +(tE - tP).toFixed(1), job: RC.job ? RC.job.key.slice(-12) : '', n: RC.layers.length }); }
     stats.frames++;

@@ -23,4 +23,5 @@ run env FK_HEADED=1 python3 tests/test_fly64.py
 run python3 tests/test_gpu_guard.py
 run python3 tests/test_context_loss.py
 run python3 tests/test_fix_ref.py
+run python3 tests/test_shader_fail.py
 exit $fail

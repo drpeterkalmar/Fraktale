@@ -48,6 +48,7 @@ function create(canvas) {
     // (Unter Windows übersetzt Chrome über Direct3D 11/FXC – große Shader brauchen dort Sekunden.)
     R.programReady = function (key, fsSrc, vsSrc) {
         if (programs[key]) return true;
+        if (R.broken[key]) throw shaderFail(key);
         if (gl.isContextLost()) return false;
         if (PSC) {
             if (!pending[key]) { pending[key] = startProgram(fsSrc, vsSrc); return false; }
@@ -77,8 +78,21 @@ function create(canvas) {
         return true;
     };
     R.hasProgram = (key) => !!programs[key];
+    // P1-2: Übersetzungs-/Link-Fehler (fremder Treiber) werden je Programm gemerkt und einmal gemeldet; geworfen wird eine
+    // markierte Ausnahme (err.shaderKey) – die Aufrufer fallen auf einen anderen Weg zurück, statt in jedem Bild zu scheitern
+    R.broken = {};
+    function shaderFail(key, err) {
+        if (!R.broken[key]) { R.broken[key] = String(err && err.message || err); console.warn('Shader „' + key + '“ defekt:', R.broken[key]); }
+        const e = new Error('Shader defekt: ' + key);
+        e.shaderKey = key;
+        return e;
+    }
     function program(key, fsSrc, vsSrc) {
         if (programs[key]) return programs[key];
+        if (R.broken[key]) throw shaderFail(key);
+        try { return buildProgram(key, fsSrc, vsSrc); } catch (e) { throw e.shaderKey ? e : shaderFail(key, e); }
+    }
+    function buildProgram(key, fsSrc, vsSrc) {
         let p;
         if (pending[key]) {
             const pd = pending[key]; delete pending[key];
@@ -256,16 +270,25 @@ function create(canvas) {
         let px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
         // 6.4 Flug: Mindestanteil, damit der Job in ctl.minS Sekunden fertig wird (Bildzeit dt ms pro Häppchen-Runde)
         if (moving && ctl && ctl.minS) px = Math.max(px, Math.min(2e5, job.w * job.h * (ctl.dt / 1000) / ctl.minS));
-        // 6.4: neue Rechen-Variante (Bunt eingeschaltet) erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job
-        if (job.inn && job.row < job.h && !programs[computeKey(job)] && !R.programReady(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
-        while (job.row < job.h && job.q.length < R.maxInflight) {
-            const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
-            drawCompute(job, job.row, rows);
-            job.row += rows;
-            // ein zweites Häppchen wartet erst auf das erste -> seine Poll-Zählung entsprechend versetzen
-            job.q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0, waited: job.q.length ? 1 : 0 });
-            R.submitted++;
-            gl.flush();
+        // P1-2: Rechen-Variante defekt -> Job als gescheitert beenden (app.js wählt einen anderen Rechenweg)
+        const key = computeKey(job);
+        if (R.broken[key]) { job.failed = true; job.done = true; return true; }
+        try {
+            // 6.4: neue Rechen-Variante (Bunt eingeschaltet) erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job
+            if (job.inn && job.row < job.h && !programs[key] && !R.programReady(key, SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
+            while (job.row < job.h && job.q.length < R.maxInflight) {
+                const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
+                drawCompute(job, job.row, rows);
+                job.row += rows;
+                // ein zweites Häppchen wartet erst auf das erste -> seine Poll-Zählung entsprechend versetzen
+                job.q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0, waited: job.q.length ? 1 : 0 });
+                R.submitted++;
+                gl.flush();
+            }
+        } catch (e) {
+            if (!e.shaderKey) throw e;
+            job.failed = true; job.done = true;
+            return true;
         }
         return false;
     };
