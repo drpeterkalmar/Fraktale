@@ -607,6 +607,7 @@ const RECON = BLEND && Q.get('recon') !== '0';
 const PREDICT = BLEND && Q.get('predict') !== '0';
 const PREFETCH = BLEND && Q.get('prefetch') !== '0';
 const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (6)
+const SIDE3D = 1600;                       // P2-3: größte Kantenlänge des quadratischen 3D-Rechenpuffers (px)
 const RC = { front: null, prev: null, job: null, pjob: null, fadeT0: 0, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
              layers: [], layerSeq: 0, list: [], estPreviewMs: 60, lastPreview: null, pxRate: 0,
              foreign: false, dirty: true, lastKeyFull: null, timeToFull: null, keyT0: 0, lastKey: '' };
@@ -653,10 +654,12 @@ function startJob(key, div, p, view, opts) {
     const w0 = canvas.width, h0 = canvas.height;
     // Vorschau mit Überhang (Schwenks laufen nicht an die Kante); auch volle Auflösung in Bewegung
     const over = opts.preview ? OVER_MOVE : (div > 1 ? OVER : 1);
-    // 3D: quadratische Rechenansicht (Drehen ohne Lücken), gleiche Pixelgröße wie 2D
-    const bw0 = V3.on ? Math.max(w0, h0) : w0, bh0 = V3.on ? Math.max(w0, h0) : h0;
+    // 3D: quadratische Rechenansicht (Drehen ohne Lücken), gleiche Pixelgröße wie 2D – P2-3: Kantenlänge höchstens
+    // SIDE3D (gleiche Weltabdeckung, gröber; die 3D-Anzeige zeichnet am Handy ohnehin mit 0,65 der Auflösung)
+    const s3 = Math.max(w0, h0), side = Math.min(s3, SIDE3D), f3 = V3.on ? s3 / side : 1;
+    const bw0 = V3.on ? side : w0, bh0 = V3.on ? side : h0;
     const w = opts.w || Math.max(8, Math.ceil(bw0 * over / div)), h = opts.h || Math.max(8, Math.ceil(bh0 * over / div));
-    const scale = opts.scale || 3 / (view.zoom * h0) * div;   // Welt pro Pufferpixel
+    const scale = opts.scale || 3 / (view.zoom * h0) * div * f3;   // Welt pro Pufferpixel
     const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
                   view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
                   julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive(), inn: innActive() };
@@ -826,7 +829,8 @@ function pruneLayers(now) {
     for (const l of list) if (l.alpha <= 0 && !keep(l)) drop.add(l);
     if (reserve && layerK(reserve, cam) < 1 / 8192) drop.add(reserve);
     let rest = list.filter(l => !drop.has(l) && !l.outT);
-    while (rest.length > MAXL - 1) {
+    const cap = V3.on ? MAXL3 : MAXL;          // P2-3: 3D zeichnet höchstens T3.N3 Ebenen – mehr hielte nur Speicher
+    while (rest.length > cap - 1) {
         const c = coverage(rest, cam, { gx: 16, gy: 32, expand: ex });
         let worst = null;
         for (const e of c.use) {
@@ -847,7 +851,7 @@ function pruneLayers(now) {
         else if (!l.outT) l.outT = now;
     }
     let live = RC.layers.filter(l => !gone.has(l));
-    while (live.length > MAXL) {           // Ausblendende verdrängen, wenn die Plätze nicht reichen
+    while (live.length > cap) {            // Ausblendende verdrängen, wenn die Plätze nicht reichen
         const o = live.filter(l => l.outT).sort((a, b) => a.outT - b.outT)[0];
         if (!o) break;
         gone.add(o); live = live.filter(l => l !== o);
@@ -1025,6 +1029,7 @@ function prefetchStep(now, p, key) {
         return;
     }
     if (PF.busyMs > 3 * Math.max(200, RC.estFull || 0)) { PF.items = []; return; }
+    if (R.poolInfo().usedMB > R.poolBudget / 1048576) return;   // P2-3: Speicherbudget voll -> nichts vorausrechnen
     const it = PF.items.shift();
     if (!it) return;
     if (it.type === 'ref') { requestRefFor({ cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom * 4 }, key); return; }
@@ -1372,6 +1377,7 @@ function frameStatsRecord(now, list) {
 // gleiche wie in 2D (gleiche Kamera S.cam = Bodenpunkt in der Bildmitte), exakt wie dort. In 3D wird die
 // Rechenansicht quadratisch (Drehen ohne Lücken) und es kommen ferne Detailstufen für den Horizont dazu.
 const T3 = self.FK3D ? self.FK3D.create(R) : null;
+const MAXL3 = T3 ? T3.N3 : MAXL;         // P2-3: Ebenen-Höchstzahl in 3D
 const MAX_TILT = 60 * Math.PI / 180;
 const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null, settleT: 0,
              accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null };
