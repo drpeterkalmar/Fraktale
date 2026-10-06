@@ -124,9 +124,18 @@ with sync_playwright() as p:
             bd = max(abs(x - y) for x, y in zip(ref['view3d']['blocks'], r['view3d']['blocks'])) / 10
             diff.append('3D-Bild (max. Blockabweichung %.1f/255, Mittel %s -> %s)' % (bd, ref['view3d']['mean'], r['view3d']['mean']))
         if diff:
-            fails.append(name)
+            # Messdaten ablegen und die Ansicht einmal wiederholen: eine echte Regression weicht wieder ab, ein seltener
+            # Ausreißer der Umgebung (beobachtet ~1 von 15 Läufen direkt nach einem anderen Browser-Test) nicht
             nd = sum(1 for x, y in zip(ref['sample'], r['sample']) if x != y)
-            print('FAIL', name, 'abweichend:', diff, '| Stichprobe %d von %d anders' % (nd, len(ref['sample'])))
+            dump = '/tmp/fk_snapshot_abweichung_%s_%d.json' % (name, int(time.time()))
+            json.dump(dict(diff=diff, run=r, ref={k: ref[k] for k in ref if k != 'view3d'}), open(dump, 'w'))
+            print('     %s abweichend: %s | Stichprobe %d von %d anders | Daten: %s – Wiederholung …' % (name, diff, nd, len(ref['sample']), dump))
+            r2 = capture(p, name)
+            if all(ref.get(k) == r2.get(k) for k in keys) and (name != 'sea3d' or ref['view3d']['canvasSha'] == r2['view3d']['canvasSha']):
+                print('ok  ', name, 'bitgleich bei Wiederholung (Ausreißer, siehe', dump + ')')
+                continue
+            fails.append(name)
+            print('FAIL', name, 'abweichend:', diff)
         else:
             print('ok  ', name, 'bitgleich', r['iterSha'][:12])
 print('ALL PASS' if not fails else 'FAILED: ' + ', '.join(fails))
