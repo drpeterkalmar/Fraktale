@@ -37,7 +37,7 @@ function attach(el, h) {
         }
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         el.setPointerCapture && el.setPointerCapture(e.pointerId);
-        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });   // x0/y0: Ablagepunkt dieses Zeigers
         if (pts.size === 1) {
             downT = now(); downPos = { x: e.clientX, y: e.clientY }; moved = 0; maxPts = 1;
             if (e.shiftKey || (h.rectMode && h.rectMode())) {
@@ -64,7 +64,9 @@ function attach(el, h) {
         if (!p) return;
         p.x = e.clientX; p.y = e.clientY;
         if (rect) { rect.x1 = e.clientX; rect.y1 = e.clientY; h.onRect && h.onRect(rect, false); return; }
-        if (downPos) moved = Math.max(moved, Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y));
+        // Bewegung jedes Zeigers von SEINEM Ablagepunkt (bis 6.5.2 vom ersten Finger aus gemessen: ein pointermove des
+        // zweiten Fingers an Ort zählte als 100 px Bewegung, der Zwei-Finger-Tipp ging verloren)
+        moved = Math.max(moved, Math.hypot(p.x - p.x0, p.y - p.y0));
         if (moved > 10) clearLong();
         if (!base) return;
         const a = anchor();

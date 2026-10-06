@@ -77,6 +77,17 @@ def run(gpu=True):
         z3 = pg.evaluate("() => window.__fraktal.S.cam.zoom")
         out['two_finger_tap'] = dict(factor=round(z3 / z2, 3))
         ok &= abs(z3 / z2 - 1 / 3) < 0.02
+        # --- Zwei-Finger-Tipp mit touchMove beider Finger (an Ort bzw. 1 px Zittern) vor dem Loslassen: echte Touchscreens
+        # melden beim Auflegen fast immer ein pointermove – bis 6.5.2 wurde der Tipp dann nicht erkannt (Gutachten P1-4)
+        for k, dd in enumerate([0, 1]):
+            zb = pg.evaluate("() => window.__fraktal.S.cam.zoom")
+            touch(cdp, 'touchStart', [(cx - 50, cy), (cx + 50, cy)])
+            touch(cdp, 'touchMove', [(cx - 50, cy + dd), (cx + 50, cy - dd)])
+            touch(cdp, 'touchEnd', [])
+            pg.wait_for_timeout(900)
+            za = pg.evaluate("() => window.__fraktal.S.cam.zoom")
+            out['two_finger_tap_move%d' % dd] = dict(factor=round(za / zb, 3))
+            ok &= abs(za / zb - 1 / 3) < 0.02
         out['longtasks_taps'] = pg.evaluate("() => window.__lt.slice()")
 
         # --- fertig werden, dann Stabilität (kein Flackern): 3 Hashes über 3 s

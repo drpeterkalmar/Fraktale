@@ -63,9 +63,16 @@ test('Zwei-Finger-Tipp ohne pointermove', () => {
     assert.deepEqual(G.names(), ['twofingertap']);
 });
 
-known('1.1', 'Zwei-Finger-Tipp mit einem pointermove des zweiten Fingers an Ort', () => {
+test('Zwei-Finger-Tipp mit einem pointermove des zweiten Fingers an Ort (bis 6.5.2 nicht erkannt)', () => {
     const G = run(G => { G.down(1, 100, 200).at(20).down(2, 200, 200).at(40).move(2, 200, 200).at(120).up(2, 200, 200).at(130).up(1, 100, 200).at(800); });
     assert.deepEqual(G.names(), ['twofingertap']);
+});
+
+test('Zwei-Finger-Tipp mit Zittern beider Finger (1 px), aber nicht bei echter Bewegung', () => {
+    let G = run(G => { G.down(1, 100, 200).at(15).down(2, 200, 200).at(40).move(1, 101, 200).move(2, 199, 201).at(120).up(2, 199, 201).at(130).up(1, 101, 200).at(800); });
+    assert.deepEqual(G.names(), ['twofingertap']);
+    G = run(G => { G.down(1, 100, 200).at(15).down(2, 200, 200).at(40).move(2, 230, 200).at(120).up(2, 230, 200).at(130).up(1, 100, 200).at(800); });
+    assert.ok(!G.names().includes('twofingertap'), '30 px Bewegung ist kein Tipp');
 });
 
 test('Pinch: Skala und Drehung relativ zum Beginn', () => {
