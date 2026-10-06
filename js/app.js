@@ -188,7 +188,7 @@ function flightCamAt(f, u) {
 }
 
 // Tempo-Bremse (nur animierte Bewegungen): GOV.g = Zeitfaktor 0.3..1, siehe governorUpdate()
-const GOV = { g: 1, on: true, kmin: +(Q.get('govk') || 0.4), min: +(Q.get('govmin') || 0.4) };
+const GOV = { g: 1, on: true, kmin: 0.4, min: 0.4 };
 const INERTIA_TAU = 0.32;
 function updateAnims(now, dt) {
     if (flight) {
@@ -584,22 +584,16 @@ function cpuFeed() {
 // trägt die Ebenen nach Schärfe sortiert auf (schärfste oben, gefederte Ränder, zeitbasiertes
 // Einblenden): eine gröbere neue Vorschau füllt nur Lücken und überdeckt nie ein schärferes,
 // reprojiziert noch gültiges Bild. Schärfe = Pufferpixel pro Bildschirmpixel nach Reprojektion.
-// A/B-Regler per URL (Standardwerte in Klammern; der 5.0.1-Modus ?blend=0 ist seit 6.5.4 entfernt):
-//   ?maxdiv=N     gröbste Vorschau 1/N (6 GPU, 8 CPU)   ?over=X     Vorschau-Überhang (1.5)
-//   ?fadems=N     Einblendzeit ms (220, in Bewegung 150)   ?feather=N  Randfederung CSS px (12)
-//   ?recon=0      Vorschau auf Farben statt Iterationswert interpolieren
-//   ?predict=0    Vorschau für die aktuelle statt die vorausgesagte Kamera  ?prefetch=0  kein Vorausrechnen
-//   ?gov=0        Tempo-Bremse aus
-const MAXDIV = { gpu: +(Q.get('maxdiv') || 6), cpu: +(Q.get('maxdiv') || 8) };
-const OVER = +(Q.get('over') || 1.5);                      // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
-const OVER_MOVE = +(Q.get('overmove') || 1.2);             // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
-const STRIPS = Q.get('strips') !== '0';                    // Vorschau nur für den Bereich, der noch nicht scharf genug ist
-const FADE_MS = Q.has('fadems') ? +Q.get('fadems') : 220;
-const FADE_MOVE_MS = Q.has('fadems') ? +Q.get('fadems') : 150;
-const FEATHER = Q.has('feather') ? +Q.get('feather') : 12;
-const RECON = Q.get('recon') !== '0';
-const PREDICT = Q.get('predict') !== '0';
-const PREFETCH = Q.get('prefetch') !== '0';
+// Feste Werte (die A/B-Regler ?blend, ?maxdiv, ?over, ?overmove, ?strips, ?fadems, ?feather, ?recon, ?predict, ?prefetch,
+// ?gov, ?govk, ?govmin, ?inflight sind seit 6.5.4 entfernt – Vergleichsmessungen siehe V51_BERICHT.md):
+//   gröbste Vorschau 1/6 (GPU) bzw. 1/8 (CPU), Vorschau-Überhang 1,5 (in Bewegung 1,2), Einblendzeit 220 ms (in Bewegung
+//   150 ms), Randfederung 12 CSS px; Vorschau auf dem Iterationswert rekonstruiert, für die vorausgesagte Kamera, nur für
+//   den noch unscharfen Bereich (Teilstreifen); Vorausrechnen im Leerlauf
+const MAXDIV = { gpu: 6, cpu: 8 };
+const OVER = 1.5;                          // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
+const OVER_MOVE = 1.2;                     // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
+const FADE_MS = 220, FADE_MOVE_MS = 150;
+const FEATHER = 12;
 const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (6)
 const SIDE3D = 1600;                       // P2-3: größte Kantenlänge des quadratischen 3D-Rechenpuffers (px)
 const RC = { front: null, job: null, pjob: null, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
@@ -1006,7 +1000,7 @@ function planPrefetch(p, key) {
     return items;
 }
 function prefetchStep(now, p, key) {
-    if (!PREFETCH || S.quality === 'eco' || document.hidden) return;
+    if (S.quality === 'eco' || document.hidden) return;
     if (PF.key !== key) { PF.key = key; PF.items = planPrefetch(p, key); PF.busyMs = 0; }
     if (RC.pjob) {
         if (++PF.tick % 2) return;                       // Häppchen nur jedes zweite Frame
@@ -1029,7 +1023,7 @@ function schedule(now) {
     if (p.kind === 'bulb' || p.kind === 'buddha') return;
     const moving = isMoving(now);
     // Bewegung: nur 1 GPU-Häppchen in der Warteschlange (60 fps), Stillstand: 2 (doppelter Durchsatz)
-    R.maxInflight = Q.get('inflight') ? +Q.get('inflight') : (moving ? 1 : 2);
+    R.maxInflight = moving ? 1 : 2;
     const key = viewKey();
     if (key !== RC.lastKey) { RC.lastKey = key; RC.keyT0 = now; }
     const needRef = p.mode === 'perturb';
@@ -1072,7 +1066,7 @@ function schedule(now) {
     const front = RC.front;
     if (moving) {
         const est = RC.estFull || 400;
-        const tg = PREDICT ? animTarget() : null;
+        const tg = animTarget();
         const tKey = tg ? viewKey(tg.cam) : null;
         const tn = tg ? farFrom(tg.cam, S.cam) : null;
         if (tg && tg.rest < 1.5 && tn.r <= 4.5 && tn.off <= 0.6 && !(front && front.key === tKey && (!front.preview || front.stage <= (est > 600 ? 2 : 1)))) {
@@ -1085,7 +1079,7 @@ function schedule(now) {
         } else {
             // Vorschau für die Kamera, an der sie fertig sein wird (bekannte Pfade exakt, Gesten extrapoliert)
             // Horizont: Rechenzeit + halbe Einblendzeit (dann trägt die neue Ebene zur Hälfte)
-            const view = PREDICT ? predictCam(Math.min(0.3, (RC.estPreviewMs + FADE_MOVE_MS / 2) / 1000)) : S.cam;
+            const view = predictCam(Math.min(0.3, (RC.estPreviewMs + FADE_MOVE_MS / 2) / 1000));
             // 3D: jede dritte Vorschau eine ferne Detailstufe (Horizont), jede neunte eine noch weitere
             RC.farTick = (RC.farTick || 0) + 1;
             if (V3.on && RC.farTick % 3 === 0) {
@@ -1094,7 +1088,7 @@ function schedule(now) {
                 if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
                 return;
             }
-            const pl = STRIPS ? planPreview(now, view, p, sig) : { div: RC.previewDiv[p.kind] };
+            const pl = planPreview(now, view, p, sig);
             if (pl.skip) return;
             startJob(viewKey(view) + (pl.rect ? '|r' : ''), pl.div, p, pl.view || view, { preview: true, w: pl.w, h: pl.h, scale: pl.scale }).part = !!pl.rect;
         }
@@ -1219,12 +1213,12 @@ function planPreview(now, view, p, sig) {
 // ---------------- Tempo-Bremse („Schärfe-Front")
 // Nur animierte Bewegungen (Flug/Tour/Doppeltipp/Rechteck, Rad, Schwung). Gemessen wird die Schärfe,
 // die das Bild in ~150 ms hätte (Vorhersage + vorhandene Ebenen): fiele das 10-%-Quantil unter
-// 0,4 Pufferpixel pro Bildschirmpixel (?govk=), sinkt das Tempo weich (bis 0,4×, ?govmin=), sonst
+// 0,4 Pufferpixel pro Bildschirmpixel, sinkt das Tempo weich (bis 0,4×), sonst
 // steigt es wieder auf 1 (Totzone ±10 %, kein Pendeln). Warum 0,4 statt 0,5: Halb-Auflösungs-Vorschauen erreichen mit Vorhersage
 // 0,43–0,5 – eine 0,5-Schwelle bremste auch dann, wenn die Rechnung gut mithält.
 // Pinch/Schieben unter dem Finger bleibt 1:1. Schalter: Mehr → „Tempo an Rechenleistung anpassen".
 function governorUpdate(now, dt) {
-    const on = S.governor && Q.get('gov') !== '0';
+    const on = S.governor;
     if (!on || !animating()) { GOV.g = Math.min(1, GOV.g + dt * 3); GOV.coarse = 0; return; }
     const c = predictCam(0.1, false);
     const cov = coverage(orderLayers(now, c), c, { sig: contentSig(), gx: 10, gy: 20, quantile: 0.1 });
@@ -1232,7 +1226,7 @@ function governorUpdate(now, dt) {
     GOV.q = cov.q;
     const e = (GOV.kmin - cov.q) / GOV.kmin;
     // 6.4: im Flug darf die Bremse bis 30 % gehen (sonst 40 %) – lieber etwas langsamer tauchen als ins Leere
-    const gmin = FLY.on && !FLY.paused && !Q.has('govmin') ? 0.3 : GOV.min;
+    const gmin = FLY.on && !FLY.paused ? 0.3 : GOV.min;
     if (e > 0.1) GOV.g = Math.max(gmin, GOV.g - dt * 3 * Math.min(1, e));
     else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);
 }
@@ -1252,7 +1246,7 @@ function presentArgs(now) {
     for (const l of RC.layers) if (!l.shown) { l.shown = true; l.t0 = now; }
     const list = orderLayers(now, S.cam);
     RC.fading = list.some(l => l.alpha < 1 && !l.prefetch);   // Vorausberechnetes liegt unter dem fertigen Bild
-    return { list, opts: { feather: FEATHER * dpr, recon: RECON, de: deActive() ? [0.25, 1.25] : null } };
+    return { list, opts: { feather: FEATHER * dpr, recon: true, de: deActive() ? [0.25, 1.25] : null } };
 }
 // blendet gerade eine sichtbare Ebene ein (auch eine, die noch nie gezeigt wurde)?
 function isFading(now) {
@@ -2071,7 +2065,6 @@ function init() {
     if (Q.has('noanim')) S.anim = false;
     if (Q.has('nobla')) R.noBLA = true;
     if (Q.has('nowarm')) R.noWarm = true;      // 6.3 A/B: 3D-Programme vor dem Einblenden nicht anwärmen
-    if (Q.get('inflight')) R.maxInflight = +Q.get('inflight');
     resize();
     cpuPool();      // P2-1: Worker gleich beim Start laden (im Leerlauf kostenlos) – ein späteres Update kann sie nicht mehr entziehen
     requestAnimationFrame(frame);

@@ -11,7 +11,8 @@ Zahl der Ebenen, harte Wechsel). Prüft:
   * Vorausrechnen läuft im Leerlauf (Reserve-Ebene + tieferer Referenzorbit) und blockiert nichts
   * Schwenk ist schärfer als im 5.0.1-Modus (?blend=0 gibt es seit 6.5.4 nicht mehr; Referenz gemessen mit 6.5.3:
     5.0.1-Modus Schwenk-Schärfe 0,001, Lücken beim Herauszoomen 0,913)
-  * Tempo-Bremse: animierter Flug bremst bei grobem Bild (höchstens 2,5× so lang), ?gov=0 schaltet sie ab
+  * Tempo-Bremse: animierter Flug bremst bei grobem Bild (höchstens 2,5× so lang wie ohne Bremse; ?gov=0 gibt es seit
+    6.5.4 nicht mehr, Referenz 5,53 s gemessen mit 6.5.3)
   * 0 Page-/Console-Fehler, keine Long Tasks > 50 ms
 Aufruf: python3 tests/test_blend.py
 """
@@ -90,9 +91,9 @@ def main():
     res = {}
     with sync_playwright() as p:
         res['new'] = n = scenario(p, 'nosw&noanim')
-        res['gov0'] = g = scenario(p, 'nosw&noanim&gov=0')
     print(json.dumps(res, indent=1))
     L501 = {'panK': 0.001, 'zoomoutUnc': 0.9131}   # 5.0.1-Modus, gemessen mit 6.5.3 (Mac, headless)
+    GOV0_FLY_S = 5.53                                 # derselbe Flug ohne Tempo-Bremse (?gov=0), gemessen mit 6.5.3
     chk = []
     def need(c, what):
         nonlocal ok
@@ -109,10 +110,10 @@ def main():
     need(n['prefetch']['prefetch'] >= 1 and n['prefetch']['refZoom'] > n['prefetch']['zoom'] * 2, f'Vorausrechnen im Leerlauf ({n["prefetch"]})')
     need(n['rest']['pool']['usedMB'] + n['rest']['pool']['freeMB'] <= 64.5, f'GPU-Pufferspeicher im Budget ({n["rest"]["pool"]})')
     need(n['pan']['kMean'] >= L501['panK'] + 0.05, f'Schwenk schärfer als 5.0.1-Modus ({n["pan"]["kMean"]} vs {L501["panK"]})')
-    need(n['fly']['gMin'] < 0.9 and g['fly']['gMin'] == 1 and g['dtap']['gMin'] == 1, f'Tempo-Bremse greift beim Flug, ?gov=0 aus ({n["fly"]["gMin"]}/{g["fly"]["gMin"]})')
-    need(n['fly']['durationS'] < 2.6 * g['fly']['durationS'], f'Flug höchstens 2,5× so lang ({n["fly"]["durationS"]} s statt {g["fly"]["durationS"]} s)')
+    need(n['fly']['gMin'] < 0.9, f'Tempo-Bremse greift beim Flug ({n["fly"]["gMin"]})')
+    need(n['fly']['durationS'] < 2.6 * GOV0_FLY_S, f'Flug höchstens 2,5× so lang wie ohne Bremse ({n["fly"]["durationS"]} s, ohne Bremse {GOV0_FLY_S} s)')
     need(n['fly']['hard'] == 0, 'Flug: 0 harte Wechsel')
-    for k in ('new', 'gov0'):
+    for k in ('new',):
         need(not res[k]['errors'] and not res[k]['longTasks'], f'{k}: 0 Fehler, keine Long Tasks > 50 ms')
     print('\n'.join(chk))
     print('RESULT', 'PASS' if ok else 'FAIL')
