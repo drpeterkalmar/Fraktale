@@ -70,7 +70,14 @@ class App:
     def open(self, hash_=''):
         url = BASE + ('?' + self.query if self.query else '') + (('#' + hash_) if hash_ else '')
         self.page.goto(url, wait_until='load')
-        self.page.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
+        try:
+            self.page.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
+        except Exception as e:
+            # Diagnose: was steht auf der Seite (z. B. Fatal-Meldung), welche Skripte fehlen, welche Fehler kamen
+            info = self.page.evaluate("() => ({ body: (document.body && document.body.innerText || '').slice(0, 300), "
+                                      "scripts: [...document.scripts].map(s => s.src.split('/').pop()), ready: document.readyState, "
+                                      "fk: typeof window.__fraktal, gl: !!document.createElement('canvas').getContext('webgl2') })")
+            raise RuntimeError('App kam nicht hoch: %s | Fehler: %s | %s' % (json.dumps(info, ensure_ascii=False), self.errors[:3], e))
         return self
 
     def status(self):
