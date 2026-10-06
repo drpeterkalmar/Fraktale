@@ -1981,7 +1981,16 @@ function frame(now) {
     if (js > (stats.jsMax || 0)) stats.jsMax = js;
 }
 
-R.onRestored = () => { gwRestored(); gpuPerturbOK = SIMPLE ? false : R.selfTest(); RC.front = RC.prev = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate(); };
+R.onRestored = () => {
+    gwRestored();
+    gpuPerturbOK = SIMPLE ? false : R.selfTest();
+    // alle GPU-Objekte sind weg: 3D-Ziele/Programme, Höhentexturen der Ebenen, Mittelung, Buddhabrot-Bild (P1-3)
+    if (T3) T3.reset();
+    for (const l of RC.layers) l.h3d = null;
+    V3.accKey = null; V3.accPending = false; V3.Lset = false;
+    BUD.hist = null;
+    RC.front = RC.prev = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate();
+};
 R.onLost = () => { RC.job = RC.pjob = null; gwLost(); };
 
 // ------------------------------------------------------------------ 6.5.2 Grafik-Wächter: nie eine endlose leere Fläche

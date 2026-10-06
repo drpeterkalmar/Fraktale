@@ -119,6 +119,11 @@ function create(canvas) {
         R.refTex = null;
         R.ref = null;
         pool.length = 0;
+        // nach einem Kontextverlust gehören alle Handles dem alten Kontext (P1-3)
+        _dummy = _dummyD = null;
+        scatterProg = scatterVAO = scatterVBO = null;
+        histTex = null; histW = histH = 0;
+        if (PSC) gl.getExtension('KHR_parallel_shader_compile');   // Erweiterungen gelten je Kontext: neu aktivieren
     }
 
     // ------------------------------------------------ Iterationspuffer

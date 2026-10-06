@@ -1169,6 +1169,13 @@ function create(R) {
         gl.disable(gl.BLEND);
     };
     T.hasAcc = () => !!acc;
+    // nach einem Kontextverlust: alle GL-Handles gehören dem alten Kontext -> vergessen, beim nächsten Bild neu anlegen (P1-3)
+    T.reset = function () {
+        fbo = fboS = acc = grid = noiseTex = warmT = probeBuf = _df = null;
+        lastTerr = null; warmDone = {}; probeBusy = false;
+        T.variant = undefined; T.waiting = false;
+        if (floatRT) gl.getExtension('EXT_color_buffer_float');    // Erweiterungen gelten je Kontext: neu aktivieren
+    };
 
     // ---------------- Sonde (asynchron): Iterationswerte im Fenster ±win um den Fokus
     const PW = 48, PH = 48;
