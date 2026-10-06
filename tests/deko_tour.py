@@ -166,7 +166,7 @@ def perf():
 def gpu():
     """GPU-Zeit eines 3D-Bilds (EXT_disjoint_timer_query, API bench3d): Bewegungsbild (65 %) und Stillbild (voll),
     Standard- und Alpin-See-Look, Hochformat. Feiner als die Bildzeit (die am rog an der 60-Hz-Grenze klebt)."""
-    out = {'tag': TAG, 'query': EXTRA, 'host': 'rog17/RTX 3070 Ti', 'gpu': {}}
+    out = {'tag': TAG, 'query': EXTRA, 'host': os.environ.get('FK_HOST', 'rog17/RTX 3070 Ti'), 'gpu': {}}
     with sync_playwright() as p:
         a = App(p, landscape=False, query=query('nosw&noanim')).open(); pg = a.page
         ui_ready(pg)

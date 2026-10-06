@@ -1,0 +1,32 @@
+{
+ "tag": "v651_an_2",
+ "query": "",
+ "host": "Mac mini M1",
+ "gpu": {
+  "standard": {
+   "bewegt": {
+    "min": 5.05,
+    "max": 18.85,
+    "scale": 0.65
+   },
+   "still": {
+    "min": 9.8,
+    "max": 44.94,
+    "scale": 0.65
+   }
+  },
+  "alpin_see": {
+   "bewegt": {
+    "min": 5.72,
+    "max": 29.23,
+    "scale": 0.65
+   },
+   "still": {
+    "min": 14.58,
+    "max": 59.27,
+    "scale": 0.65
+   }
+  }
+ },
+ "errors": []
+}
