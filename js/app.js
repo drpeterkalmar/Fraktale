@@ -1855,7 +1855,9 @@ function readURL() {
     applySetColParam(p.get('sc') || '');
     S.alpine = p.has('al');
     if (S.alpine) S.valley = { f: 'forest', l: 'lake', m: 'meadow' }[p.get('al')] || 'forest';
-    if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, parseInt(p.get('it'), 10) || 300); }
+    // Iterationen wie beim Knopf (changeIter) auf 50 … 500 000 begrenzen: ein Link mit it=99999999 erzeugte GPU-Häppchen
+    // von Minuten (Windows-Watchdog -> Kontextverlust)
+    if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
     setCam(HP.fromString(p.get('x')), HP.fromString(p.get('y') || '0'), parseFloat(p.get('z')) || 1);
     return true;
 }

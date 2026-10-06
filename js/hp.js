@@ -57,9 +57,10 @@ function toNumberP(v, p) {
 }
 function toNumber(v) { return toNumberP(v, P); }
 
-// Dezimalstring ("-0.7436", "1.5e-3") -> Fixpunkt
+// Dezimalstring ("-0.7436", "1.5e-3", auch mit Komma: "-0,7436") -> Fixpunkt
 function fromString(s) {
     s = String(s).trim();
+    if (s.indexOf(',') >= 0 && s.indexOf('.') < 0) s = s.replace(',', '.');   // Dezimalkomma (deutsche Links); vorher still 0
     let neg = false;
     if (s[0] === '-' || s[0] === '−') { neg = true; s = s.slice(1); }
     else if (s[0] === '+') s = s.slice(1);

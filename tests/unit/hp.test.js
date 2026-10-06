@@ -45,4 +45,11 @@ test('toString: kleine negative Zahl ohne Minus, digitsForZoom', () => {
 
 test('fromString: Unsinn -> 0', () => {
     assert.equal(HP.fromString('abc'), 0n);
+    assert.equal(HP.fromString('1,5,3'), 0n);
+});
+
+test('fromString: Dezimalkomma (bis 6.5.3 still 0)', () => {
+    assert.equal(HP.fromString('1,5'), HP.fromString('1.5'));
+    assert.equal(HP.fromString('-0,7436'), HP.fromString('-0.7436'));
+    assert.equal(HP.toString(HP.fromString('−0,25e-2'), 5), '-0.00250');
 });
