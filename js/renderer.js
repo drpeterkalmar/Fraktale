@@ -13,7 +13,7 @@ function create(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false,
         preserveDrawingBuffer: false, powerPreference: 'high-performance', desynchronized: false });
     if (!gl) return null;
-    const R = { gl, canvas, lost: false };
+    const R = { gl, canvas, lost: gl.isContextLost() };    // 6.5.2: kann schon beim Anlegen verloren sein (WebGL gesperrt)
     let programs = {};
     let vao = null;
 
@@ -627,6 +627,11 @@ function create(canvas) {
     R.selfTest = function () {
         try { program('c0perturbd', SH.computeFS(0, 'perturb', false, true)); program('c0directd', SH.computeFS(0, 'direct', false, true)); program('display', SH.DISPLAY_FS); return true; }
         catch (e) { console.warn('GPU-Selbsttest:', e.message); return false; }
+    };
+    // 6.5.2: ohne Anzeige-Shader kann gar nichts gezeigt werden (harter Fehler -> Meldung statt leerer Fläche)
+    R.displayOK = function () {
+        try { program('display', SH.DISPLAY_FS); return true; }
+        catch (e) { console.warn('Anzeige-Shader:', e.message); return gl.isContextLost(); }
     };
 
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); R.lost = true; if (R.onLost) R.onLost(); });

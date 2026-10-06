@@ -72,17 +72,29 @@ function saveSettings() {
     const o = {};
     for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
+    if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
 
 // ------------------------------------------------------------------ Canvas / Renderer
 const canvas = document.getElementById('gl');
 const R = self.FKRenderer.create(canvas);
-if (!R) {
-    document.body.innerHTML = '<div class="fatal"><h1>WebGL 2 nicht verfügbar</h1><p>Der Fraktal-Explorer braucht einen Browser mit WebGL 2 (z. B. aktuelles Chrome auf Android).</p></div>';
-    return;
+// 6.5.2: Meldung vor dem Start (Einstellungen noch nicht geladen): gespeicherte Sprache, sonst Deutsch/Englisch nach Browser
+function bootT(k) {
+    let l = '';
+    try { l = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}').lang || ''; } catch (e) {}
+    if (!TRANSLATIONS[l]) l = /^de/i.test(navigator.language || '') ? 'de' : 'en';
+    return TRANSLATIONS[l][k] || TRANSLATIONS.en[k];
 }
-let gpuPerturbOK = R.selfTest();
+function fatal() {
+    document.body.innerHTML = `<div class="fatal"><h1>${bootT('webgl_fatal_title')}</h1><p>${bootT('webgl_fatal_text')}</p><p class="hint">${bootT('webgl_fatal_hint')}</p></div>`;
+}
+if (!R) { fatal(); return; }
+// 6.5.2 „Einfache Grafik“ (Knopf des Start-Wächters): diese Sitzung CPU-Rechenweg + Auflösung „Akku“, ohne GPU-Selbsttest
+let SIMPLE = false;
+try { SIMPLE = sessionStorage.getItem('fk_simple') === '1'; } catch (e) {}
+let gpuPerturbOK = SIMPLE ? false : R.selfTest();
+if (!R.displayOK()) { fatal(); return; }
 let cssW = 1, cssH = 1, dpr = 1;
 function qualityDpr() {
     const d = window.devicePixelRatio || 1;
@@ -1921,7 +1933,7 @@ function frame(now) {
     const js0 = performance.now();
     const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
     lastT = now;
-    if (document.hidden || R.lost) return;
+    if (document.hidden || R.lost || NOFIRST) return;
     S.time += dt;
     if (S.anim) S.cycle += dt * S.speed;
     if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
@@ -1958,6 +1970,7 @@ function frame(now) {
     schedule(now);
     const tP = performance.now();
     present(now, camChanged);
+    if (!GW.firstPic && (RC.layers.length || S.formula >= 6)) gwFirstPicture();
     if (PROF) { const tE = performance.now(); if (tE - js0 > 25) PROF.push({ t: Math.round(now), pre: +(tS - js0).toFixed(1), sched: +(tP - tS).toFixed(1), present: +(tE - tP).toFixed(1), job: RC.job ? RC.job.key.slice(-12) : '', n: RC.layers.length }); }
     stats.frames++;
     if (now - stats.fpsT > 1000) { stats.fps = Math.round(stats.frames * 1000 / (now - stats.fpsT)); stats.frames = 0; stats.fpsT = now; }
@@ -1968,8 +1981,56 @@ function frame(now) {
     if (js > (stats.jsMax || 0)) stats.jsMax = js;
 }
 
-R.onRestored = () => { gpuPerturbOK = R.selfTest(); RC.front = RC.prev = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate(); };
-R.onLost = () => { RC.job = RC.pjob = null; };
+R.onRestored = () => { gwRestored(); gpuPerturbOK = SIMPLE ? false : R.selfTest(); RC.front = RC.prev = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate(); };
+R.onLost = () => { RC.job = RC.pjob = null; gwLost(); };
+
+// ------------------------------------------------------------------ 6.5.2 Grafik-Wächter: nie eine endlose leere Fläche
+// (1) Kontextverlust: nach 1,5 s „Grafik wird neu verbunden …“; kommt nach 6 s keine Wiederherstellung (Chrome nach einem
+//     Absturz des GPU-Prozesses, WebGL für die Seite gesperrt), Meldung mit „Neu laden“ (Ansicht steht vorher im Link).
+// (2) Start-Wächter: nach 12 s (Handy 20 s, sichtbare Zeit) noch kein erstes Bild -> Meldung mit „Neu laden“ und
+//     „Einfache Grafik“. Kommt das Bild doch noch, verschwindet sie. Solange eine Meldung steht, ist der Canvas
+//     ausgeblendet (dunkler App-Hintergrund statt eines verlorenen, evtl. weißen Canvas).
+// Test-Hook ?test_nofirstframe=1: es wird nie gezeichnet (Start-Wächter).
+const NOFIRST = Q.has('test_nofirstframe');
+const GW = { el: null, kind: '', timers: [], firstPic: false, vis: 0, last: performance.now(), limit: Math.min(screen.width, screen.height) < 700 ? 20000 : 12000 };
+function gpuNote(kind) {
+    GW.kind = kind;
+    document.documentElement.classList.toggle('gl-off', !!kind);
+    if (!kind) { if (GW.el) GW.el.hidden = true; return; }
+    if (!GW.el) {
+        GW.el = document.createElement('div');
+        GW.el.id = 'gpu-note'; GW.el.className = 'glass'; GW.el.setAttribute('role', 'alert');
+        document.body.appendChild(GW.el);
+    }
+    const btn = (id, key) => `<button id="${id}" class="chip">${t(key)}</button>`;
+    GW.el.innerHTML = kind === 'wait' ? `<p class="msg">${t('gpu_wait')}</p>`
+        : `<p class="msg">${t(kind === 'lost' ? 'gpu_lost' : 'gpu_stuck')}</p><div class="btns">${btn('gpu-reload', 'gpu_reload')}${kind === 'stuck' ? btn('gpu-simple', 'gpu_simple') : ''}</div><p class="hint">${t('gpu_lost_hint')}</p>`;
+    GW.el.dataset.kind = kind;
+    GW.el.hidden = false;
+    const r = GW.el.querySelector('#gpu-reload'), s = GW.el.querySelector('#gpu-simple');
+    if (r) r.onclick = () => reloadHere(false);
+    if (s) s.onclick = () => reloadHere(true);
+}
+// neu laden und am selben Ort landen (Ansicht in den Link; „Einfache Grafik“ gilt nur für diese Sitzung)
+function reloadHere(simple) {
+    try { history.replaceState(null, '', stateURL()); } catch (e) {}
+    try { if (simple) sessionStorage.setItem('fk_simple', '1'); } catch (e) {}
+    location.reload();
+}
+function gwLost() {
+    GW.timers.forEach(clearTimeout);
+    GW.timers = [setTimeout(() => { if (R.lost) gpuNote('wait'); }, 1500), setTimeout(() => { if (R.lost) gpuNote('lost'); }, 6000)];
+}
+function gwRestored() { GW.timers.forEach(clearTimeout); GW.timers = []; if (GW.kind === 'wait' || GW.kind === 'lost') gpuNote(''); }
+function gwFirstPicture() { GW.firstPic = true; if (GW.kind === 'stuck') gpuNote(''); }
+const gwStart = setInterval(() => {
+    const now = performance.now();
+    if (!document.hidden) GW.vis += now - GW.last;
+    GW.last = now;
+    if (GW.firstPic) { clearInterval(gwStart); return; }
+    if (GW.vis > GW.limit && !GW.kind) gpuNote('stuck');
+}, 500);
+if (R.lost) gwLost();
 
 // ------------------------------------------------------------------ Hilfen für UI
 function t(key) { const T = TRANSLATIONS[S.lang] || TRANSLATIONS.de; return T[key] !== undefined ? T[key] : (TRANSLATIONS.en[key] || key); }
@@ -2024,6 +2085,7 @@ function fileName() { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.toExp
 // ------------------------------------------------------------------ Start
 function init() {
     loadSettings();
+    if (SIMPLE) { SIMPLE = { renderer: S.renderer, quality: S.quality }; S.renderer = 'cpu'; S.quality = 'eco'; }
     const fromURL = readURL();
     if (!fromURL) setCam(HP.fromString('-0.5'), 0n, 1);
     if (Q.get('renderer')) S.renderer = Q.get('renderer');
@@ -2079,6 +2141,8 @@ const API = {
                  iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined };
     },
     isMoving: () => isMoving(performance.now()),
+    // Test (6.5.2): Grafik-Wächter – '' | 'wait' | 'lost' | 'stuck', erstes Bild gezeichnet?
+    gpuGuard: () => ({ kind: GW.kind, firstPic: GW.firstPic, simple: !!SIMPLE, lost: !!R.lost }),
     // Test/Messung: aktuelles Bild frisch auf den Canvas (2D: Display-Pass; 3D: gemitteltes Bild bzw. neu zeichnen)
     snapshot() { if (V3.on) present3d(performance.now(), false, true); else presentNow(); },
     // Test: 3D-Mittelung sofort abschließen (alle Bilder in einem Rutsch)

@@ -235,6 +235,21 @@ label.select select { background: rgba(255, 255, 255, .07); color: var(--text); 
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 .fatal, .noscript { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; gap: 12px; padding: 24px; color: #fff; }
+.fatal .hint { max-width: 520px; margin: 0 auto; }
+
+/* 6.5.2 Grafik-Wächter: Meldung bei Verlust der Grafik bzw. ausbleibendem ersten Bild; der Canvas ist dann aus */
+#gl { background: var(--bg); }
+html.gl-off #gl { visibility: hidden; }
+#gpu-note { position: fixed; z-index: 90; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(400px, calc(100vw - 32px));
+    padding: 18px 20px; display: grid; gap: 12px; text-align: center; background: var(--glass-strong); animation: gpuIn .35s var(--ease); }
+#gpu-note[hidden] { display: none; }
+#gpu-note .msg { font-size: 15.5px; font-weight: 600; color: #fff; line-height: 1.4; }
+#gpu-note .hint { margin: 0; }
+#gpu-note .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+#gpu-note .chip { color: #fff; background: rgba(167, 139, 250, 0.25); border-color: rgba(167, 139, 250, 0.6); font-size: 14px; padding: 0 18px; }
+@keyframes gpuIn { from { opacity: 0; transform: translate(-50%, -46%); } }
+html.deko #gpu-note { background: linear-gradient(160deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 40%),
+    linear-gradient(340deg, rgba(167, 139, 250, 0.08) 0%, rgba(167, 139, 250, 0) 45%), var(--glass-strong); }
 
 /* ---------- Querformat (Handy liegend): Sheet rechts, Dock rechts senkrecht ---------- */
 @media (orientation: landscape) and (max-height: 540px) {
