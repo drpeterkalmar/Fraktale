@@ -404,7 +404,8 @@ const orbitWorker = new Worker('js/orbit-worker.js' + V);
 const REF = { cur: null, pending: null, queued: null, seq: 0, blaPending: false, lastReqT: 0 };
 orbitWorker.onmessage = (e) => {
     const m = e.data;
-    if (m.type === 'error') { console.warn('Orbit-Worker:', m.message); REF.pending = null; return; }
+    // P3-9: dieselbe Anfrage nicht sofort im nächsten Bild wiederholen (Konsole liefe voll, Worker rechnete dauernd) – 5 s Sperre
+    if (m.type === 'error') { console.warn('Orbit-Worker:', m.message); if (REF.pending) REF.fail = { sig: REF.pending.sig, t: performance.now() }; REF.pending = null; return; }
     if (m.type === 'ref') {
         const req = REF.pending;
         REF.pending = null;
@@ -472,6 +473,7 @@ function requestRefFor(tg, pfKey, want64 = true, nonce) {
         return;
     }
     if (REF.cur && REF.cur.sig === sig) return;
+    if (REF.fail && REF.fail.sig === sig && performance.now() - REF.fail.t < 5000) return;
     q.sig = sig;
     sendRef(q);
 }

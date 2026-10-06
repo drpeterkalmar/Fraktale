@@ -463,7 +463,7 @@ function buildUserPlaces() {
 }
 $('btn-save-place').addEventListener('click', () => {
     const v = A.viewState();
-    A.presentNow();
+    A.snapshot();      // P3-8: frisch zeichnen – in 3D das 3D-Bild (presentNow zeichnete das 2D-Bild darüber)
     const c = document.createElement('canvas');
     c.width = 176; c.height = 110;
     const src = A.R.canvas;
@@ -515,6 +515,8 @@ function toggleFullscreen() {
 }
 $('btn-fullscreen').addEventListener('click', toggleFullscreen);
 $('btn-fullscreen2').addEventListener('click', toggleFullscreen);
+// P3-7: ohne Vollbild-Schnittstelle (iPhone) täte der Knopf stumm nichts -> ausblenden
+if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen) $('btn-fullscreen').hidden = $('btn-fullscreen2').hidden = true;
 $('btn-reset').addEventListener('click', () => { A.goHome(); });
 $('btn-help').addEventListener('click', () => openModal('help'));
 $('btn-gestures').addEventListener('click', () => openModal('gestures'));

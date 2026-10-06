@@ -646,10 +646,13 @@ function create(canvas) {
         return f;
     };
 
+    let info = null;      // P3-10: einmal abfragen (die HUD fragt alle 200 ms)
     R.info = function () {
+        if (info && info.renderer) return info;
         const ext = gl.getExtension('WEBGL_debug_renderer_info');
-        return { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+        info = { renderer: ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
                  maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE) };
+        return info;
     };
 
     // Kurzer Selbsttest: kompilieren die Perturbations-Shader auf diesem Gerät?
