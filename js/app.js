@@ -424,6 +424,9 @@ orbitWorker.onmessage = (e) => {
         if (RC.pjob && RC.pjob.mode === 'perturb') cancelPrefetch();
         R.setReference(m);
         REF.cur = m;
+        // P1-1: laufende exakte Nachrechnung mit der alten Referenz abbrechen (ihre Pakete kämen als missingRef zurück
+        // und würden endlos neu geschickt); das Bild wird mit der neuen Referenz neu gerechnet
+        if (RC.fix && RC.fix.fr.mode === 'perturb' && RC.fix.fr.refId !== m.id) { const fr = RC.fix.fr; cancelFix(); recompute(fr); }
         if (m.orbit64) cpuSendRef(m);
         if (REF.queued) { const q = REF.queued; REF.queued = null; sendRef(q); }
         stats.lastRef = { ms: m.ms, method: m.method, period: m.period, len: m.lenA };
@@ -451,7 +454,8 @@ function requestRef(want64) { return requestRefFor(refTarget(), null, want64); }
 // Zoom die Genauigkeit). Wahl des Referenzpunkts und BLA bleiben gleich -> Außenwerte bitgleich wie ohne Bunt.
 function refExtra(it) { return innActive() ? Math.min(16384, Math.max(4096, it)) : 0; }
 // tg: Kamera, für die der Orbit gerechnet wird; pfKey: Vorausrechnen für diese Ansicht (verfällt bei Wechsel)
-function requestRefFor(tg, pfKey, want64 = true) {
+// nonce (nur Test-Hook testNewRef): erzwingt eine neue Signatur, also eine neue Referenz für dieselbe Ansicht
+function requestRefFor(tg, pfKey, want64 = true, nonce) {
     const s = 3 / (tg.zoom * cssH);
     const q = {
         type: 'ref', id: 0, formula: S.formula,
@@ -462,7 +466,7 @@ function requestRefFor(tg, pfKey, want64 = true) {
         cmax: 0, want64
     };
     q.extra = refExtra(q.maxIter);
-    const sig = [q.formula, q.cx, q.cy, q.zoom, q.jx, q.jy, q.maxIter, want64, q.extra].join('|');
+    const sig = [q.formula, q.cx, q.cy, q.zoom, q.jx, q.jy, q.maxIter, want64, q.extra].join('|') + (nonce ? '|n' + nonce : '');
     q.pfKey = pfKey || null;
     if (REF.pending && pfKey) return;
     if (REF.pending) {
@@ -845,7 +849,7 @@ function startFix(fr, now) {
         if (!fix.count) { fr.fixed = true; fr.exact = true; RC.fix = null; RC.dirty = true; fullDone(fr, performance.now()); return; }
         if (fr.mode === 'perturb') {
             const r = REF.cur;
-            if (!r || r.id !== fr.refId || !r.orbit64) { RC.fix = null; fr.stage = 2; return; }   // Referenz gewechselt -> neu rechnen
+            if (!r || r.id !== fr.refId || !r.orbit64) { RC.fix = null; recompute(fr); return; }   // Referenz gewechselt -> neu rechnen
             fix.off = [HP.toNumber(fr.view.cx - r.refXb), HP.toNumber(fr.view.cy - r.refYb)];
             fix.useBLA = !!r.bla64;
         } else fix.off = [HP.toNumber(fr.view.cx), HP.toNumber(fr.view.cy)];
@@ -857,6 +861,9 @@ function startFix(fr, now) {
         fixFeed();
     });
 }
+// finales Bild, dessen Nachrechnung nicht mehr möglich ist (Referenz gewechselt): als Vorschau behandeln -> schedule
+// rechnet die finale Stufe neu (nur stage = 2 genügte nicht: schedule startete wieder die Nachrechnung, endlos)
+function recompute(fr) { fr.stage = 2; fr.preview = true; RC.dirty = true; }
 function fixMsg(fix, chunk, list) {
     const fr = fix.fr;
     return { type: 'pixels', jobId: fix.id, chunk, list, refId: fr.refId, bufW: fr.buf.w, bufH: fr.buf.h, scale: fr.scale,
@@ -876,7 +883,12 @@ function fixFeed() {
 function onFixPixels(m, w) {
     const fix = RC.fix;
     if (!fix || m.jobId !== fix.id) { cpuFeed(); return; }
-    if (m.missingRef) { if (REF.cur && REF.cur.orbit64) sendRefTo(w, REF.cur); w.busy++; w.postMessage(fixMsg(fix, m.chunk, m.list)); return; }
+    if (m.missingRef) {
+        // Referenz der Nachrechnung gibt es nicht mehr: abbrechen und neu rechnen statt dasselbe Paket endlos zu schicken
+        if (!REF.cur || REF.cur.id !== fix.fr.refId) { const fr = fix.fr; cancelFix(); recompute(fr); cpuFeed(); return; }
+        if (REF.cur.orbit64) sendRefTo(w, REF.cur);
+        w.busy++; w.postMessage(fixMsg(fix, m.chunk, m.list)); return;
+    }
     R.scatter(fix.buf, m.list, m.values);
     fix.done++;
     if (fix.done >= fix.total) {
@@ -2237,6 +2249,8 @@ const API = {
                  canvas: [canvas.width, canvas.height], maxIter: currentMaxIter(), gpuPerturbOK };
     },
     setView(cx, cy, zoom) { stopAnims(); setCam(HP.fromString(cx), HP.fromString(cy), zoom); },
+    // Test (P1-1): neue Referenz für die aktuelle Ansicht erzwingen (z. B. mitten in der exakten Nachrechnung)
+    testNewRef() { requestRefFor(S.cam, null, true, ++REF.seq); },
     // Test: Iterationswerte des fertigen Bildes an Pixeln [i, jVonOben] + exakte Ansicht
     readFrontAt(px) {
         const f = RC.front; if (!f) return null;
