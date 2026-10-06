@@ -12,7 +12,7 @@ Kennzahlen je Lauf:
     solche Strecke (s); Anteil Bilder mit unbedeckter Fläche > 2 %; harte Wechsel (Ebenen ohne Blende)
 Mittelklasse-Profil: --throttle=4 (CPU 4× gedrosselt, 4 Kerne; die GPU lässt sich nicht drosseln).
 Bildraten nur im sichtbaren Fenster aussagekräftig (FK_HEADED=1; headless drosselt macOS auf ~10–15 Bilder/s).
-Serienbilder (--shots): tests/shots/flug2d/<mode>_<hoch|quer>_<start>_{start,30s,2min}.png
+Serienbilder (--shots): tests/shots/flug2d/<mode>_<hoch|quer>_<start>_{start,30s,2min}.jpg
 Aufruf: FK_HEADED=1 python3 tests/measure_fly2d.py --mode=2d [--land] [--secs=120] [--throttle=4] [--only=ganz_1] [--shots] [--tag=v660]
 Ergebnis: tests/results_fly2d_<tag>_<mode>_<hoch|quer>[_thr4].json
 """
@@ -78,7 +78,7 @@ def main():
             a.set_view(cx, cy, z); a.wait_done(120)
             if d3:
                 pg.evaluate("() => window.__fraktal.set3d(true)"); a.wait_3d(); time.sleep(0.5); a.wait_done(120); time.sleep(1.0)
-            snap = lambda what: pg.screenshot(path=os.path.join(sdir, f'{mode}_{ori}_{name}_{what}.png')) if shots else None
+            snap = lambda what: pg.screenshot(path=os.path.join(sdir, f'{mode}_{ori}_{name}_{what}.jpg'), type='jpeg', quality=85) if shots else None
             snap('start')
             pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.flySpeed = {speed}; A.frameStats(true); A.startFly(undefined, {{ d3: {str(d3).lower()} }}); A.FLY.rec = []; A.FLY.recM = []; }}")
             pg.evaluate(FPS_JS)

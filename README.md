@@ -100,7 +100,7 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 - **✈ Flug in der flachen Ansicht:** neuer runder ✈-Knopf (hochkant unten rechts, quer unten links). Das Bild taucht wie ein endloses Zoom-Video am Rand der Menge in die Tiefe; dieselbe Randsuche wie im 3D-Flug (Zoompunkt am Rand, ruhiges Nachführen, vorausschauende Bremse, aus leeren Flächen zurück zum Rand), die Bildmitte folgt dem Zoompunkt weich. Tippen = Pause, ziehen = schieben, Tempo-Regler in der Leiste.
 - **Wechsel im Flug:** ⛰ im 2D-Flug → der Flug geht in 3D weiter; 3D aus im Flug → er fliegt flach weiter (bisher endete er).
 - **Orte:** „✈ Flug“ fliegt im aktuellen Modus und landet exakt; Taste `V` ebenso. Ohne 3D-Shader (nur die kleine Sonde) – also auch, wo die 3D-Landschaft nicht läuft.
-- Gemessen (M1, Pixel-7-Ansicht, sichtbares Fenster, 3 Startorte × 2 min): 2D-Flug ~57 Bilder/s, Rand in der Bildmitte 99,6 % der Zeit, nie „verloren“, ~37 Zehnerpotenzen in 2 min; über 10³⁰ fliegt er mit der CPU-Rechnung weiter (langsamer, weicher). Details: `FLUG2D_BERICHT.md`.
+- Gemessen (M1, Pixel-7-Ansicht, sichtbares Fenster, 3 Startorte × 2 min, hoch und quer): 2D-Flug 58 Bilder/s (Mittelklasse-Profil 56; 3D-Flug 54), Rand in der Bildmitte ≥ 99,8 % der Zeit, nie „verloren“, 37–38 Zehnerpotenzen in 2 min; über 10³⁰ fliegt er mit der CPU-Rechnung weiter (9–12 Zehnerpotenzen/min, weicher). Im 2D-Flug rechnet die GPU wie in 3D höchstens einen Bildtakt pro Bild (vorher Ruckler ab 10⁹: 52,6 → 58 Bilder/s). Details: `FLUG2D_BERICHT.md`.
 - Flug-Texte jetzt auch auf Ungarisch, Spanisch, Französisch, Portugiesisch, Chinesisch, Japanisch und Koreanisch. A/B: `?fly2d=0` = Verhalten 6.5.
 
 **Version 6.5.4** – Aufräumen nach dem Code-Gutachten (keine neuen Funktionen)

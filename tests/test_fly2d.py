@@ -13,7 +13,7 @@ Prüft:  * ✈-Knopf in 2D sichtbar (hoch unten rechts über dem Dock, quer unte
         * Welt ohne Flug (Mandelbulb) beendet den Flug
         * ?fly2d=0: kein 2D-Knopf, ✈ startet wie 6.5 die 3D-Landschaft, 3D aus beendet den Flug
         * 0 Fehler
-Bildschirmfotos: tests/shots/flug2d/knopf_{hoch,quer}.png, leiste_{hoch,quer}.png
+Bildschirmfotos: tests/shots/flug2d/knopf_{hoch,quer}.jpg, leiste_{hoch,quer}.jpg
 Hinweis: wie die übrigen Flugtests im sichtbaren Fenster (headless drosselt macOS den Bildtakt, dann taucht der Flug langsamer).
 Aufruf: FK_HEADED=1 python3 tests/test_fly2d.py
 """
@@ -56,7 +56,7 @@ def main():
         res['btn_hoch'] = b
         need(b and b['w'] >= 48 and b['h'] >= 48, f'hoch: ✈-Knopf sichtbar, ≥ 48 px: {b}')
         need(b and b['x'] + b['w'] > W * 0.75 and b['y'] + b['h'] <= dock['y'] and b['y'] > H * 0.6, 'hoch: Knopf unten rechts über dem Dock (Daumenzone)')
-        pg.screenshot(path=os.path.join(SHOTS, 'knopf_hoch.png'))
+        pg.screenshot(path=os.path.join(SHOTS, 'knopf_hoch.jpg'), type='jpeg', quality=85)
         # --- Start per Knopf: 2D-Flug ohne 3D
         pg.evaluate("() => { window.__fraktal.S.flySpeed = 0.5; }")
         pg.click('#btn-fly2d')
@@ -67,7 +67,7 @@ def main():
         need(box(pg, '#btn-fly2d') is None and box(pg, '#bar3d') is not None and box(pg, '#btn-north') is None and box(pg, '#lbl-speed') is not None,
              'im 2D-Flug: Flug-Leiste mit Stopp + Tempo, ohne Ausrichten; ✈-Knopf weg')
         time.sleep(20)
-        pg.screenshot(path=os.path.join(SHOTS, 'leiste_hoch.png'))
+        pg.screenshot(path=os.path.join(SHOTS, 'leiste_hoch.jpg'), type='jpeg', quality=85)
         r = pg.evaluate("""() => { const A = window.__fraktal, F = A.FLY; const o = { rec: F.rec, recM: F.recM, zoom: A.S.cam.zoom, v3: A.V3.on,
             progs: Object.fromEntries(['t3probe', 't3hb', 't3sky', 't3blit'].map(k => [k, A.R.hasProgram(k)])), prepInfo: A.view3dInfo().prepInfo }; F.rec = null; F.recM = null; return o; }""")
         ls, es = lost_stats(r['rec']), edge_stats(r['recM'])
@@ -159,11 +159,11 @@ def main():
         b = box(pg, '#btn-fly2d'); dock = box(pg, '#dock')
         res['btn_quer'] = b
         need(b and b['w'] >= 48 and b['x'] < W * 0.25 and b['y'] > H * 0.6 and b['x'] + b['w'] < dock['x'], f'quer: ✈-Knopf unten links, ≥ 48 px, frei vom Dock: {b}')
-        pg.screenshot(path=os.path.join(SHOTS, 'knopf_quer.png'))
+        pg.screenshot(path=os.path.join(SHOTS, 'knopf_quer.jpg'), type='jpeg', quality=85)
         pg.click('#btn-fly2d'); time.sleep(6)
         s = fly_state(pg)
         need(s['on'] and not s['v3'] and s['zoom'] > 3, f'quer: 2D-Flug läuft ({s["zoom"]:.1e})')
-        pg.screenshot(path=os.path.join(SHOTS, 'leiste_quer.png'))
+        pg.screenshot(path=os.path.join(SHOTS, 'leiste_quer.jpg'), type='jpeg', quality=85)
         pg.evaluate("() => window.__fraktal.stopFly()")
         need(not a.errors, f'quer: 0 Fehler {a.errors[:3]}')
         a.close()
