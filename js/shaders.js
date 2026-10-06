@@ -532,7 +532,7 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
 // wird auf die aktuelle Kamera reprojiziert und mit Deckkraft = gefederte Abdeckung × Einblendung
 // von oben nach unten aufgetragen: eine gröbere Ebene füllt nur Lücken, eine schärfere blendet weich
 // darüber. Vergrößerte Ebenen (Vorschau) werden auf dem Iterationswert interpoliert (Catmull-Rom),
-// nicht auf Farben. u_legacy = 1: Verhalten 5.0.1 (zwei Ebenen, harte Kante, Farbmischung).
+// nicht auf Farben.
 const NL = 8;
 // Palette, Außenfarbe, Dekodierung – gemeinsam für 2D (DISPLAY_FS) und 3D (js/three.js)
 const PAL_GLSL = `vec3 palette(float t) {
@@ -635,8 +635,6 @@ uniform vec4 u_xf[${NL}];       // Texel = Zielpixel * xy + zw
 uniform vec2 u_size[${NL}];
 uniform float u_alpha[${NL}];   // Einblendung 0..1
 uniform int u_n;                // Zahl der Ebenen
-uniform int u_legacy;           // 1 = 5.0.1: Ebene 0 = neu (B), Ebene 1 = alt (A), Crossfade u_mixB
-uniform float u_mixB;
 uniform float u_feather;        // Federbreite der Ebenenränder (Zielpixel)
 uniform int u_recon;            // 1 = Vorschau auf dem Iterationswert rekonstruieren
 uniform vec2 u_target;          // Zielgröße in Pixeln
@@ -683,20 +681,6 @@ vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 v
     if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
         col = relief(col, v00, v10, v01, v11, f, kx);
     return col;
-}
-
-// 5.0.1: harte Abdeckung, Farbmischung
-vec3 sampleLayer(usampler2D tex, vec2 size, vec4 xf, vec3 voidCol, out float w) {
-    vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
-    if (tc.x < 0.0 || tc.y < 0.0 || tc.x > size.x || tc.y > size.y) { w = 0.0; return vec3(0.0); }
-    w = 1.0;
-    vec2 q = tc - 0.5;
-    vec2 fl = floor(q);
-    vec2 f = q - fl;
-    ivec2 mx = ivec2(size) - 1;
-    ivec2 i0 = clamp(ivec2(fl), ivec2(0), mx);
-    ivec2 i1 = clamp(ivec2(fl) + 1, ivec2(0), mx);
-    return shade4(fetchV(tex, i0), fetchV(tex, ivec2(i1.x, i0.y)), fetchV(tex, ivec2(i0.x, i1.y)), fetchV(tex, i1), f, xf.x, voidCol);
 }
 
 // Abdeckung mit gefederten Rändern. Federbreite = Abstand der Kante vom Bildrand (max. u_feather):
@@ -814,20 +798,11 @@ vec3 voidColor() {
 void main() {
     vec3 vc = voidColor();
     vec3 col = vec3(0.012, 0.016, 0.04);
-    if (u_legacy == 1) {
-        float wa = 0.0, wb = 0.0;
-        vec3 ca = vec3(0.0), cb = vec3(0.0);
-        if (u_n > 1) ca = sampleLayer(u_t1, u_size[1], u_xf[1], vc, wa);
-        if (u_n > 0) cb = sampleLayer(u_t0, u_size[0], u_xf[0], vc, wb);
-        if (wa > 0.0) col = ca;
-        if (wb > 0.0) col = (wa > 0.0) ? mix(ca, cb, u_mixB) : cb;
-    } else {
-        // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
-        vec3 acc = vec3(0.0);
-        float T = 1.0;
-${Array.from({ length: NL }, (_, i) => `        if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
-        col = acc + T * col;
-    }
+    // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
+    vec3 acc = vec3(0.0);
+    float T = 1.0;
+${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
+    col = acc + T * col;
     // Sättigung, Vignette, Gamma wie v4
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.2);

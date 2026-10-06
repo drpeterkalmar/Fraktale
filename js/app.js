@@ -588,27 +588,25 @@ function cpuFeed() {
 // trägt die Ebenen nach Schärfe sortiert auf (schärfste oben, gefederte Ränder, zeitbasiertes
 // Einblenden): eine gröbere neue Vorschau füllt nur Lücken und überdeckt nie ein schärferes,
 // reprojiziert noch gültiges Bild. Schärfe = Pufferpixel pro Bildschirmpixel nach Reprojektion.
-// A/B-Regler per URL (Werte von 5.0.1 in Klammern):
-//   ?blend=0      Verhalten 5.0.1 komplett (2 Ebenen, harter Tausch in Bewegung, kein Vorausrechnen)
-//   ?maxdiv=N     gröbste Vorschau 1/N (12)        ?over=X     Vorschau-Überhang (1.2)
-//   ?fadems=N     Einblendzeit ms (280 nur im Stillstand, in Bewegung 0)   ?feather=N  Randfederung CSS px (0)
-//   ?recon=0      Vorschau auf Farben statt Iterationswert interpolieren (Farben)
+// A/B-Regler per URL (Standardwerte in Klammern; der 5.0.1-Modus ?blend=0 ist seit 6.5.4 entfernt):
+//   ?maxdiv=N     gröbste Vorschau 1/N (6 GPU, 8 CPU)   ?over=X     Vorschau-Überhang (1.5)
+//   ?fadems=N     Einblendzeit ms (220, in Bewegung 150)   ?feather=N  Randfederung CSS px (12)
+//   ?recon=0      Vorschau auf Farben statt Iterationswert interpolieren
 //   ?predict=0    Vorschau für die aktuelle statt die vorausgesagte Kamera  ?prefetch=0  kein Vorausrechnen
-//   ?gov=0        Tempo-Bremse aus (gab es nicht)
-const BLEND = Q.get('blend') !== '0';
-const MAXDIV = { gpu: +(Q.get('maxdiv') || (BLEND ? 6 : 12)), cpu: +(Q.get('maxdiv') || (BLEND ? 8 : 12)) };
-const OVER = +(Q.get('over') || (BLEND ? 1.5 : 1.2));       // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
+//   ?gov=0        Tempo-Bremse aus
+const MAXDIV = { gpu: +(Q.get('maxdiv') || 6), cpu: +(Q.get('maxdiv') || 8) };
+const OVER = +(Q.get('over') || 1.5);                      // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
 const OVER_MOVE = +(Q.get('overmove') || 1.2);             // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
-const STRIPS = BLEND && Q.get('strips') !== '0';           // Vorschau nur für den Bereich, der noch nicht scharf genug ist
-const FADE_MS = Q.has('fadems') ? +Q.get('fadems') : (BLEND ? 220 : 280);
-const FADE_MOVE_MS = Q.has('fadems') ? +Q.get('fadems') : (BLEND ? 150 : 0);
-const FEATHER = Q.has('feather') ? +Q.get('feather') : (BLEND ? 12 : 0);
-const RECON = BLEND && Q.get('recon') !== '0';
-const PREDICT = BLEND && Q.get('predict') !== '0';
-const PREFETCH = BLEND && Q.get('prefetch') !== '0';
+const STRIPS = Q.get('strips') !== '0';                    // Vorschau nur für den Bereich, der noch nicht scharf genug ist
+const FADE_MS = Q.has('fadems') ? +Q.get('fadems') : 220;
+const FADE_MOVE_MS = Q.has('fadems') ? +Q.get('fadems') : 150;
+const FEATHER = Q.has('feather') ? +Q.get('feather') : 12;
+const RECON = Q.get('recon') !== '0';
+const PREDICT = Q.get('predict') !== '0';
+const PREFETCH = Q.get('prefetch') !== '0';
 const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (6)
 const SIDE3D = 1600;                       // P2-3: größte Kantenlänge des quadratischen 3D-Rechenpuffers (px)
-const RC = { front: null, prev: null, job: null, pjob: null, fadeT0: 0, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
+const RC = { front: null, job: null, pjob: null, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
              layers: [], layerSeq: 0, list: [], estPreviewMs: 60, lastPreview: null, pxRate: 0,
              foreign: false, dirty: true, lastKeyFull: null, timeToFull: null, keyT0: 0, lastKey: '' };
 const stats = { fps: 0, frames: 0, fpsT: 0, lastRef: null, lastFullMs: null };
@@ -699,7 +697,6 @@ function makeFrame(job, now) {
 
 function jobFinished(job, now) {
     if (job.failed) return jobFailed(job);
-    if (!BLEND) return jobFinishedLegacy(job, now);
     const fr = makeFrame(job, now);
     const moving = isMoving(now);
     addLayer(fr, now, moving);
@@ -847,7 +844,7 @@ function pruneLayers(now) {
     const gone = new Set();
     for (const l of drop) {
         const e = cov.use.find(u => u.l === l);
-        if (l.outT ? now - l.outT >= FADE_MOVE_MS : (!e || e.n === 0 || l.alpha <= 0 || !BLEND)) gone.add(l);
+        if (l.outT ? now - l.outT >= FADE_MOVE_MS : (!e || e.n === 0 || l.alpha <= 0)) gone.add(l);
         else if (!l.outT) l.outT = now;
     }
     let live = RC.layers.filter(l => !gone.has(l));
@@ -928,13 +925,7 @@ function onFixPixels(m, w) {
         const fr = Object.assign({}, fix.fr, { buf: fix.buf, fixed: true, exact: true, h3d: null, shown: false, outT: 0 });   // eigener Puffer -> eigene 3D-Höhentextur
         stats.lastFix.ms = now - fix.t0;
         RC.fix = null;
-        if (BLEND) {
-            addLayer(fr, now, false);
-        } else {
-            if (RC.prev) R.releaseFrame(RC.prev);
-            RC.prev = RC.front;
-            RC.fading = true; RC.fadeT0 = now;
-        }
+        addLayer(fr, now, false);
         RC.front = fr;
         RC.dirty = true;
         fullDone(fr, now);
@@ -958,7 +949,7 @@ function pumpCtl(moving, prefetch) {
     // Häppchen-Regler die Rechnung auf 1024 Pixel pro Bild, keine Vorschau wurde mehr fertig, der Flug sah nur noch
     // Leere und suchte den Rand (A/B: ?flyhold=0)
     const minS = FLY_HOLD && V3.on && FLY.on && !FLY.paused ? 0.6 : 0;
-    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: BLEND ? Math.max(vs, Math.min(RC.idleDt || vs, cap)) : vs, minS };
+    return { moving, prefetch, dt: RC.dtEMA || 16, vsync: Math.max(vs, Math.min(RC.idleDt || vs, cap)), minS };
 }
 function isMoving(now) {
     return gestures.active() || !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused) || now - RC.lastMoveT < 150 || now - lastParamT < 150;
@@ -1048,7 +1039,6 @@ function schedule(now) {
     const needRef = p.mode === 'perturb';
     const refOK = needRef ? ensureRef(p, moving) : true;
     if (moving && Q.has('nopreview')) return;
-    if (!BLEND) return scheduleLegacy(now, p, moving, key, needRef, refOK);
 
     if (RC.fix) {
         if (RC.fix.key !== key) cancelFix();
@@ -1238,7 +1228,7 @@ function planPreview(now, view, p, sig) {
 // 0,43–0,5 – eine 0,5-Schwelle bremste auch dann, wenn die Rechnung gut mithält.
 // Pinch/Schieben unter dem Finger bleibt 1:1. Schalter: Mehr → „Tempo an Rechenleistung anpassen".
 function governorUpdate(now, dt) {
-    const on = BLEND && S.governor && Q.get('gov') !== '0';
+    const on = S.governor && Q.get('gov') !== '0';
     if (!on || !animating()) { GOV.g = Math.min(1, GOV.g + dt * 3); GOV.coarse = 0; return; }
     const c = predictCam(0.1, false);
     const cov = coverage(orderLayers(now, c), c, { sig: contentSig(), gx: 10, gy: 20, quantile: 0.1 });
@@ -1249,58 +1239,6 @@ function governorUpdate(now, dt) {
     const gmin = FLY_HOLD && FLY.on && !FLY.paused && !Q.has('govmin') ? 0.3 : GOV.min;
     if (e > 0.1) GOV.g = Math.max(gmin, GOV.g - dt * 3 * Math.min(1, e));
     else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);
-}
-
-// ---------------- Legacy (5.0.1, ?blend=0) – unverändert übernommen zum A/B-Vergleich
-function jobFinishedLegacy(job, now) {
-    const fr = makeFrame(job, now);
-    const moving = isMoving(now);
-    if (RC.prev) R.releaseFrame(RC.prev);
-    RC.prev = RC.front;
-    RC.front = fr;
-    RC.fading = !moving && !!RC.prev;
-    RC.fadeT0 = now;
-    RC.foreign = false;
-    RC.dirty = true;
-    if (job.stage > 1) {
-        RC.lastPreview = fr;
-        const t = fr.ms, k = job.kind;
-        if (moving) {
-            if ((RC.dtEMA > 1.4 * (RC.vsync || 16.7) || t > 90) && RC.previewDiv[k] < MAXDIV[k]) RC.previewDiv[k]++;
-            else if (RC.dtEMA < 1.1 * (RC.vsync || 16.7) && t < 40 && RC.previewDiv[k] > 2) RC.previewDiv[k]--;
-        }
-        RC.estFull = t * job.stage * job.stage;
-    } else {
-        stats.lastJobMs = fr.ms;
-        stats.gpuFullMs = fr.ms;
-        if (fr.fixed) { fr.exact = true; fullDone(fr, now); } else startFix(fr, now);
-        checkInside(fr);
-    }
-}
-function scheduleLegacy(now, p, moving, key, needRef, refOK) {
-    if (RC.fix) {
-        if (RC.fix.key !== key) cancelFix();
-        else return;
-    }
-    let job = RC.job;
-    if (job) {
-        if (job.key !== key && (job.stage === 1 || job.stage === 2 || job.kind !== p.kind || job.formula !== S.formula || now - job.t0 > 400)) { cancelJob(); job = null; }
-    }
-    if (job) {
-        const done = job.kind === 'gpu' ? R.pump(job, now, pumpCtl(moving)) : job.done;
-        if (done) { RC.job = null; jobFinished(job, now); }
-        return;
-    }
-    if (needRef && !refOK) return;
-    if (needRef && !moving && !refUsable(true, true)) return;
-    const front = RC.front;
-    if (!front || front.key !== key || RC.foreign) {
-        startJob(key, RC.previewDiv[p.kind], p);
-    } else if (!moving && front.stage > 1) {
-        const next = (front.stage > 2 && (RC.estFull || 0) > 450) ? 2 : 1;
-        startJob(key, next, p);
-    }
-    if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
 }
 
 function look() {
@@ -1314,14 +1252,6 @@ function look() {
 
 // Ebenenliste + Optionen für den Display-Pass (auch für Screenshot/Thumbnail)
 function presentArgs(now) {
-    if (!BLEND) {
-        let mixB = 1;
-        if (RC.fading) { mixB = Math.min(1, (now - RC.fadeT0) / FADE_MS); if (mixB >= 1) RC.fading = false; }
-        const list = [];
-        if (RC.front) { RC.front.alpha = RC.prev ? mixB : 1; RC.front.cond = true; list.push(RC.front); }
-        if (RC.prev) { RC.prev.alpha = 1; list.push(RC.prev); }
-        return { list, opts: { legacy: true, mixB } };
-    }
     // Einblenden zählt ab dem ersten gezeigten Frame (ein ausgefallener Frame darf die Blende nicht verschlucken)
     for (const l of RC.layers) if (!l.shown) { l.shown = true; l.t0 = now; }
     const list = orderLayers(now, S.cam);
@@ -1330,7 +1260,6 @@ function presentArgs(now) {
 }
 // blendet gerade eine sichtbare Ebene ein (auch eine, die noch nie gezeigt wurde)?
 function isFading(now) {
-    if (!BLEND) return RC.fading;
     return RC.layers.some(l => !l.prefetch && (!l.shown || layerFade(l, now) < 1));
 }
 function presentNow() { const a = presentArgs(performance.now()); R.present(a.list, S.cam, look(), null, a.opts); }
@@ -1918,7 +1847,7 @@ function buddhaMerge(m) {
 // ------------------------------------------------------------------ Inneres erkannt?
 let insideWarnKey = '';
 function checkInside(fr) {
-    const src = BLEND ? RC.lastPreview : RC.prev;   // Vorschau-Puffer (klein) asynchron lesen
+    const src = RC.lastPreview;   // Vorschau-Puffer (klein) asynchron lesen
     if (S.cam.zoom < 20 || !src || src.stage === 1 || src.sig !== fr.sig) return;
     if (!src || !src.buf || src.buf.w * src.buf.h > 400000) return;
     const k = fr.key;
@@ -2026,7 +1955,7 @@ function frame(now) {
     const moving = isMoving(now);
     trackVelocity(now, moving);
     governorUpdate(now, dt);
-    if (BLEND && (stats.frames % 8 === 0)) pruneLayers(now);
+    if (stats.frames % 8 === 0) pruneLayers(now);
     const tS = performance.now();
     try { schedule(now); } catch (e) { reportOnce(e); }       // P1-2: ein Fehler friert die Schleife nicht ein
     const tP = performance.now();
@@ -2050,7 +1979,7 @@ R.onRestored = () => {
     for (const l of RC.layers) l.h3d = null;
     V3.accKey = null; V3.accPending = false; V3.Lset = false;
     BUD.hist = null;
-    RC.front = RC.prev = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate();
+    RC.front = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate();
 };
 R.onLost = () => { RC.job = RC.pjob = null; gwLost(); };
 
@@ -2173,7 +2102,7 @@ const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, AA0,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
-    invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow, BLEND,
+    invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3,
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
@@ -2233,7 +2162,7 @@ const API = {
         return { frames: FS.frames.slice(), hard: FS.hard, hardInfo: FS.hardInfo || [] };
     },
     layerInfo() {
-        const now = performance.now(), list = BLEND ? orderLayers(now, S.cam) : presentArgs(now).list;
+        const now = performance.now(), list = orderLayers(now, S.cam);
         const cov = coverage(list, S.cam, { gx: 24, gy: 48 });
         return { n: list.length, kMean: cov.kMean, coarse: cov.coarse, unc: cov.unc, gov: GOV.g, pool: R.poolInfo(),
                  layers: list.map(l => ({ stage: l.stage, k: +layerK(l, S.cam).toFixed(3), alpha: +l.alpha.toFixed(2), score: +(l.score || 0).toFixed(3), exact: !!l.exact, prefetch: !!l.prefetch, w: l.buf.w, h: l.buf.h, front: l === RC.front, de: l.de, sig: l.sig, maxIter: l.maxIter, key: l.key.slice(-40) })) };

@@ -41,6 +41,9 @@ DRAW = r"""([smooth, scale]) => {
   const out = [];
   for (const T of [A.T3, window.__T3old, A.T3]) {
     T.scale = scale;
+    // nach einem Look-Wechsel zeichnet eine Instanz erst mit der vorigen Gelände-Variante, bis die neue angewärmt ist
+    // (T.waiting) – vor dem Vergleich so lange zeichnen (sonst verglich das erste Bild zwei verschiedene Varianten)
+    for (let k = 0; k < 10; k++) { T.render(a.L3, a.v, a.lk, undefined, a.o); if (!T.waiting) break; }
     T.render(a.L3, a.v, a.lk, undefined, a.o);
     const W = gl.canvas.width, H = gl.canvas.height, px = new Uint8Array(W * H * 4);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);

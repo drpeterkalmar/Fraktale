@@ -15,7 +15,8 @@ Fahrten (Kamera per Skript, für jede Version identisch):
   pan    – 6 s Schwenk bei 1e7 (450 CSS-px/s mit Schlenker)
   tour   – ▶ Tour vom Gesamtbild bis 1e12 (animiert, Tempo-Bremse greift, Dauer wird gemessen)
   dtap   – 6 Doppeltipps (×3) im Abstand von 0,7 s ab 1e5
-Aufruf: python3 tests/measure_blend.py --base=http://localhost:8472/index.html --label=neu [--query=blend=0]
+Aufruf: python3 tests/measure_blend.py --base=http://localhost:8472/index.html --label=neu [--query=…]
+(der 5.0.1-Modus ?blend=0 ist seit 6.5.4 entfernt; seine Messwerte stehen in tests/results_blend_v501*.json)
         [--only=pinch,pan] [--hc=4] [--throttle=4] [--shots] [--headed]
 Hinweis: headless liefert rAF nur mit ~15 fps (auch leere Seite) -> Bewegungsmessungen mit --headed (~45 fps).
 """

@@ -453,7 +453,7 @@ function create(canvas) {
         return [k, k, dx - tw / 2 * k + layer.buf.w / 2, dy - th / 2 * k + layer.buf.h / 2];
     }
     // layers: [{ buf, view, scale, alpha }] von oben (schärfste) nach unten, höchstens SH.NL.
-    // opts: { legacy, mixB, feather, recon } (legacy = 5.0.1: layers[0] = neu, layers[1] = alt)
+    // opts: { feather, recon, de }
     const xfBuf = new Float32Array(4 * SH.NL), sizeBuf = new Float32Array(2 * SH.NL), alphaBuf = new Float32Array(SH.NL);
     R.present = function (layers, cam, look, target, opts) {
         opts = opts || {};
@@ -481,8 +481,6 @@ function create(canvas) {
         }
         gl.uniform4fv(L.u_xf, xfBuf); gl.uniform2fv(L.u_size, sizeBuf); gl.uniform1fv(L.u_alpha, alphaBuf);
         gl.uniform1i(L.u_n, list.length);
-        gl.uniform1i(L.u_legacy, opts.legacy ? 1 : 0);
-        gl.uniform1f(L.u_mixB, opts.mixB === undefined ? 1 : opts.mixB);
         gl.uniform1f(L.u_feather, opts.feather || 0);
         gl.uniform1i(L.u_recon, opts.recon ? 1 : 0);
         gl.uniform1i(L.u_deOn, opts.de ? 1 : 0);

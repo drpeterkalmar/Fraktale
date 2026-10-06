@@ -9,7 +9,8 @@ Zahl der Ebenen, harte Wechsel). Prüft:
   * kaum Lücken: unbedeckt im Mittel < 1 % (Zoom, Schwenk), < 5 % beim Herauszoomen ×100 in 2 s
   * im Stillstand liegt das exakte Endbild deckend oben (Schärfe 1, alpha 1) – pixelgleich zu 5.0.1
   * Vorausrechnen läuft im Leerlauf (Reserve-Ebene + tieferer Referenzorbit) und blockiert nichts
-  * Schwenk ist schärfer als im 5.0.1-Modus (?blend=0)
+  * Schwenk ist schärfer als im 5.0.1-Modus (?blend=0 gibt es seit 6.5.4 nicht mehr; Referenz gemessen mit 6.5.3:
+    5.0.1-Modus Schwenk-Schärfe 0,001, Lücken beim Herauszoomen 0,913)
   * Tempo-Bremse: animierter Flug bremst bei grobem Bild (höchstens 2,5× so lang), ?gov=0 schaltet sie ab
   * 0 Page-/Console-Fehler, keine Long Tasks > 50 ms
 Aufruf: python3 tests/test_blend.py
@@ -89,10 +90,9 @@ def main():
     res = {}
     with sync_playwright() as p:
         res['new'] = n = scenario(p, 'nosw&noanim')
-        res['legacy'] = l = scenario(p, 'nosw&noanim&blend=0')
         res['gov0'] = g = scenario(p, 'nosw&noanim&gov=0')
     print(json.dumps(res, indent=1))
-    print('legacy zoomout unc', l['zoomout']['uncMean'], 'new', n['zoomout']['uncMean'])
+    L501 = {'panK': 0.001, 'zoomoutUnc': 0.9131}   # 5.0.1-Modus, gemessen mit 6.5.3 (Mac, headless)
     chk = []
     def need(c, what):
         nonlocal ok
@@ -102,17 +102,17 @@ def main():
         need(n[k]['hard'] == 0, f'{k}: 0 harte Wechsel ({n[k]["hard"]})')
         need(n[k]['heldDrops'] == 0, f'{k}: Schärfe fällt nicht bei stehender Kamera ({n[k]["heldDrops"]})')
     need(n['pan']['uncMean'] < 0.01 and n['zoom']['uncMean'] < 0.01, f'Lücken Zoom/Schwenk < 1 % ({n["zoom"]["uncMean"]}/{n["pan"]["uncMean"]})')
-    # ×100 in 2 s bei headless ~15 fps ist ein Extremfall: < 5 % und höchstens 1/5 des 5.0.1-Modus
-    need(n['zoomout']['uncMean'] < 0.05 and n['zoomout']['uncMean'] < 0.2 * l['zoomout']['uncMean'], f'Herauszoomen ×100: Lücken < 5 % ({n["zoomout"]["uncMean"]}, 5.0.1-Modus {l["zoomout"]["uncMean"]})')
+    # ×100 in 2 s bei headless ~15 fps ist ein Extremfall: < 5 % (5.0.1-Modus: 91 %)
+    need(n['zoomout']['uncMean'] < 0.05, f'Herauszoomen ×100: Lücken < 5 % ({n["zoomout"]["uncMean"]}, 5.0.1-Modus {L501["zoomoutUnc"]})')
     top = n['rest']['top']
     need(top['front'] and top['exact'] and top['alpha'] == 1 and top['k'] == 1 and n['rest']['kMean'] == 1, 'Stillstand: exaktes Endbild deckend oben')
     need(n['prefetch']['prefetch'] >= 1 and n['prefetch']['refZoom'] > n['prefetch']['zoom'] * 2, f'Vorausrechnen im Leerlauf ({n["prefetch"]})')
     need(n['rest']['pool']['usedMB'] + n['rest']['pool']['freeMB'] <= 64.5, f'GPU-Pufferspeicher im Budget ({n["rest"]["pool"]})')
-    need(n['pan']['kMean'] >= l['pan']['kMean'] + 0.05, f'Schwenk schärfer als 5.0.1-Modus ({n["pan"]["kMean"]} vs {l["pan"]["kMean"]})')
+    need(n['pan']['kMean'] >= L501['panK'] + 0.05, f'Schwenk schärfer als 5.0.1-Modus ({n["pan"]["kMean"]} vs {L501["panK"]})')
     need(n['fly']['gMin'] < 0.9 and g['fly']['gMin'] == 1 and g['dtap']['gMin'] == 1, f'Tempo-Bremse greift beim Flug, ?gov=0 aus ({n["fly"]["gMin"]}/{g["fly"]["gMin"]})')
     need(n['fly']['durationS'] < 2.6 * g['fly']['durationS'], f'Flug höchstens 2,5× so lang ({n["fly"]["durationS"]} s statt {g["fly"]["durationS"]} s)')
     need(n['fly']['hard'] == 0, 'Flug: 0 harte Wechsel')
-    for k in ('new', 'legacy', 'gov0'):
+    for k in ('new', 'gov0'):
         need(not res[k]['errors'] and not res[k]['longTasks'], f'{k}: 0 Fehler, keine Long Tasks > 50 ms')
     print('\n'.join(chk))
     print('RESULT', 'PASS' if ok else 'FAIL')

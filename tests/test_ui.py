@@ -13,7 +13,9 @@ from PIL import Image, ImageStat
 SHOTS = os.path.join(os.path.dirname(__file__), 'shots')
 os.makedirs(SHOTS, exist_ok=True)
 
-TARGETS = """() => {
+TARGETS = """async () => {
+  // erst laufende (endliche) Einblend-Animationen abwarten – sonst misst man z. B. die HUD-Details bei scale(.98)
+  await Promise.all(document.getAnimations().filter(a => a.effect && a.effect.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
   const bad = [];
   document.querySelectorAll('button, input, select, canvas#cpad, #minimap canvas').forEach(e => {
     const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
