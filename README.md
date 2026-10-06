@@ -94,6 +94,12 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 6.5.2** – Nie mehr eine leere oder weiße Fläche, wenn die Grafik ausfällt
+- **Grafik-Verbindung verloren** (Treiber-/GPU-Absturz, App-Wechsel am Handy): nach 1,5 s erscheint „Grafik wird neu verbunden …“; kommt sie wieder, ist das Bild sofort zurück. Kommt sie nach 6 s nicht (Chrome sperrt WebGL nach wiederholten Grafik-Abstürzen), zeigt die App „Die Grafikkarte hat die Verbindung verloren“ mit **Neu laden** – man landet am selben Ort, in derselben Welt und Zoomstufe.
+- **Start-Wächter:** Kommt nach 12 s (Handy 20 s) kein erstes Bild, erscheint dieselbe Art Meldung mit **Neu laden** und **Einfache Grafik** (CPU-Rechenweg, Auflösung „Akku“, nur für diese Sitzung).
+- **Wiederherstellung repariert:** Nach einem Verlust der Grafik kommen 3D-Landschaft (mit Höhen), Flug, Buddhabrot und die exakte Nachrechnung vollständig zurück (vorher blieb 3D schwarz bzw. flach).
+- Hintergrund ist in jedem Zustand dunkel (kein weißer Canvas); fehlt WebGL ganz, nennt die Meldung Ursache und Abhilfe („Browser ganz neu starten; chrome://gpu zeigt den Status“).
+
 **Version 6.5.1** – Verschönerung, Teil 2: 3D-Stimmung (A/B: `?deko=0`)
 - **Wolkenschatten**, die am Fraktal haften (beim Zoomen und Schwenken schwimmen sie nicht, sie ziehen nur langsam mit dem Wind) – pro Gitterpunkt gerechnet, weich wie die Geländeschatten.
 - **Luftperspektive:** ferne Grate werden blasser und kühler, leichter Talnebel in Senken; der Dunst ist zur Sonne hin warm, auf der Gegenseite kühler (keine flache graue Wand mehr).
