@@ -13,6 +13,7 @@ const ASSETS = [
     'manifest.webmanifest',
     'js/app.js',
     'js/cpu-pool.js',
+    'js/flight.js',
     'js/fractal-core.js',
     'js/gestures.js',
     'js/hp.js',
