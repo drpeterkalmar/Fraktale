@@ -1897,6 +1897,12 @@ function frame(now) {
     if (document.hidden || R.lost || NOFIRST) return;
     S.time += dt;
     if (S.anim) S.cycle += dt * S.speed;
+    // P3-6: Zähler begrenzen (f32 im Shader: nach ~1 Tag Dauerbetrieb nur noch 10⁻³ Auflösung -> Farbbänder). Farbzyklus
+    // mit Periode 1000: alle Paletten sind darin exakt periodisch (Frequenzen 0,4/0,5/0,7/1/2; der 3D-Himmel nutzt sie ohne
+    // fract) – 1024 hätte dort bei jedem Umlauf einen Farbsprung gegeben. Zeit: einmal pro 24 h ein kleiner Phasensprung
+    // der Funkel-/Wasseranimation (sin/cos mit nicht ganzzahligen Faktoren sind mit keiner Periode exakt periodisch).
+    S.cycle %= 1000;
+    S.time %= 86400;
     if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
     updateAnims(now, dt);
     update3d(now, dt);
