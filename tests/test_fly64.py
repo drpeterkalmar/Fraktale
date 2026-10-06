@@ -6,7 +6,7 @@ Rechnung auf 1024 Pixel pro Bild, keine Vorschau wurde mehr fertig, die Sonde sa
 „verloren“ (gemessen: 92 % der Zeit, Zoom blieb bei ~10⁴).
 Prüft:  * Zufallsflug 40 s bei 15 fps ab dem Gesamtbild: Zoom ≥ 10⁶, Zeitanteil „verloren“ < 5 %, Rand im Bild ≥ 90 %
         * dasselbe im Querformat
-        * Vergleich ?flyhold=0 (Verhalten bis 6.4.0) wird nur berichtet
+        * (der Vergleich ?flyhold=0 = Verhalten bis 6.4.0 ist seit 6.5.4 entfernt; Werte in V64-Bericht/results_fly_*.json)
         * 0 Fehler
 Hinweis: macOS drosselt headless zeitweise den Bildtakt auf ~10 Bilder/s – dann mit FK_HEADED=1 laufen lassen.
 Aufruf: python3 tests/test_fly64.py
@@ -45,9 +45,6 @@ def main():
             need(r['zoom'] >= 1e5 and r.get('lostTimeShare', 1) < 0.05 and r.get('edgeMidShare', 0) >= 0.9,
                  f'{tag}, 15 fps, 40 s: Zoom {r["zoom"]:.1e} ≥ 1e5, verloren {r.get("lostTimeShare")} < 0,05, Rand {r.get("edgeMidShare")} (fps {r["fps"]})')
             need(not errs, f'{tag}: 0 Fehler {errs[:3]}')
-        r, errs = fly(p, 'fpscap=15&flyhold=0', False, 30)
-        res['alt_hoch'] = r
-        chk.append(f'info ?flyhold=0 (bis 6.4.0), 15 fps, 30 s: Zoom {r["zoom"]:.1e}, verloren {r.get("lostTimeShare")}, längste Phase {r.get("longestLost")} s')
     print(json.dumps(res, indent=1))
     print('\n'.join(chk))
     print('RESULT', 'PASS' if ok else 'FAIL')

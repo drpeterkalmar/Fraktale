@@ -938,13 +938,13 @@ function cancelFix() {
 function pumpCtl(moving, prefetch) {
     const vs = RC.vsync || 16.7;
     // 6.2: in 3D sind „Leerlauf"-Frames nie leer (3D-Bild, eingereihte GPU-Arbeit) – ihre Dauer darf das Budget nicht
-    // aufblähen (sonst rechnete der Flug bis zu 8 Bildtakte pro Frame und ruckelte); dort keine Reserve über den Bildtakt (A/B: ?flycap=N Takte, ?flycap=0 = 6.1)
-    const cap = V3.on && Q.get('flycap') !== '0' ? (Q.has('flycap') ? +Q.get('flycap') : 1.0) * vs : 8 * vs;
+    // aufblähen (sonst rechnete der Flug bis zu 8 Bildtakte pro Frame und ruckelte); dort keine Reserve über den Bildtakt
+    const cap = V3.on ? vs : 8 * vs;
     // 6.4 Flug: Rechenanteil garantieren – eine Vorschau soll in ~0,6 s fertig werden, auch wenn schon das 3D-Bild allein
     // länger als ein Bildtakt braucht (langsames Gerät, großer Bildschirm, hohe Bildwiederholrate). Sonst schrumpfte der
     // Häppchen-Regler die Rechnung auf 1024 Pixel pro Bild, keine Vorschau wurde mehr fertig, der Flug sah nur noch
-    // Leere und suchte den Rand (A/B: ?flyhold=0)
-    const minS = FLY_HOLD && V3.on && FLY.on && !FLY.paused ? 0.6 : 0;
+    // Leere und suchte den Rand
+    const minS = V3.on && FLY.on && !FLY.paused ? 0.6 : 0;
     return { moving, prefetch, dt: RC.dtEMA || 16, vsync: Math.max(vs, Math.min(RC.idleDt || vs, cap)), minS };
 }
 function isMoving(now) {
@@ -1231,8 +1231,8 @@ function governorUpdate(now, dt) {
     // 10-%-Quantil der Schärfe (90 % des Bildes sind mindestens so scharf), Totzone ±10 % um die Schwelle
     GOV.q = cov.q;
     const e = (GOV.kmin - cov.q) / GOV.kmin;
-    // 6.4: im Flug darf die Bremse bis 30 % gehen (sonst 40 %) – lieber etwas langsamer tauchen als ins Leere (A/B: ?flyhold=0)
-    const gmin = FLY_HOLD && FLY.on && !FLY.paused && !Q.has('govmin') ? 0.3 : GOV.min;
+    // 6.4: im Flug darf die Bremse bis 30 % gehen (sonst 40 %) – lieber etwas langsamer tauchen als ins Leere
+    const gmin = FLY.on && !FLY.paused && !Q.has('govmin') ? 0.3 : GOV.min;
     if (e > 0.1) GOV.g = Math.max(gmin, GOV.g - dt * 3 * Math.min(1, e));
     else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);
 }
@@ -1460,7 +1460,7 @@ function present3d(now, camChanged, force) {
     if (FS.on) frameStatsRecord(now, a.list);
     // Sonde: Höhenstatistik + Interesse für den Zufallsflug (alle 300 ms, asynchron)
     // (im Zufallsflug alle 150 ms: die Zielwahl am Mengenrand braucht frische Daten)
-    if (now - V3.probeT > (FLY.on && !FLY.paused && FLY.edge ? 150 : 300)) {
+    if (now - V3.probeT > (FLY.on && !FLY.paused ? 150 : 300)) {
         V3.probeT = now;
         const cam = S.cam;
         const pr = T3.probe(L3, cam, 1.5 / cam.zoom, 2);
@@ -1518,10 +1518,9 @@ function ground3d(cam, dx, dy) {
 // das Ziel alle 300 ms nachgeführt (lokale Suche ±0,2) und nur mit Hysterese (+25 %, ≥ 1,5 s gehalten) gegen ein
 // besseres getauscht. Der Kurs folgt der Richtung des Zoompunkts als gedämpftes System (Drehrate ≤ FLY_TURN,
 // begrenzte Drehbeschleunigung, leichte Schräglage in Kurven).
-// A/B: ?flyedge=0 = Wertung und Lenkung 6.1.0, ?flyturn=R = maximale Drehrate (rad/s).
+// A/B: ?flyturn=R = maximale Drehrate (rad/s). (?flyedge=0 = 6.1.0 und ?flyhold=0 = 6.4.0 sind seit 6.5.4 entfernt;
+// die Kurswahl von 6.1.0, flySteer, bleibt der Rückfall, solange die Sonde keine Distanzdaten liefert.)
 const FLY_AHEAD = 0.55;
-const FLY_EDGE = Q.get('flyedge') !== '0';
-const FLY_HOLD = FLY_EDGE && Q.get('flyhold') !== '0';    // 6.4: Flug bleibt am Rand (Rechenanteil, Bremse, Datenlücken, Vorausschau)
 const FLY_TURN = Q.has('flyturn') ? Math.max(0.02, +Q.get('flyturn') || 0.3) : 0.3;
 const FLY_ACC = 0.5;          // max. Drehbeschleunigung (rad/s²)
 const FLY_DE = 0.04;          // Zoompunkt höchstens so weit von der Menge (Bildhälften)
@@ -1550,7 +1549,7 @@ function startFly(place) {
     // 6.2: Zoompunkt startet geradeaus, Kurs ruhend
     const f = [Math.sin(V3.heading), Math.cos(V3.heading)];
     FLY.A = [f[0] * FLY_AHEAD, f[1] * FLY_AHEAD]; FLY.VA = [0, 0]; FLY.T = null; FLY.Tt = 0; FLY.om = 0; FLY.roll = 0;
-    FLY.userPrev = 0; FLY.userT = -1e9; FLY.zf = 1; FLY.glide = null; FLY.edge = FLY_EDGE; FLY.dA = null; FLY.gap = false;
+    FLY.userPrev = 0; FLY.userT = -1e9; FLY.zf = 1; FLY.glide = null; FLY.dA = null; FLY.gap = false;
     emit('fly');
 }
 // Ausrichten: Drehung weich auf Norden, Neigung auf den Standard
@@ -1570,30 +1569,16 @@ function flyStep(cam, heading, dt) {
     // über einer leeren Ebene "verloren": kaum noch tiefer, dafür seitlich zum nächsten Rand gleiten
     const lost = Math.min(1, FLY.lost || 0);
     const u = 1.5 / cam.zoom, f = [Math.sin(heading), Math.cos(heading)];
-    if (FLY.edge && FLY.A) {
-        const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.95 * lost) * (FLY.zf || 1)));
-        // 6.4: verloren -> erst zum Randstück drehen, dann vorwärts dorthin gleiten (statt seitlich zu rutschen)
-        const al = FLY_HOLD && FLY.glide ? Math.max(0, f[0] * FLY.glide[0] + f[1] * FLY.glide[1]) : 1;
-        const k = 1 - cam.zoom / z1, gd = FLY_HOLD ? f : (FLY.glide || f), gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * al * dt * g, lat = gl * u;
-        return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + gd[0] * lat), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + gd[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28, lat: [gd[0] * gl, gd[1] * gl] };
-    }
-    const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.85 * lost)));
-    const ax = f[0] * FLY_AHEAD * u, ay = f[1] * FLY_AHEAD * u;          // Zoompunkt vor dem Fokus
-    const k = 1 - cam.zoom / z1, lat = lost * 0.7 * dt * g * u;
-    return { cam: { cx: cam.cx + HP.fromNumber(ax * k + f[0] * lat), cy: cam.cy + HP.fromNumber(ay * k + f[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28 };
+    const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.95 * lost) * (FLY.zf || 1)));
+    // 6.4: verloren -> erst zum Randstück drehen, dann vorwärts dorthin gleiten (statt seitlich zu rutschen)
+    const al = FLY.glide ? Math.max(0, f[0] * FLY.glide[0] + f[1] * FLY.glide[1]) : 1;
+    const k = 1 - cam.zoom / z1, gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * al * dt * g, lat = gl * u;
+    return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + f[0] * lat), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + f[1] * lat), zoom: z1 }, heading, done: z1 >= 1e28, lat: [f[0] * gl, f[1] * gl] };
 }
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 const rot2 = (v, a) => [v[0] * Math.cos(a) + v[1] * Math.sin(a), -v[0] * Math.sin(a) + v[1] * Math.cos(a)];   // Kurs +a (im Uhrzeigersinn)
 function flyUpdate(now, dt) {
-    if (FLY.mode === 'random' && !FLY.edge) {
-        // 6.1.0: Kurs dreht mit bis zu 0,9 rad/s auf den Zielkurs, Wischen addiert einen abklingenden Versatz
-        if (now - FLY.scoreT > 300 && V3.probe) { FLY.scoreT = now; if (FLY.rec && T3.lastCam) FLY.recM.push(flyMetrics(V3.probe, now)); flySteer(); }
-        const d = angDiff(FLY.hdgT + (FLY.user || 0), V3.heading);
-        const h0 = V3.heading;
-        V3.heading += Math.max(-0.9 * dt, Math.min(0.9 * dt, d));
-        FLY.om = dt > 0 ? angDiff(V3.heading, h0) / dt : 0;
-        FLY.user = (FLY.user || 0) * Math.exp(-dt / 2.5); FLY.userBase = (FLY.userBase || 0) * Math.exp(-dt / 2.5);
-    } else if (FLY.mode === 'random') {
+    if (FLY.mode === 'random') {
         if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; flyEdgeSteer(now); }
         // Wischen: Zoompunkt und Ziel um den Fokus drehen (der Kurs folgt gedämpft), danach führt die Automatik
         // von der neuen Richtung aus weiter
@@ -1610,15 +1595,13 @@ function flyUpdate(now, dt) {
             FLY.A = [FLY.A[0] + FLY.VA[0] * dt, FLY.A[1] + FLY.VA[1] * dt];
             // Zoomtempo weich drosseln, solange der Zoompunkt noch weit vom Ziel ist (erst hingleiten, dann tauchen)
             let zfT = 1 - 0.55 * smooth01((d - 0.12) / 0.45);
-            if (FLY_HOLD) {
-                // 6.4 Vorausschau: Die Distanz des Zoompunkts zum Rand wächst beim Tauchen mit dem Zoom – schon bremsen, wenn
-                // sie in ~0,4 s aus dem Band (≈ 0,08 Bildhälften) liefe; die Lenkung holt den Zoompunkt derweil zurück an
-                // den Rand. Datenlücke: langsam weiter, bis das Bild voraus gerechnet ist.
-                if (FLY.gap) zfT *= 0.3;
-                if (FLY.dA !== null && FLY.dA !== undefined) zfT *= 1 - 0.85 * smooth01((FLY.dA * Math.pow(10, sp * 0.4) - 0.08) / 0.3);
-            }
+            // 6.4 Vorausschau: Die Distanz des Zoompunkts zum Rand wächst beim Tauchen mit dem Zoom – schon bremsen, wenn
+            // sie in ~0,4 s aus dem Band (≈ 0,08 Bildhälften) liefe; die Lenkung holt den Zoompunkt derweil zurück an
+            // den Rand. Datenlücke: langsam weiter, bis das Bild voraus gerechnet ist.
+            if (FLY.gap) zfT *= 0.3;
+            if (FLY.dA !== null && FLY.dA !== undefined) zfT *= 1 - 0.85 * smooth01((FLY.dA * Math.pow(10, sp * 0.4) - 0.08) / 0.3);
             // bremsen schnell, beschleunigen weich
-            FLY.zf += (zfT - FLY.zf) * Math.min(1, dt * (FLY_HOLD && zfT < FLY.zf ? 5 : 1.5));
+            FLY.zf += (zfT - FLY.zf) * Math.min(1, dt * (zfT < FLY.zf ? 5 : 1.5));
         }
         // Zoompunkt im Vorwärtsbereich halten (0,25–0,7 Bildhälften)
         const ra = Math.hypot(FLY.A[0], FLY.A[1]);
@@ -1636,7 +1619,7 @@ function flyUpdate(now, dt) {
     const z0 = S.cam.zoom;
     const st = flyStep(S.cam, V3.heading, dt);
     setCam(st.cam.cx, st.cam.cy, st.cam.zoom);
-    if (FLY.mode === 'random' && FLY.edge && FLY.T) {
+    if (FLY.mode === 'random' && FLY.T) {
         // Ziel ist ein Weltpunkt: der Zoom (Fixpunkt A) schiebt es in lokalen Einheiten nach außen, Gleiten verschiebt es
         const q = S.cam.zoom / z0;
         FLY.T = [FLY.A[0] + (FLY.T[0] - FLY.A[0]) * q, FLY.A[1] + (FLY.T[1] - FLY.A[1]) * q];
@@ -1647,7 +1630,8 @@ function flyUpdate(now, dt) {
 }
 // Kurswahl aus der Sonde (alle 300 ms): Kandidaten bis ±150° um den aktuellen Kurs, Wertung entlang des
 // Strahls (0,3–1,3 Bildhälften, nahe stärker): Randnähe + Detail positiv, leere Ebene negativ, Inneres
-// (Schwarz) stark negativ, Abweichung vom Kurs leicht negativ. Ist alles voraus flach: "verloren". (6.1.0, ?flyedge=0)
+// (Schwarz) stark negativ, Abweichung vom Kurs leicht negativ. Ist alles voraus flach: "verloren". (6.1.0; seit 6.2 nur
+// noch Rückfall, solange die Sonde keine Distanzdaten hat)
 function flySteer() {
     const pb = V3.probe;
     if (!pb) return;
@@ -1779,9 +1763,9 @@ function flyEdgeSteer(now) {
     // tiefer, seitlich hingleiten (langsamer, je näher), der Kurs dreht dorthin. Gar nichts im Fenster: geradeaus.
     const okAhead = (cur && cur.sc > 0.25) || (bestF && bestF.sc > 0.35);
     // 6.4: Datenlücke (das Bild voraus ist noch nicht gerechnet) ist kein „verloren“: Kurs halten, langsam weiter tauchen,
-    // bis wieder Daten da sind – statt zu kreisen und seitlich zu gleiten (A/B: ?flyhold=0)
+    // bis wieder Daten da sind – statt zu kreisen und seitlich zu gleiten
     // (Ziel nahe dem Zoompunkt wurde oben schon mit den vorhandenen Daten nachgeführt)
-    FLY.gap = FLY_HOLD && nFwd > 0 && nFwdOk < 0.3 * nFwd;
+    FLY.gap = nFwd > 0 && nFwdOk < 0.3 * nFwd;
     if (FLY.gap) { FLY.lost = Math.max(0, (FLY.lost || 0) - 0.15); FLY.glide = null; FLY.gv = 1; return; }
     // (nichts Brauchbares im Fenster: Richtung der höchsten Iteration – sie steigt zur Menge hin)
     const far = bestAll && bestAll.sc > 0.35 ? bestAll : hiIt;

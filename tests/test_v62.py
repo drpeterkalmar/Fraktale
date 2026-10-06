@@ -7,7 +7,7 @@ Prüft:  * Farbe der Menge: Knopf im Farben-Sheet setzt sie, wird gespeichert (n
         * Alpin-Look per Link (al=l), 3D ohne Fehler, GPU-Zeit 3D-Bild < 16 ms (M1); 8-bit-Ersatzpfad (iPhone) mit Alpin
         * Zufallsflug 30 s ab Seepferdchen-Tal ohne Fehler, 0 harte Wechsel; Lenk-/Rand-Regression:
           max. Drehrate < 25 °/s, Richtungswechsel < 15/min, Rand in der Bildmitte ≥ 90 % der Sonden, innen < 15 %
-        * Wischen lenkt im Flug (Kurs folgt in Wischrichtung); ?flyedge=0 (Verhalten 6.1.0) fliegt weiter fehlerfrei
+        * Wischen lenkt im Flug (Kurs folgt in Wischrichtung); auf dem 8-bit-Ersatzpfad (Alpin, quer) fliegt er fehlerfrei
 Aufruf: python3 tests/test_v62.py
 """
 import sys, os, json, time, io, math
@@ -118,18 +118,18 @@ def main():
         res['errors'] = a.errors
         need(not a.errors, f'0 Page-/Console-Fehler {a.errors[:3]}')
         a.close()
-        # --- ?flyedge=0 (6.1.0-Lenkung) + 8-bit-Ersatzpfad mit Alpin, quer
-        a = App(p, landscape=True, query='nosw&noanim&flyedge=0')
+        # --- 8-bit-Ersatzpfad (kein Float-Renderziel) mit Alpin, quer: Flug läuft (bis 6.5.3 zusammen mit ?flyedge=0)
+        a = App(p, landscape=True, query='nosw&noanim')
         a.page.add_init_script("""(() => { const g = WebGL2RenderingContext.prototype.getExtension;
             WebGL2RenderingContext.prototype.getExtension = function (n) { return n === 'EXT_color_buffer_float' ? null : g.call(this, n); }; })()""")
         a.open(); pg = a.page
         a.set_view(*SEA); a.wait_done(90)
         pg.evaluate("() => { const A = window.__fraktal; A.S.alpine = true; A.S.valley = 'forest'; A.S.setCol = 'white'; A.set3d(true); }"); time.sleep(1.5); a.wait_done(90)
         pg.evaluate("() => window.__fraktal.startFly()"); time.sleep(8)
-        v = pg.evaluate("() => ({ on: window.__fraktal.FLY.on, edge: window.__fraktal.FLY.edge, h8: window.__fraktal.view3dInfo().gpu.h8, z: window.__fraktal.S.cam.zoom })")
-        res['legacy'] = v
-        need(v['on'] and v['edge'] is False and v['h8'] and v['z'] > 1000, f'?flyedge=0 + 8 bit + Alpin quer: Flug läuft {v}')
-        need(not a.errors, f'0 Fehler (flyedge=0, 8 bit) {a.errors[:3]}')
+        v = pg.evaluate("() => ({ on: window.__fraktal.FLY.on, h8: window.__fraktal.view3dInfo().gpu.h8, z: window.__fraktal.S.cam.zoom })")
+        res['h8'] = v
+        need(v['on'] and v['h8'] and v['z'] > 1000, f'8 bit + Alpin quer: Flug läuft {v}')
+        need(not a.errors, f'0 Fehler (8 bit) {a.errors[:3]}')
         a.close()
     print(json.dumps(res, indent=1))
     print('\n'.join(chk))

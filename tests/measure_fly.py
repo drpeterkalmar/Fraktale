@@ -9,7 +9,8 @@ Kennzahlen:
     wechsel von ω, nur gezählt bei |ω| > 2 °/s); Ruck = |dω/dt| (°/s²): Mittel, Maximum
   * Rand: Anteil Sonden mit Mengenrand (Distanz < 0,3 Bildhälften) im mittleren Bilddrittel; Ø Anteil Boden
     innen bzw. leer (Distanz > 1 Bildhälfte); längste Strecke ohne Rand in der Bildmitte (s)
-Aufruf: python3 tests/measure_fly.py [--tag=v620] [--query=flyedge=0] [--secs=30] [--land] [--burst] [--speed=0.5] [--only=ganz_1]
+Aufruf: python3 tests/measure_fly.py [--tag=v620] [--query=…] [--secs=30] [--land] [--burst] [--speed=0.5] [--only=ganz_1]
+(?flyedge=0/?flyhold=0 – Lenkung 6.1.0 bzw. 6.4.0 – sind seit 6.5.4 entfernt; ihre Messwerte stehen in results_fly_alt_*.json)
 6.4: zusätzlich „Verloren“-Phasen pro Minute (FLY.lost > 0,3), Zeitanteil lost > 0, längste Verloren-Phase.
 Ergebnis: tests/results_fly_<tag>.json, Serienbilder tests/shots/fly/<tag>/
 """
