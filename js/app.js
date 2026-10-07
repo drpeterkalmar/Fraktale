@@ -542,7 +542,9 @@ function frameStatsRecord(now, list) {
 // Die 3D-Ansicht liest nur die fertigen Iterationspuffer (Ebenen-Stapel) – die Rechnung bleibt die
 // gleiche wie in 2D (gleiche Kamera S.cam = Bodenpunkt in der Bildmitte), exakt wie dort. In 3D wird die
 // Rechenansicht quadratisch (Drehen ohne Lücken) und es kommen ferne Detailstufen für den Horizont dazu.
-const T3 = self.FK3D ? self.FK3D.create(R) : null;
+// 6.7 Technik-Regler (?taa=1 ?scharf=0 ?tone=0|agx ?bloom=0 ?hao=0 ?detail=0 ?gpuwahl=0), gelten für den Seitenaufruf
+const TECH = self.FK3DTech ? self.FK3DTech.flags(Q) : null;
+const T3 = self.FK3D ? self.FK3D.create(R, TECH) : null;
 const MAXL3 = T3 ? T3.N3 : MAXL;         // P2-3: Ebenen-Höchstzahl in 3D
 const MAX_TILT = 60 * Math.PI / 180;
 const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null,
@@ -556,7 +558,7 @@ function set3d(on) {
     if (!on && V3.prep) { V3.prep = 0; V3.prepFly = null; emit('3d'); if (!V3.on) return; }
     if (on && !V3.on && T3 && !ready3d()) { if (!V3.prep) { V3.prep = performance.now(); emit('3d'); } return; }
     if (on === V3.on && V3.dir === (on ? 1 : -1)) return;
-    if (on) { V3.on = true; V3.dir = 1; V3.heading = 0; if (T3) T3.scale = baseScale3d(); }
+    if (on) { V3.on = true; V3.dir = 1; V3.heading = 0; if (T3) { T3.scale = baseScale3d(); T3.setStage(S.quality); T3.applyGrid(); } }   // 6.7: Gitter nach GPU-Messung
     else { V3.dir = -1; if (!FLY2D) stopFly(); }       // 6.6: 3D aus im Flug -> der Flug läuft in 2D weiter
     invalidate(); emit('3d');
 }
@@ -576,6 +578,14 @@ function fail3d() {
 // fertig übersetzt (nicht blockierend gefragt) und angewärmt (je Bild ein Programm) – erst dann 3D einblenden
 function ready3d() { const lk = look(); return T3.ready(lk) && T3.warm(lk); }
 function baseScale3d() { return Q.get('s3d') ? +Q.get('s3d') : (Math.min(screen.width, screen.height) < 700 ? 0.65 : 1); }
+// 6.7 TAA im Flug (?taa=1): Renderskala im Flug höchstens FK3DTech.TAA.flyScale (0,7; ?taas=x zum Abstimmen) – die
+// zeitliche Mittelung ersetzt die fehlenden Pixel. Nicht mit festem ?s3d. null = keine Absenkung.
+function taaFlyScale() {
+    if (!TECH || !TECH.taa || !T3 || !T3.flags.taa || Q.get('s3d') || !(FLY.on && !FLY.paused && FLY.d3)) return null;
+    return Q.get('taas') ? +Q.get('taas') : self.FK3DTech.TAA.flyScale;
+}
+// Obergrenze der Bewegungs-Auflösung jetzt (Grundwert, im TAA-Flug abgesenkt)
+function targetScale3d() { const f = taaFlyScale(); return f ? Math.min(baseScale3d(), f) : baseScale3d(); }
 const e3 = (x) => x * x * (3 - 2 * x);
 // Übergang 2D <-> 3D (0,7 s): Neigung/Höhe/Drehung wachsen mit mix; bei mix = 0 ist 3D = 2D-Bild
 function update3d(now, dt) {
@@ -616,13 +626,17 @@ function update3d(now, dt) {
         RC.dirty = true;
         if (u >= 1) V3.northT = 0;
     }
+    // 6.7 TAA-Flug: Auflösung absenken, danach den Wert von vorher wiederherstellen (sonst bliebe die Deko lange aus)
+    const tf = taaFlyScale();
+    if (tf) { if (V3.preTaa == null) V3.preTaa = T3.scale; if (T3.scale > tf) T3.scale = tf; }
+    else if (V3.preTaa != null) { T3.scale = Math.max(T3.scale, V3.preTaa); V3.preTaa = null; }
     // Renderauflösung an die Bildrate anpassen (Ziel: Vsync halten, mind. 50 %)
     // (nicht unter Testautomation: headless liefert ohnehin nur ~15 fps, das wäre kein Lastsignal)
     if (navigator.webdriver || Q.get('s3d') || V3.accKey) return;   // Stillstands-Bilder sind kein Lastsignal für die Bewegungs-Auflösung
     const vs = RC.vsync || 16.7;
     V3.slow = (V3.slow || 0) + ((RC.dtEMA || 16) > 1.3 * vs ? 1 : -0.25);
     if (V3.slow > 40) { T3.scale = Math.max(0.45, T3.scale * 0.9); V3.slow = 0; }
-    else if (V3.slow < -200) { T3.scale = Math.min(baseScale3d(), T3.scale * 1.05); V3.slow = 0; }
+    else if (V3.slow < -200) { T3.scale = Math.min(targetScale3d(), T3.scale * 1.05); V3.slow = 0; }
 }
 // 6.5 Deko in 3D (Wolken, Horizontleuchten, Luftperspektive, Wolken im Wasser): Stärke 0..1, weich ein-/ausgeblendet.
 // Aus (= exakt das Bild und die Kosten bis 6.4.1) bei ?deko=0, Qualität „Akku“ und solange die Auflösungs-Drosselung
@@ -631,7 +645,7 @@ const DK = { m: DEKO ? 1 : 0, t: 0, ct: 0 };
 function deko3d() {
     const now = performance.now(), dt = DK.t ? Math.min(0.1, (now - DK.t) / 1000) : 0;
     DK.t = now;
-    const tgt = DEKO && S.quality !== 'eco' && !(T3 && T3.scale < baseScale3d() - 1e-3) ? 1 : 0;
+    const tgt = DEKO && S.quality !== 'eco' && !(T3 && T3.scale < targetScale3d() - 1e-3) ? 1 : 0;   // 6.7: TAA-Flugskala zählt nicht als Drosselung
     if (DK.m !== tgt) { DK.m = tgt > DK.m ? Math.min(tgt, DK.m + dt * 1.2) : Math.max(tgt, DK.m - dt * 1.2); RC.dirty = true; }
     return DK.m;
 }
@@ -672,6 +686,7 @@ function present3d(now, camChanged, force) {
     const lk = look();
     const N = V3.testStill ? V3.testStill.N : aaFrames();
     const o = { de: [0.25, 1.25] };
+    T3.setStage(S.quality);       // 6.7: Schattenschritte, AO, Detail, Bloom, GPU-Budget je Stufe
     let drawn = true;
     const key = N > 0 && alpha >= 1 && !V3.dir && !(FLY.on && !FLY.paused) && !gestures.active() ? still3dKey(L3, v, lk) : null;
     if (key !== V3.accKey) { V3.accKey = key; V3.accN = 0; V3.keyT = now; }
@@ -1107,7 +1122,7 @@ const API = {
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
-    V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d,
+    V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
     // 6.3: nur die Programme des aktuellen Looks, nicht blockierend (T3.ready pollt danach pro Bild)
@@ -1123,9 +1138,11 @@ const API = {
         if (!ext || !V3.on) return Promise.resolve(null);
         const qs = [];
         const L3 = layers3d(orderLayers(performance.now(), S.cam)), v = view3d(), lk = look();
+        T3.benchBusy = true;      // 6.7: keine eigene Gitter-Messung (Timer-Queries lassen sich nicht schachteln)
         for (let i = 0; i < n; i++) { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q);
             T3.render(L3, v, lk, undefined, { de: [0.25, 1.25], still: still ? { n: i, N: 8, mix2: 0 } : null });
             gl.endQuery(ext.TIME_ELAPSED_EXT); qs.push(q); }
+        T3.benchBusy = false;
         V3.accKey = null;
         return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
             const ms = qs.map(q => gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); qs.forEach(q => gl.deleteQuery(q)); res({ min: +Math.min(...ms).toFixed(2), max: +Math.max(...ms).toFixed(2), scale: T3.scale }); }; poll(); });

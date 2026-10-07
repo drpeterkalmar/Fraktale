@@ -15,9 +15,16 @@
 //  * Bei Neigung 0 und Höhe 0 ist das Bild identisch zur 2D-Ansicht (Ebene senkrecht zur Blickachse =
 //    exakt affine Abbildung) -> Ein-/Ausschalten als weicher Übergang.
 // Lokale Koordinaten: Einheit = halbe Bildhöhe der 2D-Ansicht (1,5/zoom), Ursprung = Bildmitte (Fokus).
+// 6.7 Technik (reine Funktionen und Konstanten in js/three-tech.js, Regler je Seitenaufruf):
+//  * Endpass: Tonemapping (Neutral-Schulter, ?tone=agx, ?tone=0 aus) + Belichtung/Farbstich nach Sonnenhöhe + leichte
+//    Farbkorrektur in post(); Bloom aus halber Auflösung (?bloom=0); Hochskalieren mit CAS-Nachschärfen (?scharf=0)
+//  * Horizont-AO in den Gitterpunkten (?hao=0), feine Detail-Normalen im Fragment-Shader (?detail=0)
+//  * Schattenschritte und AO je Stufe, Gitterdichte aus der gemessenen GPU-Zeit (?gpuwahl=0 = Bildschirmbreite wie 6.6)
+//  * TAA im Bewegungsbild (?taa=1; Standard aus): History, Reprojektion über Kamera + Höhe, Varianz-Clamp, Disocclusion
 (function (root) {
 'use strict';
-const SH = root.FKShaders, HP = root.FKHP;
+const SH = root.FKShaders, HP = root.FKHP, TX = root.FK3DTech;
+const fl = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));    // Zahl als GLSL-float-Literal
 const SH_LUM = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
 const N3 = 6;                 // Ebenen im 3D-Pass (2 Sampler je Ebene: Iteration + Höhe)
 const FOV = 50 * Math.PI / 180;
@@ -107,16 +114,54 @@ uniform vec2 u_tan;       // tan(FOV/2)·Seitenverhältnis, tan(FOV/2)
 uniform vec2 u_target;
 `;
 
+// 6.7 Endpass in post() (Himmel und Gelände, vor dem Schreiben ins 8-bit-Ziel – also auch vor der Mittelung im
+// Stillstand): u_tone = 0 exakt wie 6.6. Sonst nach der Gamma-Anhebung von 6.6: Belichtung × Farbstich nach Sonnenhöhe,
+// Tonemapping, leichte Farbkorrektur. Die Neutral-Schulter lässt alles unter dem Knie (0,7) unverändert und rollt
+// darüber weich auf Weiß ab (Schnee/Gletscher behalten Zeichnung); AgX zum Vergleich. JS-Spiegel: js/three-tech.js.
+const AGX_M = (m) => m.map(c => c.map(fl).join(', ')).join(',\n        ');
 const POST = `
+uniform int u_tone;       // 0 aus (wie 6.6), 1 Neutral-Schulter, 2 AgX
+uniform float u_expo;     // Belichtung nach Sonnenhöhe (1 = Sonne von 6.6)
+uniform vec3 u_tint;      // Farbstich nach Sonnenhöhe (1 = neutral)
+uniform float u_grade;    // Stärke der Farbkorrektur 0..1
+vec3 toneNeutral(vec3 c) {
+    const float K = ${fl(TX.TONE_KNEE)}, D = ${fl(TX.TONE_DESAT)}, W = ${fl((TX.TONE_WHITE - TX.TONE_KNEE) / (1 - TX.TONE_KNEE))};
+    float p = max(c.r, max(c.g, c.b));
+    if (p <= K) return c;
+    float s = 1.0 - K, u = (p - K) / s;
+    float np = K + s * min(1.0, u * (1.0 + u / (W * W)) / (1.0 + u));
+    float g = 1.0 - 1.0 / (D * (p - np) + 1.0);
+    return mix(c * (np / p), vec3(np), g);
+}
+vec3 toneAgx(vec3 c) {
+    const mat3 AI = mat3(${AGX_M(TX.AGX_IN)});
+    const mat3 AO = mat3(${AGX_M(TX.AGX_OUT)});
+    vec3 v = AI * pow(max(c, vec3(0.0)), vec3(2.2));
+    v = (clamp(log2(max(v, vec3(1e-10))), -12.47393, 4.026069) + 12.47393) / 16.49999;
+    vec3 x2 = v * v, x4 = x2 * x2;
+    v = 15.5 * x4 * x2 - 40.14 * x4 * v + 31.96 * x4 - 6.868 * x2 * v + 0.4298 * x2 + 0.1191 * v - 0.00232;
+    return clamp(AO * v, 0.0, 1.0);
+}
+// Split-Toning: Lichter einen Hauch wärmer, tiefe Schatten einen Hauch kühler (TODO am Bild abstimmen)
+vec3 grade(vec3 c) {
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    return c + u_grade * (vec3(0.014, 0.005, -0.012) * smoothstep(0.45, 1.0, l) + vec3(-0.008, 0.0, 0.012) * (1.0 - smoothstep(0.0, 0.35, l)));
+}
 vec3 post(vec3 col) {
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.2);
     vec2 vv = gl_FragCoord.xy / u_target - 0.5;
     col *= 1.0 - dot(vv, vv) * 0.25;
-    return pow(max(col, vec3(0.0)), vec3(0.92));
+    col = pow(max(col, vec3(0.0)), vec3(0.92));
+    if (u_tone == 0) return col;
+    col *= u_expo * u_tint;
+    col = u_tone == 2 ? toneAgx(col) : toneNeutral(col);
+    return clamp(grade(col), 0.0, 1.0);
 }`;
 
-const TERRAIN_VS = `#version 300 es
+// 6.7: HAO = Horizont-AO pro Gitterpunkt (nur übersetzt, wenn ?hao nicht 0 ist)
+const TERRAIN_VS_SRC = (hao) => `#version 300 es
+#define HAO ${hao ? 1 : 0}
 ${SH.COMMON}
 layout(location = 0) in vec2 a_uv;
 ${CAM}
@@ -125,7 +170,13 @@ uniform vec2 u_depth;
 uniform float u_far, u_rows;
 uniform vec3 u_sun;
 uniform vec2 u_jit;
-uniform int u_shN;        // 6.3: Schattenschritte (6) als Uniform – der Compiler entrollt die Schleife nicht
+uniform int u_shN;        // 6.3: Schattenschritte als Uniform – der Compiler entrollt die Schleife nicht (6.7: je Stufe 3/6/10)
+uniform float u_shR, u_shK;   // 6.7: Schrittweiten-Exponent (Reichweite gleich: shN·shR = 6) und Härte des Halbschattens
+#if HAO
+uniform int u_aoN, u_aoS; // 6.7 Horizont-AO: Richtungen (0 = aus, 2, 4) und Schritte je Richtung (bis 3)
+uniform float u_aoK;      // Stärke
+out float v_ao;
+#endif
 ${LAYERS(false)}
 // 6.5 Wolkenschatten: am Fraktal verankert (Versatz u_coff aus der BigInt-Kamera wie beim Alpin-Rauschen, zwei grobe
 // Oktaven, beim Zoomen weich überblendet – schwimmen nicht), ziehen langsam mit dem Wind; pro Gitterpunkt gerechnet
@@ -191,15 +242,43 @@ void main() {
     // 6.1: Flächennormale der gezeichneten Geometrie pro Gitterpunkt (gleiche Höhenfunktion, Nachbarpunkte im
     // Abstand einer Gitterzelle) -> über die Dreiecke interpoliert: Felsfarbe an Steilhängen ohne Facetten
     // (nur die Großform wie hc: halb so viele Höhenabfragen, die Feinneigung liefert das Licht pro Pixel)
-    v_N = vec3(hc.x - hq4[2].x, hc.x - hq4[3].x, e);
+    vec3 gN = vec3(hc.x - hq4[2].x, hc.x - hq4[3].x, e);
+    v_N = gN;
     // weiche Schatten pro Gitterpunkt: Strahl zur Sonne durchs (grob werdende) Höhenfeld
+    // (6.7: Schrittzahl je Stufe bei gleicher Reichweite; Ausgewogen u_shR = 1, u_shK = 5 = exakt 6.6)
     float sh = 1.0;
     for (int i = 1; i <= u_shN; i++) {
-        float ts = 0.024 * pow(1.95, float(i));
+        float ts = 0.024 * pow(1.95, float(i) * u_shR);
         float hq = heightAt(P + u_sun.xy * ts, max(max(foot * 2.0, 0.03), ts * 0.4)).x;
-        sh = min(sh, 5.0 * (hz.x + u_sun.z * ts - hq) / ts);
+        sh = min(sh, u_shK * (hz.x + u_sun.z * ts - hq) / ts);
     }
     v_sh = clamp(sh, 0.0, 1.0);
+#if HAO
+    // 6.7 Horizont-AO (wie die Schatten pro Gitterpunkt, über die Dreiecke weich interpoliert): je Richtung der höchste
+    // Horizont (tan) aus wenigen Höhenabfragen, gemessen über der Tangentialebene der Gitter-Normale – nur Mulden, Täler
+    // und Rinnen werden dunkler, gleichmäßige Hänge nicht (deren Himmelslicht steckt schon in n.z). Richtungen fest in der
+    // Welt (45° gedreht), damit sich beim Drehen der Kamera nichts ändert. JS-Spiegel: FK3DTech.horizonAO
+    float ao = 1.0;
+    if (u_aoN > 0) {
+        float occ = 0.0;
+        for (int k = 0; k < 4; k++) {
+            if (k >= u_aoN) break;
+            float a = 0.785398 + float(k) * 6.283185 / float(u_aoN);
+            vec2 dir = vec2(cos(a), sin(a));
+            float tanT = -dot(gN.xy, dir) / gN.z;
+            float hm = tanT;
+            for (int i = 0; i < 3; i++) {
+                if (i >= u_aoS) break;
+                float r = max(0.03 * pow(2.6, float(i)), foot * (1.5 + float(i)));
+                float tq = (heightAt(P + dir * r, max(max(foot * 2.0, 0.03), r * 0.5)).x - hz.x) / r;
+                hm = max(hm, tanT + (tq - tanT) * (1.0 - 0.2 * float(i)));   // fernere Schritte zählen etwas weniger
+            }
+            occ += hm * inversesqrt(1.0 + hm * hm) - tanT * inversesqrt(1.0 + tanT * tanT);
+        }
+        ao = clamp(1.0 - u_aoK * occ / float(u_aoN), 0.0, 1.0);
+    }
+    v_ao = ao;
+#endif
     if (u_deko > 0) v_sh *= 1.0 - 0.35 * u_dk * cloudShade(P);    // 6.5 Wolkenschatten (dezent)
     vec3 Q = vec3(P, hz.x);
     vec3 v = Q - u_cam;
@@ -255,9 +334,12 @@ vec3 skyDeko(vec3 d, int oct) {
 
 // ALP = 0 Standard, 1 + Schnee (helle Menge), 2 + Alpin-Look: die Standardvariante enthält den neuen Code nicht
 // (ungenutzte Zweige kosteten sonst ~40 % Bildzeit – der Compiler plant Register für den schlimmsten Fall)
-const TERRAIN_FS_SRC = (alp, inc) => `#version 300 es
+// 6.7: DET = Detail-Normalen, HAO = Horizont-AO (Varying aus dem Vertex-Shader) – je nur übersetzt, wenn der Regler an ist
+const TERRAIN_FS_SRC = (alp, inc, det, hao) => `#version 300 es
 #define ALP ${alp}
 #define INC ${inc ? 1 : 0}
+#define DET ${det ? 1 : 0}
+#define HAO ${hao ? 1 : 0}
 ${SH.COMMON}
 ${CAM}
 ${UNI}
@@ -298,9 +380,37 @@ vec3 wnoise(vec2 P, float foot, bool full) {
     }
     return vec3(ws.x > 0.0 ? acc.x / ws.x : 0.5, ws.y > 0.0 ? acc.y / ws.y : 0.5, ws.z > 0.0 ? acc.z / ws.z : 0.5);
 }
+#if DET
+// 6.7 Detail-Normalen: Steigung eines feinen, an der Welt verankerten Rauschens (3 Oktaven feiner als wnoise, gleiche
+// Überblendung beim Zoomen: Gewicht sin²(π·t/3), Summe konstant 1,5). Zu feine Oktaven (kleiner als ein Pixel) blenden
+// über die Mip-Stufe/den Fußabdruck aus – damit wirkt das Detail nur in der Nähe (Tiefflug) und flimmert in der Ferne nicht.
+uniform vec2 u_doff[3];   // Versatz je Oktave (Fokus / Wellenlänge, mod 256), wie u_noff
+uniform float u_det;      // Stärke (0 = aus, Stufe Akku)
+vec2 detailGrad(vec2 P, float foot) {
+    vec2 g = vec2(0.0);
+    for (int j = 0; j < 3; j++) {
+        float sc = exp2(u_nfr + float(j) + 6.0);
+        float t = float(j) + u_nfr;
+        float w = sin(1.047198 * t); w *= w;
+        w *= 1.0 - smoothstep(0.25, 0.7, foot * sc);
+        if (w <= 0.02) continue;
+        float k = sc * (1.0 / 256.0);
+        vec2 q = (u_doff[j] + P * sc) * (1.0 / 256.0);
+        const float E = 0.35;        // Abstand der Differenzen in Rauschzellen
+        float n0 = textureGrad(u_noise, q, nDx * k, nDy * k).r;
+        float nx = textureGrad(u_noise, q + vec2(E / 256.0, 0.0), nDx * k, nDy * k).r;
+        float ny = textureGrad(u_noise, q + vec2(0.0, E / 256.0), nDx * k, nDy * k).r;
+        g += w * vec2(nx - n0, ny - n0) * (1.0 / E);
+    }
+    return g * (1.0 / 1.5);
+}
+#endif
 in vec2 v_P;
 in float v_z, v_sh, v_shore;
 in vec3 v_V, v_N;
+#if HAO
+in float v_ao;
+#endif
 out vec4 fragColor;
 ${SH.PAL_GLSL}
 // 4 Nachbartexel der Iterationsebene i (6.3: Auswahl per switch, siehe LAYERS); Dekodierung wie fetchV (2D)
@@ -443,10 +553,22 @@ void main() {
     // (6.1: Schichtung gröber und schwächer – an den nun glatt schattierten Steilwänden flimmerte das feine Muster)
     vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0));
     if (u_alpine == 0) alb = mix(alb, rock, steep * u_mix * (1.0 - snowM));
+#if DET
+    // 6.7 Detail-Normalen: Fels kräftig, Boden/Wiese mittel, Schnee schwach, Wasser gar nicht; mit dem Abstand aus
+    // (Startwerte, TODO am Bild im Tiefflug abstimmen)
+    if (u_det > 0.0) {
+        float aD = u_det * mix(0.18, 0.35, steep) * (1.0 - water) * (1.0 - 0.5 * snowM) * (1.0 - smoothstep(2.0, 5.0, length(v_V)));
+        if (aD > 0.002) n = normalize(vec3(n.xy / max(n.z, 0.05) - aD * detailGrad(v_P, foot), 1.0));
+    }
+#endif
+    float ao = 1.0;
+#if HAO
+    ao = v_ao;      // 6.7 Horizont-AO: dämpft Himmelslicht voll, direktes Licht zu 30 % (Talgründe bleiben nicht schwarz)
+#endif
     float sh = v_sh;
     float dif = max(dot(n, u_sun), 0.0);
     vec3 V = normalize(v_V);
-    vec3 lit = alb * (0.30 + 0.95 * dif * mix(0.35, 1.0, sh)) + alb * 0.14 * (0.5 + 0.5 * n.z);
+    vec3 lit = alb * (0.30 * ao + 0.95 * dif * mix(0.35, 1.0, sh) * mix(1.0, ao, 0.3)) + alb * 0.14 * (0.5 + 0.5 * n.z) * ao;
     lit *= canopy;
     // Schnee (Menge und Gipfel): matt, Schatten bläulich (Himmelslicht), sanfter Glanz statt Spiegelung,
     // leichte Struktur aus dem Welt-Rauschen
@@ -458,7 +580,7 @@ void main() {
         vec3 ns = normalize(mix(n, vec3(0.0, 0.0, 1.0), 0.6 * snowM));
         float difS = max(dot(ns, u_sun), 0.0), shS = mix(0.55, 1.0, sh);
         vec3 salb = alb * (0.95 + 0.08 * (nz.x - 0.5));
-        vec3 sl = salb * (vec3(0.60, 0.645, 0.72) * (0.7 + 0.3 * ns.z) + vec3(1.0, 0.97, 0.92) * 0.55 * difS * mix(0.35, 1.0, shS));
+        vec3 sl = salb * (vec3(0.60, 0.645, 0.72) * (0.7 + 0.3 * ns.z) * ao + vec3(1.0, 0.97, 0.92) * 0.55 * difS * mix(0.35, 1.0, shS));
         sl += vec3(1.0, 0.97, 0.92) * pow(max(dot(reflect(V, ns), u_sun), 0.0), 18.0) * 0.1 * shS;
         lit = mix(lit, sl, snowAll);
     }
@@ -505,8 +627,16 @@ void main() {
     fragColor = vec4(post(col), 1.0);
 }`;
 
-const TERRAIN_FS = TERRAIN_FS_SRC(0), TERRAIN_FS_S = TERRAIN_FS_SRC(1), TERRAIN_FS_X = TERRAIN_FS_SRC(2);
-const TERRAIN_FS_B = TERRAIN_FS_SRC(0, 1), TERRAIN_FS_SB = TERRAIN_FS_SRC(1, 1), TERRAIN_FS_XB = TERRAIN_FS_SRC(2, 1);
+// Gelände-Varianten je Look (6.7: Quelltext je nach Reglern ?detail/?hao; die Programmnamen bleiben – die Regler gelten
+// für den ganzen Seitenaufruf). F = FK3DTech.flags(...)
+function terrainSources(F) {
+    const det = !!F.detail, hao = !!F.hao;
+    return {
+        vs: TERRAIN_VS_SRC(hao),
+        fs: { t3terr: TERRAIN_FS_SRC(0, 0, det, hao), t3terrS: TERRAIN_FS_SRC(1, 0, det, hao), t3terrX: TERRAIN_FS_SRC(2, 0, det, hao),
+              t3terrB: TERRAIN_FS_SRC(0, 1, det, hao), t3terrSB: TERRAIN_FS_SRC(1, 1, det, hao), t3terrXB: TERRAIN_FS_SRC(2, 1, det, hao) },
+    };
+}
 
 // Rauschtextur (einmalig, 512×512 = 2 Texel pro Zelle, Periode 256 Zellen): Gradientenrauschen mit Hash mod 256
 const NOISE_FS = `#version 300 es
@@ -544,17 +674,153 @@ void main() {
     fragColor = vec4(post(skyDeko(d, 4)), 1.0);
 }`;
 
+// 6.7: beim Übertragen auf den Canvas CAS-Nachschärfen (u_sharp > 0; AMD FidelityFX CAS vereinfacht: 5er-Kreuz in
+// Quell-Texeln um den bilinear hochskalierten Punkt, kontrastadaptiv – kein Überschwingen an harten Kanten) und Bloom
+// (Screen-Mischung aus dem Halbauflösungs-Bild, brennt nicht aus). u_sharp = u_bloomK = 0: exakt wie 6.6 (auch die
+// Mittelung im Stillstand nutzt dieses Programm – dort beide 0). JS-Spiegel: FK3DTech.casChannel
 const BLIT_FS = `#version 300 es
 precision highp float;
-uniform sampler2D u_src, u_src2;
+uniform sampler2D u_src, u_src2, u_bloom;
 uniform vec2 u_target;
 uniform float u_alpha, u_mix2;    // u_mix2 > 0: Überblendung vom Bewegungsbild (u_src2) zum gemittelten Bild
+uniform float u_sharp;            // 6.7 CAS-Schärfe 0..1
+uniform vec2 u_texel;             // 6.7 1 / Größe von u_src
+uniform float u_bloomK;           // 6.7 Bloom-Stärke (0 = aus)
 out vec4 fragColor;
 void main() {
     vec2 uv = gl_FragCoord.xy / u_target;
     vec3 c = texture(u_src, uv).rgb;
+    if (u_sharp > 0.0) {
+        vec3 n = texture(u_src, uv + vec2(0.0, u_texel.y)).rgb, s = texture(u_src, uv - vec2(0.0, u_texel.y)).rgb;
+        vec3 e = texture(u_src, uv + vec2(u_texel.x, 0.0)).rgb, w = texture(u_src, uv - vec2(u_texel.x, 0.0)).rgb;
+        vec3 mn = min(c, min(min(n, s), min(e, w))), mx = max(c, max(max(n, s), max(e, w)));
+        vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+        vec3 wt = -amp / mix(8.0, 5.0, u_sharp);
+        c = clamp((c + wt * (n + s + e + w)) / (1.0 + 4.0 * wt), 0.0, 1.0);
+    }
     if (u_mix2 > 0.0) c = mix(c, texture(u_src2, uv).rgb, u_mix2);
+    if (u_bloomK > 0.0) c = 1.0 - (1.0 - c) * (1.0 - u_bloomK * texture(u_bloom, uv).rgb);
     fragColor = vec4(c, u_alpha);
+}`;
+
+// 6.7 Bloom aus halber Auflösung: u_dir = (0,0) Vorfilter (4 bilineare Abgriffe = 4×4-Box der Quelle, weiche Schwelle:
+// nur das Hellste blüht – Sonnenhof, Schnee im Licht), sonst Gauß 9 Abgriffe über 5 bilineare in Richtung u_dir (uv).
+const BLOOM_FS = `#version 300 es
+precision highp float;
+uniform sampler2D u_src;
+uniform vec2 u_texel;     // 1 / Größe der Quelle
+uniform vec2 u_dir;
+uniform vec2 u_target;
+uniform float u_thr;
+out vec4 o;
+void main() {
+    vec2 uv = gl_FragCoord.xy / u_target;
+    if (u_dir.x == 0.0 && u_dir.y == 0.0) {
+        vec3 c = 0.25 * (texture(u_src, uv + u_texel * vec2(-1.0, -1.0)).rgb + texture(u_src, uv + u_texel * vec2(1.0, -1.0)).rgb
+                       + texture(u_src, uv + u_texel * vec2(-1.0, 1.0)).rgb + texture(u_src, uv + u_texel * vec2(1.0, 1.0)).rgb);
+        float l = max(c.r, max(c.g, c.b));
+        o = vec4(c * smoothstep(u_thr, 1.0, l), 1.0);
+        return;
+    }
+    vec3 c = texture(u_src, uv).rgb * 0.2270270270;
+    c += (texture(u_src, uv + u_dir * 1.3846153846).rgb + texture(u_src, uv - u_dir * 1.3846153846).rgb) * 0.3162162162;
+    c += (texture(u_src, uv + u_dir * 3.2307692308).rgb + texture(u_src, uv - u_dir * 3.2307692308).rgb) * 0.0702702703;
+    o = vec4(c, 1.0);
+}`;
+
+// 6.7 TAA im Bewegungsbild (?taa=1): aktuelles (gejittertes) Bild + History des vorigen Bilds. Reprojektion je Pixel:
+// Tiefe -> Punkt in lokalen Einheiten dieses Bilds -> lokale Einheiten des vorigen Bilds (Zoom/Fokus wechseln im Flug:
+// P' = P · s + o, die Höhe hängt am Fraktalpunkt und bleibt) -> vorige Kamera. Himmel: nur Drehung. History bikubisch
+// (Catmull-Rom, 5 Abgriffe), geklemmt auf die 3×3-Nachbarschaft (Varianz-Clipping), verworfen bei Disocclusion
+// (gespeicherter Abstand im Alpha-Kanal weicht > 10 % ab) oder außerhalb des Bilds. Gewicht des neuen Bilds wächst mit
+// der Bewegung (weniger Nachziehen). Ausgabe: Farbe + kodierter Abstand dieses Bilds. JS-Spiegel: FK3DTech.reproject
+const TAA_FS = `#version 300 es
+precision highp float;
+precision highp sampler2D;        // History-Alpha trägt den Abstand: keine lowp-Sampler (Standard im Fragment-Shader)
+uniform sampler2D u_cur, u_hist;
+uniform highp sampler2D u_dtex;   // Tiefe des aktuellen Bilds (DEPTH_COMPONENT24, NEAREST)
+uniform vec2 u_size;
+uniform vec2 u_jit, u_dp;         // Jitter (NDC), Tiefen-Parameter wie u_depth (ndc_z = A + B / zc)
+uniform vec3 u_cam, u_fwd, u_rt, u_up;
+uniform vec2 u_tan;
+uniform vec3 u_pcam, u_pfwd, u_prt, u_pup;
+uniform vec2 u_ptan;
+uniform vec3 u_xf;                // lokal jetzt -> lokal vorher: (s, ox, oy)
+uniform int u_reset;              // 1: keine gültige History (erstes Bild, Größe/Zoomsprung)
+uniform vec4 u_ta;                // Gewicht neu: Grundwert, Höchstwert, Bewegung (px) von, bis
+uniform vec2 u_tr;                // Disocclusion-Schwelle (relativ), Varianz-Faktor
+out vec4 o;
+const float ZN = ${fl(TX.ZC_NEAR)}, ZS = ${fl(TX.ZC_STOPS)};
+float encZ(float zc) { return clamp(log2(zc / ZN) / ZS, 0.0, 1.0); }
+float decZ(float a) { return ZN * exp2(a * ZS); }
+vec3 histCR(vec2 uv) {
+    vec2 sp = uv * u_size, tp = floor(sp - 0.5) + 0.5, f = sp - tp;
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+    vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+    vec2 w3 = f * f * (-0.5 + 0.5 * f);
+    vec2 w12 = w1 + w2, o12 = w2 / w12;
+    vec2 t0 = (tp - 1.0) / u_size, t3 = (tp + 2.0) / u_size, t12 = (tp + o12) / u_size;
+    vec3 r = texture(u_hist, vec2(t12.x, t0.y)).rgb * (w12.x * w0.y)
+           + texture(u_hist, vec2(t0.x, t12.y)).rgb * (w0.x * w12.y)
+           + texture(u_hist, t12).rgb * (w12.x * w12.y)
+           + texture(u_hist, vec2(t3.x, t12.y)).rgb * (w3.x * w12.y)
+           + texture(u_hist, vec2(t12.x, t3.y)).rgb * (w12.x * w3.y);
+    float ws = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
+    return max(r / ws, vec3(0.0));
+}
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    ivec2 mx = ivec2(u_size) - 1;
+    vec3 c = texelFetch(u_cur, p, 0).rgb;
+    float d = texelFetch(u_dtex, p, 0).r;
+    bool sky = d >= 0.99999;
+    float zc = sky ? 1.0 : u_dp.y / (d * 2.0 - 1.0 - u_dp.x);
+    float aOut = sky ? 1.0 : min(encZ(zc), 0.995);
+    if (u_reset == 1) { o = vec4(c, aOut); return; }
+    // Nachbarschaft 3×3: Min/Max geschnitten mit Mittel ± Faktor · Streuung
+    vec3 m1 = vec3(0.0), m2 = vec3(0.0), mn = c, mxc = c;
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+        vec3 s = texelFetch(u_cur, clamp(p + ivec2(i, j), ivec2(0), mx), 0).rgb;
+        m1 += s; m2 += s * s; mn = min(mn, s); mxc = max(mxc, s);
+    }
+    m1 *= 1.0 / 9.0; m2 *= 1.0 / 9.0;
+    vec3 sg = sqrt(max(m2 - m1 * m1, vec3(0.0))) * u_tr.y;
+    vec3 lo = max(mn, m1 - sg), hi = min(mxc, m1 + sg);
+    vec2 ndc = gl_FragCoord.xy / u_size * 2.0 - 1.0;
+    vec2 a2 = (ndc - u_jit) * u_tan;
+    vec2 pn = vec2(0.0);
+    float zp = 1.0;
+    bool ok;
+    if (sky) {
+        vec3 dv = u_fwd + u_rt * a2.x + u_up * a2.y;
+        zp = dot(dv, u_pfwd);
+        ok = zp > 1e-4;
+        zp = max(zp, 1e-4);
+        pn = vec2(dot(dv, u_prt) / (u_ptan.x * zp), dot(dv, u_pup) / (u_ptan.y * zp));
+    } else {
+        vec3 Q = u_cam + (u_rt * a2.x + u_up * a2.y + u_fwd) * zc;
+        vec3 v = vec3(Q.xy * u_xf.x + u_xf.yz, Q.z) - u_pcam;
+        zp = dot(v, u_pfwd);
+        ok = zp > 1e-4;
+        zp = max(zp, 1e-4);
+        pn = vec2(dot(v, u_prt) / (u_ptan.x * zp), dot(v, u_pup) / (u_ptan.y * zp));
+    }
+    vec2 puv = pn * 0.5 + 0.5;
+    ok = ok && puv.x >= 0.0 && puv.y >= 0.0 && puv.x <= 1.0 && puv.y <= 1.0;
+    vec3 h = c;
+    float a = 1.0;
+    if (ok) {
+        float ha = texelFetch(u_hist, clamp(ivec2(puv * u_size), ivec2(0), mx), 0).a;   // Abstand: nächster Nachbar
+        bool same = sky ? ha > 0.999 : (ha <= 0.999 && abs(decZ(ha) - zp) <= u_tr.x * zp);
+        if (same) {
+            h = clamp(histCR(puv), lo, hi);
+            float vel = length((puv - gl_FragCoord.xy / u_size) * u_size);
+            float t = clamp((vel - u_ta.z) / (u_ta.w - u_ta.z), 0.0, 1.0);
+            a = mix(u_ta.x, u_ta.y, t * t * (3.0 - 2.0 * t));
+        }
+    }
+    o = vec4(mix(h, c, a), aOut);
 }`;
 
 // Höhentextur einer Ebene (halbe Auflösung, 2×2 gemittelt): R = log2(1+mu) - Basis (innen: log2(maxIter)),
@@ -628,13 +894,26 @@ void main() {
     o = r;
 }`;
 
-function create(R) {
+// flags (6.7): FK3DTech.flags(URL-Parameter) – ohne Angabe alles Neue an außer TAA
+function create(R, flags) {
     const gl = R.gl;
     const T = { N3, FOV };
+    const F = Object.assign({ taa: false, scharf: true, tone: 1, bloom: true, hao: true, detail: true, gpuwahl: true }, flags || {});
+    T.flags = F;
+    // Gelände-Quelltexte; KS = Namenszusatz nach einem Rückfall (siehe terrainFallback)
+    let TERRAIN_VS = null, TERR = null, KS = '';
+    function buildTerr() { const s = terrainSources(F); TERRAIN_VS = s.vs; TERR = {}; for (const k in s.fs) TERR[k + KS] = s.fs[k]; }
+    buildTerr();
     const floatRT = !!gl.getExtension('EXT_color_buffer_float');
     T.h8 = !floatRT;                       // ohne Float-Renderziel: 8-bit-Höhen (normiert beim Bauen)
     T.scale = 1;                           // Renderauflösung relativ zum Canvas (dynamisch)
     T.mobile = Math.min(screen.width, screen.height) < 700;   // Handy: gröberes Gitter (Details liefert das Licht pro Pixel)
+    // 6.7 Stufe (app.js ruft T.setStage(S.quality) je Bild): Schattenschritte, AO, Detail, Bloom, GPU-Budget fürs Gitter
+    T.stage = TX.stage('balanced', F);
+    T.setStage = function (q) { if (q !== T.stageName) { T.stageName = q; T.stage = TX.stage(q, F); } };
+    T.sunEl = 0.5;                         // 6.7 Sonnenhöhe (rad) – fest wie bis 6.6; Test-Hook für Stimmungen (Morgen/Abend)
+    // 6.7 Gitterdichte: Bildpunkte je Gitterzelle. Bis zur Messung (bzw. mit ?gpuwahl=0) wie 6.6 nach Bildschirmgröße
+    T.gridDiv = TX.legacyDiv(Math.min(screen.width, screen.height));
     let fbo = null, grid = null;
 
     // ---------------- Höhentexturen pro Ebene
@@ -784,12 +1063,26 @@ function create(R) {
     // 6.3: Gelände-Variante zum Look; nur sie wird übersetzt. Ist eine neu gewählte Variante noch nicht fertig
     // (Look-Wechsel in 3D), zeichnet die bisherige weiter, bis der Treiber fertig ist – ohne zu blockieren.
     // 6.4: Bunte Menge = eigene Variante (Suffix B) – nur dann wird der Zusatzcode übersetzt
-    const TERR = { t3terr: TERRAIN_FS, t3terrS: TERRAIN_FS_S, t3terrX: TERRAIN_FS_X, t3terrB: TERRAIN_FS_B, t3terrSB: TERRAIN_FS_SB, t3terrXB: TERRAIN_FS_XB };
-    const terrainKey = (look) => (look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr')) + (look && look.inner ? 'B' : '');
+    // (6.7: TERR/TERRAIN_VS oben in create() aus den Reglern gebaut)
+    const terrainKey = (look) => (look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr')) + (look && look.inner ? 'B' : '') + KS;
+    // ohne Rauschtextur: Standard-Look ohne Detail-Normalen (6.7: mit ?detail braucht jede Variante die Textur)
+    const plainKey = (k) => !F.detail && (k === 't3terr' + KS || k === 't3terrB' + KS);
+    // 6.7: scheitert eine Gelände-Variante mit Horizont-AO/Detail-Normalen (fremder Treiber), einmal ohne beides neu
+    // übersetzen (Gelände wie 6.6, eigene Programmnamen) statt 3D abzuschalten
+    function terrainFallback(key) {
+        if (!/^t3terr/.test(key) || KS || !(F.detail || F.hao)) return false;
+        F.detail = false; F.hao = false; KS = '_66';
+        buildTerr();
+        T.stage = TX.stage(T.stageName || 'balanced', F);
+        lastTerr = null;
+        return true;
+    }
     function needs(look) {
         const k = terrainKey(look);
         const a = [['t3hb', HBUILD_FS], ['t3sky', SKY_FS], [k, TERR[k], TERRAIN_VS], ['t3blit', BLIT_FS], ['t3probe', PROBE_FS]];
-        if (k !== 't3terr' && k !== 't3terrB') a.splice(2, 0, ['t3noise', NOISE_FS]);    // Schnee/Alpin: Rauschtextur
+        if (!plainKey(k)) a.splice(2, 0, ['t3noise', NOISE_FS]);    // Schnee/Alpin/Detail: Rauschtextur
+        if (F.bloom) a.push(['t3bloom', BLOOM_FS]);                  // 6.7 (auch wenn die Stufe den Bloom gerade aus hat)
+        if (F.taa) a.push(['t3taa', TAA_FS]);
         return a;
     }
     let lastTerr = null;
@@ -797,7 +1090,7 @@ function create(R) {
     function terrainProgram(look) {
         const k = terrainKey(look);
         T.waiting = false;
-        const plain = k === 't3terr' || k === 't3terrB';
+        const plain = plainKey(k);
         try {
             if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (plain || noiseTex) && (warmDone[k] || R.noWarm))) {
                 const pr = R.program(k, TERR[k], TERRAIN_VS);
@@ -814,6 +1107,13 @@ function create(R) {
     // Ohne KHR_parallel_shader_compile blockiert jede Statusabfrage -> dann nur ein Programm pro Aufruf (= pro Bild).
     // P1-2: scheitert ein Programm (fremder Treiber), steht sein Schlüssel in T.failed (app.js bricht die Vorbereitung ab)
     T.failed = null;
+    // 6.7: scheitert ein Zusatzprogramm (TAA, Bloom) auf einem fremden Treiber, wird nur dieser Teil abgeschaltet – 3D läuft
+    // wie 6.6 weiter (der Bloom-/TAA-Code im Blit bleibt dann über u_bloomK = 0 bzw. ohne TAA-Pass ungenutzt)
+    function optionalOff(key) {
+        if (key === 't3taa') { F.taa = false; return true; }
+        if (key === 't3bloom') { F.bloom = false; return true; }
+        return terrainFallback(key);
+    }
     T.ready = function (look) {
         const a = needs(look);
         let done = 0;
@@ -823,7 +1123,7 @@ function create(R) {
                 if (R.programReady(n[0], n[1], n[2])) done++;
                 else if (!R.parallelCompile) break;
             }
-        } catch (e) { if (!e.shaderKey) throw e; T.failed = e.shaderKey; return false; }
+        } catch (e) { if (!e.shaderKey) throw e; if (!optionalOff(e.shaderKey)) T.failed = e.shaderKey; return false; }
         T.prep = { done, total: a.length };
         return done === a.length;
     };
@@ -875,9 +1175,20 @@ function create(R) {
             gl.bindFramebuffer(gl.FRAMEBUFFER, w.nd.fb); gl.viewport(0, 0, 1, 1);
             gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src, 0);
             gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src2, 1);
+            gl.uniform1i(U.u_bloom, 1); gl.uniform1f(U.u_sharp, 0); gl.uniform1f(U.u_bloomK, 0);
             gl.enable(gl.BLEND); gl.blendColor(0, 0, 0, 0.5); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             gl.disable(gl.BLEND);
+        } else if (key === 't3bloom') {     // 6.7 Bloom-Pässe: 8-bit-Ziel ohne Tiefe
+            gl.bindFramebuffer(gl.FRAMEBUFFER, w.nd.fb); gl.viewport(0, 0, 1, 1);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dummyF()); gl.uniform1i(U.u_src, 0);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        } else if (key === 't3taa') {       // 6.7 TAA: Ziel im Format der History (wie die Höhentextur: RGBA16F, ohne Float-Ziel RGBA8)
+            gl.bindFramebuffer(gl.FRAMEBUFFER, w.hfb); gl.viewport(0, 0, 1, 1);
+            for (let i = 0; i < 3; i++) { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, dummyF()); }
+            gl.uniform1i(U.u_cur, 0); gl.uniform1i(U.u_hist, 1); gl.uniform1i(U.u_dtex, 2);
+            gl.uniform2f(U.u_size, 1, 1); gl.uniform1i(U.u_reset, 1);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
         } else {                            // Himmel (ohne Tiefentest) und Gelände (Gitter, Tiefentest)
             gl.bindFramebuffer(gl.FRAMEBUFFER, w.col.fb); gl.viewport(0, 0, 1, 1);
             if (key === 't3sky') { gl.disable(gl.DEPTH_TEST); gl.drawArrays(gl.TRIANGLES, 0, 3); }
@@ -900,7 +1211,7 @@ function create(R) {
         if (R.noWarm) return true;
         try {
             for (const n of needs(look)) if (!warmDone[n[0]]) { warmOne(n[0], n[1], n[2]); return false; }
-        } catch (e) { if (!e.shaderKey) throw e; T.failed = e.shaderKey; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return false; }
+        } catch (e) { if (!e.shaderKey) throw e; if (!optionalOff(e.shaderKey)) T.failed = e.shaderKey; gl.bindFramebuffer(gl.FRAMEBUFFER, null); return false; }
         warmFree();
         return true;
     };
@@ -910,12 +1221,33 @@ function create(R) {
     // ---------------- Offscreen-Ziele (Farbe + Tiefe): fbo = Bewegung (skaliert), fboS = Stillstand (volle
     // Auflösung, Subpixel-Versatz), acc = gemitteltes Bild (6.1)
     let fboS = null, acc = null;
+    // 6.7: mit TAA hat das Bewegungsziel eine Tiefen-TEXTUR (der TAA-Pass liest den Abstand je Pixel)
     function target(w, h) {
         if (fbo && fbo.w === w && fbo.h === h) return fbo;
-        if (fbo) { gl.deleteFramebuffer(fbo.fb); gl.deleteTexture(fbo.tex); gl.deleteRenderbuffer(fbo.rb); }
-        fbo = makeTarget(w, h, true);
+        if (fbo) delTarget(fbo);
+        fbo = makeTarget(w, h, F.taa ? 'tex' : true);
         return fbo;
     }
+    function delTarget(t) { if (!t) return; gl.deleteFramebuffer(t.fb); gl.deleteTexture(t.tex); if (t.rb) gl.deleteRenderbuffer(t.rb); if (t.dt) gl.deleteTexture(t.dt); }
+    // 6.7 TAA: zwei History-Ziele (Pingpong) in Renderauflösung, RGBA16F (ohne Float-Ziel RGBA8); Alpha = kodierter Abstand
+    const TA = { h: [null, null], cur: 0, n: 0, prev: null, last: -2 };
+    let renderN = 0;                       // Zähler der T.render-Aufrufe (TAA: History nur vom unmittelbar vorigen Bild)
+    function taaTargets(w, h) {
+        if (TA.h[0] && TA.h[0].w === w && TA.h[0].h === h) return false;
+        delTarget(TA.h[0]); delTarget(TA.h[1]);
+        const fmt = T.h8 ? gl.RGBA8 : gl.RGBA16F;
+        TA.h = [makeTarget(w, h, false, fmt), makeTarget(w, h, false, fmt)];
+        return true;
+    }
+    function taaFree() { delTarget(TA.h[0]); delTarget(TA.h[1]); TA.h = [null, null]; TA.prev = null; }
+    // 6.7 Bloom: zwei Ziele in halber Auflösung des Quellbilds (Vorfilter -> A, waagrecht -> B, senkrecht -> A)
+    const BL = { a: null, b: null, on: false };
+    function bloomTargets(w, h) {
+        if (BL.a && BL.a.w === w && BL.a.h === h) return;
+        delTarget(BL.a); delTarget(BL.b);
+        BL.a = makeTarget(w, h, false); BL.b = makeTarget(w, h, false);
+    }
+    function bloomFree() { delTarget(BL.a); delTarget(BL.b); BL.a = BL.b = null; BL.on = false; }
     function targetS(w, h) {
         if (fboS && fboS.w === w && fboS.h === h) return fboS;
         if (fboS) { gl.deleteFramebuffer(fboS.fb); gl.deleteTexture(fboS.tex); gl.deleteRenderbuffer(fboS.rb); }
@@ -928,22 +1260,32 @@ function create(R) {
         acc = makeTarget(w, h, false);
         return acc;
     }
-    // Speicher der Stillstands-Ziele freigeben (beim Verlassen von 3D)
+    // Speicher der Stillstands-Ziele freigeben (beim Verlassen von 3D; 6.7: auch TAA-History und Bloom)
     T.freeStill = function () {
         if (fboS) { gl.deleteFramebuffer(fboS.fb); gl.deleteTexture(fboS.tex); gl.deleteRenderbuffer(fboS.rb); fboS = null; }
         if (acc) { gl.deleteFramebuffer(acc.fb); gl.deleteTexture(acc.tex); acc = null; }
+        taaFree(); bloomFree(); motionOut = null;
     };
-    function makeTarget(w, h, depth) {
+    // depth: false | true (Renderbuffer) | 'tex' (6.7: Tiefen-Textur, NEAREST – für den TAA-Pass lesbar); fmt (6.7): Farbformat
+    function makeTarget(w, h, depth, fmt) {
         let fbo;
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, fmt || gl.RGBA8, w, h);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        let rb = null;
-        if (depth) {
+        let rb = null, dt = null;
+        if (depth === 'tex') {
+            dt = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, dt);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, w, h);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        } else if (depth) {
             rb = gl.createRenderbuffer();
             gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
             gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
@@ -952,8 +1294,9 @@ function create(R) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
         if (rb) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+        if (dt) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, dt, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        fbo = { fb, tex, rb, w, h };
+        fbo = { fb, tex, rb, dt, w, h };
         return fbo;
     }
 
@@ -1026,7 +1369,21 @@ function create(R) {
         }
         gl.uniform2fv(U.u_noff, noffB);
         gl.uniform1f(U.u_nfr, L - n0);
+        if (U.u_doff) {     // 6.7 Detail-Normalen: drei feinere Oktaven (Wellenlänge Welt / 2^(n0-j-6)), gleiche Rechnung
+            for (let j = 0; j < 3; j++) {
+                const sh = 1088 + (n0 - j - 6);
+                for (let a = 0; a < 2; a++) {
+                    const v = a ? focus.cy : focus.cx;
+                    if (sh < 24) { doffB[2 * j + a] = 0; continue; }
+                    const M = 256n << BigInt(sh);
+                    const r = ((v % M) + M) % M;
+                    doffB[2 * j + a] = Number(r >> BigInt(sh - 24)) / 16777216;
+                }
+            }
+            gl.uniform2fv(U.u_doff, doffB);
+        }
     }
+    const doffB = new Float32Array(6);
 
     // ---------------- Zeichnen
     // list: Ebenen (schärfste zuerst, max. N3) · v: { tilt, heading, height, mix, focus{cx,cy}, u, L[2], time }
@@ -1035,25 +1392,132 @@ function create(R) {
     // ab N 1/N – nur nötig, solange sich die Farben animieren); mix2 = Restanteil des letzten Bewegungsbilds
     // (weiche Überblendung statt hartem Wechsel auf die volle Auflösung).
     const halton = (i, b) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
+
+    // ---------------- 6.7 Gitterdichte aus der GPU-Zeit (Audit #8): beim ersten 3D-Start eines Geräts die Zeit des
+    // Gelände-Passes in einigen Bewegungsbildern des Übergangs messen (Timer-Query, nicht blockierend: Ergebnis kommt
+    // Bilder später), Median -> Teiler (FK3DTech.gridDivFromGpu, Budget je Stufe), Ergebnis je Gerät in localStorage.
+    // Angewandt wird nur, solange das Bild ohnehin wechselt (Übergang 2D->3D) oder beim nächsten 3D-Start – kein Sprung
+    // der Geometrie im Stillstand. Ohne Timer-Query bzw. mit ?gpuwahl=0: Teiler nach Bildschirmgröße wie 6.6.
+    const GQ = { state: F.gpuwahl ? 'init' : 'off', ext: null, q: [], ms: [], key: null, store: null, entry: null };
+    function gqInit() {
+        GQ.state = 'off';
+        let ren = '';
+        try { ren = gl.getParameter(gl.RENDERER) || ''; } catch (e) { /* egal */ }
+        GQ.key = TX.gridKey(ren, R.canvas.width, R.canvas.height);
+        try { GQ.store = root.localStorage || null; } catch (e) { GQ.store = null; }
+        const e = GQ.store ? TX.gridLoad(GQ.store, GQ.key) : null;
+        if (e && e.ms > 0 && e.d0 > 0) { GQ.entry = e; GQ.state = 'done'; T.applyGrid(); return; }
+        GQ.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+        if (GQ.ext) GQ.state = 'measure';
+    }
+    function gqPoll(v) {
+        if (GQ.state === 'init') gqInit();
+        if (GQ.state !== 'measure') return;
+        if (GQ.q.length) {
+            let dis = false;
+            try { dis = !!gl.getParameter(GQ.ext.GPU_DISJOINT_EXT); } catch (e) { /* egal */ }
+            while (GQ.q.length && gl.getQueryParameter(GQ.q[0], gl.QUERY_RESULT_AVAILABLE)) {
+                const q = GQ.q.shift(), ns = gl.getQueryParameter(q, gl.QUERY_RESULT);
+                gl.deleteQuery(q);
+                if (!dis && ns > 0) GQ.ms.push(ns / 1e6);
+            }
+        }
+        if (GQ.ms.length >= 6) {
+            GQ.entry = { ms: +TX.median(GQ.ms).toFixed(3), d0: T.gridDiv, t: Date.now() };
+            if (GQ.store) TX.gridSave(GQ.store, GQ.key, GQ.entry);
+            GQ.state = 'done';
+            if (v.mix < 0.999) T.applyGrid();      // noch im Übergang: sofort, sonst beim nächsten 3D-Start
+        }
+    }
+    const gqWant = (v, still) => GQ.state === 'measure' && !T.benchBusy && !still && v.mix > 0.3 && GQ.q.length + GQ.ms.length < 8;
+    // app.js ruft das beim Einschalten von 3D (Budget der aktuellen Stufe, gemessene Zeit des Geräts)
+    T.applyGrid = function () { if (GQ.entry) T.gridDiv = TX.gridDivFromGpu(GQ.entry.ms, GQ.entry.d0, T.stage.grid); };
+    T.gridInfo = () => ({ div: T.gridDiv, state: GQ.state, entry: GQ.entry, key: GQ.key, samples: GQ.ms.slice() });
+
+    // 6.7 Endpass-Uniforms (Himmel und Gelände, post())
+    function toneUniforms(U) {
+        gl.uniform1i(U.u_tone, F.tone);
+        if (!F.tone) return;
+        gl.uniform1f(U.u_expo, TX.exposure(T.sunEl));
+        gl.uniform3fv(U.u_tint, TX.sunTint(T.sunEl));
+        gl.uniform1f(U.u_grade, 1);
+    }
+    // 6.7 TAA-Pass: aktuelles Bild tg (mit Tiefen-Textur) + History -> neues History-Ziel (= Ausgabe)
+    function taaResolve(tg, c, jit, v, sw, shh, dp) {
+        const resized = taaTargets(sw, shh);
+        let reset = resized || !TA.prev || TA.last !== renderN - 1;
+        let xf = [1, 0, 0];
+        if (!reset) {
+            xf = TX.taaXf(v.u, TA.prev.u, HP.toNumber(v.focus.cx - TA.prev.fx), HP.toNumber(v.focus.cy - TA.prev.fy));
+            if (!(Math.abs(Math.log2(xf[0])) < 0.5)) reset = true;      // Zoomsprung (Ort gewechselt)
+        }
+        const pc = reset ? c : TA.prev.c;
+        const hin = TA.h[TA.cur], out = TA.h[1 - TA.cur];
+        gl.bindFramebuffer(gl.FRAMEBUFFER, out.fb);
+        gl.viewport(0, 0, sw, shh);
+        const pr = R.program('t3taa', TAA_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_cur, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, hin.tex); gl.uniform1i(U.u_hist, 1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, tg.dt); gl.uniform1i(U.u_dtex, 2);
+        gl.uniform2f(U.u_size, sw, shh); gl.uniform2fv(U.u_jit, jit); gl.uniform2fv(U.u_dp, dp);
+        gl.uniform3fv(U.u_cam, c.cam); gl.uniform3fv(U.u_fwd, c.fwd); gl.uniform3fv(U.u_rt, c.rt); gl.uniform3fv(U.u_up, c.up); gl.uniform2fv(U.u_tan, c.tan);
+        gl.uniform3fv(U.u_pcam, pc.cam); gl.uniform3fv(U.u_pfwd, pc.fwd); gl.uniform3fv(U.u_prt, pc.rt); gl.uniform3fv(U.u_pup, pc.up); gl.uniform2fv(U.u_ptan, pc.tan);
+        gl.uniform3fv(U.u_xf, xf);
+        gl.uniform1i(U.u_reset, reset ? 1 : 0);
+        gl.uniform4f(U.u_ta, TX.TAA.alpha, TX.TAA.alphaMax, TX.TAA.velLo, TX.TAA.velHi);
+        gl.uniform2f(U.u_tr, TX.TAA.reject, TX.TAA.gamma);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        TA.prev = { c, u: v.u, fx: v.focus.cx, fy: v.focus.cy };
+        TA.cur = 1 - TA.cur; TA.last = renderN;
+        T.taaInfo = { reset, xf };
+        return out;
+    }
+    // 6.7 Bloom aus halber Auflösung des Quellbilds: Vorfilter -> A, waagrecht -> B, senkrecht -> A (Ergebnis in BL.a)
+    function bloom(src) {
+        const bw = Math.max(8, Math.ceil(src.w / 2)), bh = Math.max(8, Math.ceil(src.h / 2));
+        bloomTargets(bw, bh);
+        const pr = R.program('t3bloom', BLOOM_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.uniform2f(U.u_target, bw, bh); gl.uniform1f(U.u_thr, TX.BLOOM.thr);
+        gl.activeTexture(gl.TEXTURE0); gl.uniform1i(U.u_src, 0);
+        const pass = (from, to, dx, dy) => {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, to.fb); gl.viewport(0, 0, bw, bh);
+            gl.bindTexture(gl.TEXTURE_2D, from.tex);
+            gl.uniform2f(U.u_texel, 1 / from.w, 1 / from.h); gl.uniform2f(U.u_dir, dx, dy);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        };
+        pass(src, BL.a, 0, 0);
+        pass(BL.a, BL.b, TX.BLOOM.spread / bw, 0);
+        pass(BL.b, BL.a, 0, TX.BLOOM.spread / bh);
+        BL.on = true;
+    }
+    let motionOut = null;                  // 6.7: letztes Bewegungsbild (mit TAA die History, sonst fbo)
+
     T.render = function (list, v, look, alpha, o) {
         o = o || {};
         const W = R.canvas.width, H = R.canvas.height;
         const still = o.still || null;
         const ss = still ? (still.scale || 1) : T.scale;
         const sw = Math.max(16, Math.round(W * ss)), shh = Math.max(16, Math.round(H * ss));
+        const st = T.stage;
+        renderN++;
+        gqPoll(v);
         list = list.slice(0, N3);
         for (const l of list) if (!l.h3d || (T.h8 && (!l.h3d.L || Math.abs(l.h3d.L[0] - v.L[0]) + Math.abs(l.h3d.L[1] - v.L[1]) > 0.05 * (v.L[1] - v.L[0])))) buildHeight(l, look, v.L);
         layerUniforms(list, v.focus, v.u);
         const c = T.camera(v, W, H);
         T.lastCam = c;
-        if ((look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) && R.programReady('t3noise', NOISE_FS)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
+        if ((F.detail || look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) && R.programReady('t3noise', NOISE_FS)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
         const prT = terrainProgram(look);      // 6.3: vor dem Binden des Ziels (wärmt ggf. eine neue Variante an)
         const tg = still ? targetS(sw, shh) : target(sw, shh);
+        const taa = !still && F.taa;
         let jit = [0, 0];
         if (still && still.N > 1) { const k = still.n % 64 + 1; jit = [(halton(k, 2) - 0.5) * 2 / sw, (halton(k, 3) - 0.5) * 2 / shh]; }
+        else if (taa) jit = TX.taaJitter(TA.n++, sw, shh);     // 6.7: auch im Bewegungsbild Subpixel-Versatz (TAA mittelt)
         gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
         gl.viewport(0, 0, sw, shh);
-        const sunAz = 2.35, sunEl = 0.5;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief)
+        const sunAz = 2.35, sunEl = T.sunEl;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief); 6.7: Höhe als Hook
         const sun = [Math.cos(sunAz) * Math.cos(sunEl), Math.sin(sunAz) * Math.cos(sunEl), Math.sin(sunEl)];
         const hz = palCol(look, 0.18 + look.cycle), zn = palCol(look, 0.62 + look.cycle);
         let haze = hz.map((x, k) => (x * 0.35 + [0.62, 0.68, 0.8][k] * 0.65) * 0.7);
@@ -1067,6 +1531,7 @@ function create(R) {
         gl.uniform2fv(U.u_jit, jit);
         const dk = v.deko || 0;     // 6.5: Stärke der Deko (0 = Aussehen bis 6.4.1)
         gl.uniform1i(U.u_deko, dk > 0 ? 1 : 0); gl.uniform1f(U.u_dk, dk); gl.uniform1f(U.u_ctime, v.ctime || 0);
+        toneUniforms(U);
         gl.disable(gl.DEPTH_TEST);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         // Gelände
@@ -1076,14 +1541,21 @@ function create(R) {
         gl.useProgram(pr.p);
         camUniforms(U, c, sw, shh);
         gl.uniform2fv(U.u_jit, jit);
-        const cols = Math.max(48, Math.min(200, Math.round(W / ((T.mobile ? 8 : 6) * Math.max(1, W / 900))))), rows = Math.max(64, Math.min(300, Math.round(cols * H / W * 1.3)));
+        // 6.7: Teiler T.gridDiv (gemessen bzw. 6.6-Regel: Handy 8, sonst 6) – Formel wie FK3DTech.gridSize
+        const gs = TX.gridSize(W, H, T.gridDiv), cols = gs.cols, rows = gs.rows;
         const g = makeGrid(cols, rows);
         gl.uniform2f(U.u_yr, -2.1, c.yTop);   // weit unter den Bildrand: hohe Berge vorn heben die unterste Reihe an
         const n = 0.02, far = 80;
-        gl.uniform2f(U.u_depth, (far + n) / (far - n), -2 * far * n / (far - n));
+        const dp = [(far + n) / (far - n), -2 * far * n / (far - n)];
+        gl.uniform2f(U.u_depth, dp[0], dp[1]);
         gl.uniform1f(U.u_far, 28);
         gl.uniform1f(U.u_rows, rows);
-        gl.uniform1i(U.u_shN, 6); gl.uniform1i(U.u_nq, 3);
+        gl.uniform1i(U.u_nq, 3);
+        // 6.7 Stufe: Schattenschritte/-härte, Horizont-AO, Detail-Normalen
+        gl.uniform1i(U.u_shN, st.shN); gl.uniform1f(U.u_shR, st.shR); gl.uniform1f(U.u_shK, st.shK);
+        gl.uniform1i(U.u_aoN, st.aoN); gl.uniform1i(U.u_aoS, st.aoS); gl.uniform1f(U.u_aoK, TX.AO_K);
+        gl.uniform1f(U.u_det, st.det);
+        toneUniforms(U);
         gl.uniform3f(U.u_hn, v.L[0], 1 / Math.max(1e-3, v.L[1] - v.L[0]), v.height * v.mix);
         gl.uniform1i(U.u_h8, T.h8 ? 1 : 0);
         const cdf = v.cdf || [v.L[0], 0, 0, 0, 0, 0, 0, 0, v.L[1]].map((x, i, a) => i && i < 8 ? a[0] + (a[8] - a[0]) * i / 8 : x);
@@ -1104,7 +1576,10 @@ function create(R) {
         bindLayers(U, list, true, 0);
         if (U.u_noise && noiseTex) { const nt = noiseTex; gl.activeTexture(gl.TEXTURE0 + 2 * N3); gl.bindTexture(gl.TEXTURE_2D, nt); gl.uniform1i(U.u_noise, 2 * N3); }
         gl.bindVertexArray(g.vao);
+        let gq = null;
+        if (gqWant(v, still)) { gq = gl.createQuery(); gl.beginQuery(GQ.ext.TIME_ELAPSED_EXT, gq); }   // 6.7 nur der Gelände-Pass
         gl.drawElements(gl.TRIANGLES, g.n, gl.UNSIGNED_SHORT, 0);
+        if (gq) { gl.endQuery(GQ.ext.TIME_ELAPSED_EXT); GQ.q.push(gq); }
         gl.bindVertexArray(R.vao);
         gl.disable(gl.DEPTH_TEST);
         let src = tg, src2 = null, mix2 = 0;
@@ -1119,20 +1594,28 @@ function create(R) {
             gl.useProgram(pr.p);
             gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src, 0);
             gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src2, 1);
+            gl.uniform1i(U.u_bloom, 1);        // 6.7: Sampler auf eine Einheit ohne das Ziel legen (sonst Rückkopplung)
             gl.uniform2f(U.u_target, sw, shh); gl.uniform1f(U.u_alpha, 1); gl.uniform1f(U.u_mix2, 0);
+            gl.uniform1f(U.u_sharp, 0); gl.uniform1f(U.u_bloomK, 0);    // 6.7: Mitteln ohne Schärfen/Bloom
             gl.drawArrays(gl.TRIANGLES, 0, 3);
             gl.disable(gl.BLEND);
             src = ac;
-            if (still.mix2 > 0 && fbo) { src2 = fbo; mix2 = still.mix2; }
+            if (still.mix2 > 0 && (motionOut || fbo)) { src2 = motionOut || fbo; mix2 = still.mix2; }
+        } else {
+            if (taa) src = taaResolve(tg, c, jit, v, sw, shh, dp);
+            motionOut = src;
         }
-        // auf den Canvas (lineare Hochskalierung), alpha < 1 = Überblendung mit dem 2D-Bild
+        // 6.7 Bloom (Stufe Akku und ?bloom=0: aus) aus dem fertigen Bild dieses Durchgangs
+        BL.on = false;
+        if (F.bloom && st.bloom) bloom(src);
+        // auf den Canvas (6.7: CAS-Hochskalierung + Bloom), alpha < 1 = Überblendung mit dem 2D-Bild
         T.present(src, src2, mix2, alpha);
     };
     // gemitteltes bzw. letztes Bild auf den Canvas (ohne neu zu zeichnen)
     // (6.3 kurz per blitFramebuffer – unter ANGLE/Metal räumt der Treiber den frisch getauschten Canvas-Puffer danach
     // teils nachträglich leer; der kleine Kopier-Shader wie bis 6.2 ist der bewährte Weg)
     T.present = function (src, src2, mix2, alpha) {
-        src = src || acc || fbo;
+        src = src || acc || motionOut || fbo;
         if (!src) return;
         const W = R.canvas.width, H = R.canvas.height;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1144,6 +1627,12 @@ function create(R) {
         gl.uniform2f(U.u_target, W, H);
         gl.uniform1f(U.u_alpha, alpha === undefined ? 1 : alpha);
         gl.uniform1f(U.u_mix2, src2 ? mix2 : 0);
+        // 6.7 CAS nach Skalierung (Quelle kleiner als der Canvas: stärker) und Bloom aus dem letzten Durchgang
+        gl.uniform1f(U.u_sharp, TX.sharpForScale(src.w / W, F.scharf));
+        gl.uniform2f(U.u_texel, 1 / src.w, 1 / src.h);
+        const bk = BL.on && BL.a ? TX.BLOOM.k : 0;
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, BL.a ? BL.a.tex : dummyF()); gl.uniform1i(U.u_bloom, 2);
+        gl.uniform1f(U.u_bloomK, bk);
         if (alpha !== undefined && alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); }
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.disable(gl.BLEND);
@@ -1153,6 +1642,9 @@ function create(R) {
     T.reset = function () {
         fbo = fboS = acc = grid = noiseTex = warmT = probeBuf = _df = null;
         lastTerr = null; warmDone = {}; probeBusy = false;
+        TA.h = [null, null]; TA.prev = null; BL.a = BL.b = null; BL.on = false; motionOut = null;   // 6.7
+        GQ.q = [];                                                   // Abfragen des alten Kontexts verwerfen
+        if (GQ.state === 'measure') GQ.state = 'init';               // Timer-Erweiterung im neuen Kontext neu holen
         T.variant = undefined; T.waiting = false;
         if (floatRT) gl.getExtension('EXT_color_buffer_float');    // Erweiterungen gelten je Kontext: neu aktivieren
     };
@@ -1202,9 +1694,19 @@ function create(R) {
     };
 
     // GPU-Zeit-Messung (Test-Hook)
-    T.info = () => ({ h8: T.h8, scale: T.scale, grid: grid ? [grid.cols, grid.rows] : null, target: fbo ? [fbo.w, fbo.h] : null, still: fboS ? [fboS.w, fboS.h] : null });
+    // (6.7: + Regler, Stufe, Gitterteiler, TAA/Bloom-Zustand)
+    T.info = () => ({ h8: T.h8, scale: T.scale, grid: grid ? [grid.cols, grid.rows] : null, target: fbo ? [fbo.w, fbo.h] : null, still: fboS ? [fboS.w, fboS.h] : null,
+                      flags: Object.assign({}, F), stage: T.stageName || 'balanced', gridDiv: T.gridDiv, gridState: GQ.state, taa: TA.h[0] ? [TA.h[0].w, TA.h[0].h] : null,
+                      taaReset: T.taaInfo ? T.taaInfo.reset : null, bloom: BL.on, fallback: KS || null });
     return T;
 }
 
-root.FK3D = { create, N3 };
+// 6.7: Quelltexte für die Node-Tests (tests/unit/shader3d.test.js) – dieselben Bausteine wie in create()
+function sources(flags) {
+    const F = Object.assign({ taa: false, scharf: true, tone: 1, bloom: true, hao: true, detail: true, gpuwahl: true }, flags || {});
+    const t = terrainSources(F);
+    return { TERRAIN_VS: t.vs, TERR: t.fs, SKY_FS, BLIT_FS, BLOOM_FS, TAA_FS, HBUILD_FS, PROBE_FS, NOISE_FS };
+}
+
+root.FK3D = { create, N3, sources };
 })(typeof self !== 'undefined' ? self : globalThis);

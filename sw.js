@@ -24,6 +24,7 @@ const ASSETS = [
     'js/renderer.js',
     'js/scheduler.js',
     'js/shaders.js',
+    'js/three-tech.js',
     'js/three.js',
     'js/tile-worker.js',
     'js/ui.js',
