@@ -42,6 +42,11 @@ test('3D-Ablauf mit TAA, Bloom, CAS, AO, Detail, Gitterwahl: keine Fehler, keine
     }
     assert.deepEqual(st.problems, []);
     for (const k of ['t3sky', 't3terr', 't3taa', 't3bloom', 't3blit']) assert.ok(st.draws.includes(k), 'gezeichnet: ' + k);
+    // Uniforms der Stufe Maximal (zuletzt) und der Detail-Normalen im Standard-Look (Fehler im ersten Vorbau-Stand)
+    const tu = R.progs.t3terr.p;
+    assert.equal(tu.vals.u_shN, 10); assert.equal(tu.vals.u_aoN, 4); assert.equal(tu.set.u_det, 1);
+    assert.equal(typeof tu.set.u_nfr, 'number'); assert.equal(tu.set.u_doff.length, 6);
+    assert.equal(tu.vals.u_tone, 1); assert.equal(tu.set.u_expo, 1);
     // Gitterwahl: Gelände-Pass gemessen (4,2 ms je Bild), Ergebnis gespeichert, Teiler aus Budget
     const g = T.gridInfo();
     assert.equal(g.state, 'done');

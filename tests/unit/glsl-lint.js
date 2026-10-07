@@ -148,4 +148,28 @@ function lintProgram(vs, fs, name) {
     return errs;
 }
 
-module.exports = { preprocess, lintShader, lintProgram, stripComments, balanced };
+// Aktive Uniforms wie beim Treiber (getActiveUniform): nur, was in von main() aus erreichbaren Funktionen vorkommt
+// (ungenutzte Funktionen und deren Uniforms entfernt der Compiler). Näherung ohne Daten-/Kontrollflussanalyse.
+function activeUniforms(src) {
+    const code = stripComments(preprocess(stripComments(src)));
+    const bodies = {}, re = /(?:^|[;}\n])\s*(?:highp\s+|mediump\s+|lowp\s+)?(\w+)\s+(\w+)\s*\([^;{]*\)\s*\{/g;
+    let m;
+    while ((m = re.exec(code))) {
+        if (!(TYPES.has(m[1]) || m[1] === 'void')) continue;
+        let i = m.index + m[0].length, depth = 1;
+        while (i < code.length && depth) { if (code[i] === '{') depth++; else if (code[i] === '}') depth--; i++; }
+        bodies[m[2]] = (bodies[m[2]] || '') + code.slice(m.index + m[0].length, i);
+    }
+    const seen = new Set(), todo = ['main'];
+    while (todo.length) {
+        const f = todo.pop();
+        if (seen.has(f) || !bodies[f]) continue;
+        seen.add(f);
+        for (const c of bodies[f].match(/\b\w+(?=\s*\()/g) || []) if (bodies[c] && !seen.has(c)) todo.push(c);
+    }
+    const used = new Set();
+    for (const f of seen) for (const u of bodies[f].match(/\bu_\w+/g) || []) used.add(u);
+    return used;
+}
+
+module.exports = { preprocess, lintShader, lintProgram, stripComments, balanced, activeUniforms };

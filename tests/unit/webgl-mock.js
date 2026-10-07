@@ -2,6 +2,8 @@
 // Merkt sich Ziel, Textur-Einheiten und Sampler-Werte je Programm und meldet beim Zeichnen Rückkopplungen (Ziel-Textur auf
 // einer Sampler-Einheit), gelöschte Texturen/Ziele. Shader werden NICHT übersetzt.
 'use strict';
+const L = require('./glsl-lint.js');
+const SHV = '#version 300 es\nvoid main() { gl_Position = vec4(0.0); }';
 function fakeGL() {
     let id = 1;
     const st = { fb: null, unit: 0, units: {}, prog: null, attach: new Map(), problems: [], draws: [], queries: 0 };
@@ -18,6 +20,9 @@ function fakeGL() {
         deleteTexture: (tex) => { if (tex) tex.deleted = true; }, deleteFramebuffer: (fb) => { if (fb) fb.deleted = true; },
         useProgram: (p) => { st.prog = p; },
         uniform1i: (loc, v) => { if (loc) loc.prog.vals[loc.name] = v; },
+        uniform1f: (loc, v) => { if (loc) loc.prog.set[loc.name] = v; },
+        uniform2fv: (loc, v) => { if (loc) loc.prog.set[loc.name] = Array.from(v); },
+        uniform3fv: (loc, v) => { if (loc) loc.prog.set[loc.name] = Array.from(v); },
         getExtension: (n) => (n === 'EXT_disjoint_timer_query_webgl2' ? ext : {}),
         getParameter: (p) => (p === C.RENDERER ? 'FakeGPU 1' : (p === ext.GPU_DISJOINT_EXT ? false : 0)),
         getQueryParameter: (q, p) => (p === C.QUERY_RESULT_AVAILABLE ? true : 4.2e6),
@@ -63,8 +68,10 @@ function fakeR(gl, opts = {}) {
         program(key, fs, vs) {
             if (opts.fail && opts.fail.includes(key)) throw fail(key);
             if (!progs[key]) {
-                const p = { key, vals: {}, samplers: samplersOf(fs + (vs || '')) };
-                const loc = new Proxy({}, { get: (t, name) => (typeof name === 'string' ? (t[name] || (t[name] = { prog: p, name })) : undefined) });
+                // wie der Treiber: Orte nur für aktive Uniforms (in von main() erreichbarem Code), Sampler ebenso
+                const act = new Set([...L.activeUniforms(fs), ...L.activeUniforms(vs || SHV)]);
+                const p = { key, vals: {}, set: {}, samplers: samplersOf(fs + (vs || '')).filter(n => act.has(n)) };   // vals: Sampler-/int-Werte, set: float-Uniforms
+                const loc = new Proxy({}, { get: (t, name) => (typeof name === 'string' && act.has(name) ? (t[name] || (t[name] = { prog: p, name })) : undefined) });
                 progs[key] = { p, loc };
             }
             return progs[key];
