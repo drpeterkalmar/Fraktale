@@ -912,6 +912,7 @@ function create(R, flags) {
     T.stage = TX.stage('balanced', F);
     T.setStage = function (q) { if (q !== T.stageName) { T.stageName = q; T.stage = TX.stage(q, F); } };
     T.sunEl = 0.5;                         // 6.7 Sonnenhöhe (rad) – fest wie bis 6.6; Test-Hook für Stimmungen (Morgen/Abend)
+    T.sunAz = 2.35;                        // 6.7 Sonnenrichtung (rad) – fest wie bis 6.6 (von links oben); Test-Hook
     // 6.7 Gitterdichte: Bildpunkte je Gitterzelle. Bis zur Messung (bzw. mit ?gpuwahl=0) wie 6.6 nach Bildschirmgröße
     T.gridDiv = TX.legacyDiv(Math.min(screen.width, screen.height));
     let fbo = null, grid = null;
@@ -1517,7 +1518,7 @@ function create(R, flags) {
         else if (taa) jit = TX.taaJitter(TA.n++, sw, shh);     // 6.7: auch im Bewegungsbild Subpixel-Versatz (TAA mittelt)
         gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
         gl.viewport(0, 0, sw, shh);
-        const sunAz = 2.35, sunEl = T.sunEl;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief); 6.7: Höhe als Hook
+        const sunAz = T.sunAz, sunEl = T.sunEl;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief); 6.7: als Hook
         const sun = [Math.cos(sunAz) * Math.cos(sunEl), Math.sin(sunAz) * Math.cos(sunEl), Math.sin(sunEl)];
         const hz = palCol(look, 0.18 + look.cycle), zn = palCol(look, 0.62 + look.cycle);
         let haze = hz.map((x, k) => (x * 0.35 + [0.62, 0.68, 0.8][k] * 0.65) * 0.7);
