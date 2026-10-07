@@ -683,22 +683,25 @@ precision highp float;
 uniform sampler2D u_src, u_src2, u_bloom;
 uniform vec2 u_target;
 uniform float u_alpha, u_mix2;    // u_mix2 > 0: Überblendung vom Bewegungsbild (u_src2) zum gemittelten Bild
-uniform float u_sharp;            // 6.7 CAS-Schärfe 0..1
-uniform vec2 u_texel;             // 6.7 1 / Größe von u_src
+uniform float u_sharp, u_sharp2;  // 6.7 CAS-Schärfe 0..1 für u_src bzw. u_src2 (je nach deren Auflösung)
+uniform vec2 u_texel, u_texel2;   // 6.7 1 / Größe von u_src bzw. u_src2
 uniform float u_bloomK;           // 6.7 Bloom-Stärke (0 = aus)
 out vec4 fragColor;
+vec3 cas(sampler2D t, vec2 uv, vec2 tx, float sharp) {
+    vec3 c = texture(t, uv).rgb;
+    if (sharp <= 0.0) return c;
+    vec3 n = texture(t, uv + vec2(0.0, tx.y)).rgb, s = texture(t, uv - vec2(0.0, tx.y)).rgb;
+    vec3 e = texture(t, uv + vec2(tx.x, 0.0)).rgb, w = texture(t, uv - vec2(tx.x, 0.0)).rgb;
+    vec3 mn = min(c, min(min(n, s), min(e, w))), mx = max(c, max(max(n, s), max(e, w)));
+    vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+    vec3 wt = -amp / mix(8.0, 5.0, sharp);
+    return clamp((c + wt * (n + s + e + w)) / (1.0 + 4.0 * wt), 0.0, 1.0);
+}
 void main() {
     vec2 uv = gl_FragCoord.xy / u_target;
-    vec3 c = texture(u_src, uv).rgb;
-    if (u_sharp > 0.0) {
-        vec3 n = texture(u_src, uv + vec2(0.0, u_texel.y)).rgb, s = texture(u_src, uv - vec2(0.0, u_texel.y)).rgb;
-        vec3 e = texture(u_src, uv + vec2(u_texel.x, 0.0)).rgb, w = texture(u_src, uv - vec2(u_texel.x, 0.0)).rgb;
-        vec3 mn = min(c, min(min(n, s), min(e, w))), mx = max(c, max(max(n, s), max(e, w)));
-        vec3 amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
-        vec3 wt = -amp / mix(8.0, 5.0, u_sharp);
-        c = clamp((c + wt * (n + s + e + w)) / (1.0 + 4.0 * wt), 0.0, 1.0);
-    }
-    if (u_mix2 > 0.0) c = mix(c, texture(u_src2, uv).rgb, u_mix2);
+    vec3 c = cas(u_src, uv, u_texel, u_sharp);
+    // (6.7: das Bewegungsbild wird in der Überblendung genauso geschärft wie zuvor allein – kein Sprung der Schärfe)
+    if (u_mix2 > 0.0) c = mix(c, cas(u_src2, uv, u_texel2, u_sharp2), u_mix2);
     if (u_bloomK > 0.0) c = 1.0 - (1.0 - c) * (1.0 - u_bloomK * texture(u_bloom, uv).rgb);
     fragColor = vec4(c, u_alpha);
 }`;
@@ -1623,6 +1626,9 @@ function create(R, flags) {
         // 6.7 CAS nach Skalierung (Quelle kleiner als der Canvas: stärker) und Bloom aus dem letzten Durchgang
         gl.uniform1f(U.u_sharp, TX.sharpForScale(src.w / W, F.scharf));
         gl.uniform2f(U.u_texel, 1 / src.w, 1 / src.h);
+        const s2 = src2 || src;
+        gl.uniform1f(U.u_sharp2, TX.sharpForScale(s2.w / W, F.scharf));
+        gl.uniform2f(U.u_texel2, 1 / s2.w, 1 / s2.h);
         const bk = BL.on && BL.a ? TX.BLOOM.k : 0;
         gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, BL.a ? BL.a.tex : dummyF()); gl.uniform1i(U.u_bloom, 2);
         gl.uniform1f(U.u_bloomK, bk);
