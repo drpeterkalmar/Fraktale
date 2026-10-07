@@ -1355,34 +1355,26 @@ function create(R, flags) {
         gl.uniform2fv(U.u_coff, coffB);
         gl.uniform1f(U.u_nfr, L - n0);
     }
-    function noiseUniforms(U, focus, u) {
-        if (!U.u_noff) return;
-        const L = Math.log2(u), n0 = Math.floor(L);
-        for (let j = 0; j < 4; j++) {
-            const sh = 1088 + (n0 - j - 3);     // Welt / 2^(n0-j-3) = Festkomma >> sh
+    // Versatz je Oktave j (Wellenlänge Welt / 2^(n0-j-j0)) exakt aus der BigInt-Kamera, mod 256 Zellen
+    function worldOffsets(out, focus, n0, j0, count) {
+        for (let j = 0; j < count; j++) {
+            const sh = 1088 + (n0 - j - j0);     // Welt / 2^(n0-j-j0) = Festkomma >> sh
             for (let a = 0; a < 2; a++) {
                 const v = a ? focus.cy : focus.cx;
-                if (sh < 24) { noffB[2 * j + a] = 0; continue; }
+                if (sh < 24) { out[2 * j + a] = 0; continue; }
                 const M = 256n << BigInt(sh);
                 const r = ((v % M) + M) % M;
-                noffB[2 * j + a] = Number(r >> BigInt(sh - 24)) / 16777216;
+                out[2 * j + a] = Number(r >> BigInt(sh - 24)) / 16777216;
             }
         }
-        gl.uniform2fv(U.u_noff, noffB);
+    }
+    // (6.7: auch ohne Alpin/Schnee, wenn die Detail-Normalen u_doff/u_nfr brauchen – u_noff ist dann inaktiv)
+    function noiseUniforms(U, focus, u) {
+        if (!U.u_noff && !U.u_doff) return;
+        const L = Math.log2(u), n0 = Math.floor(L);
+        if (U.u_noff) { worldOffsets(noffB, focus, n0, 3, 4); gl.uniform2fv(U.u_noff, noffB); }
+        if (U.u_doff) { worldOffsets(doffB, focus, n0, 6, 3); gl.uniform2fv(U.u_doff, doffB); }   // 6.7 Detail: 3 feinere Oktaven
         gl.uniform1f(U.u_nfr, L - n0);
-        if (U.u_doff) {     // 6.7 Detail-Normalen: drei feinere Oktaven (Wellenlänge Welt / 2^(n0-j-6)), gleiche Rechnung
-            for (let j = 0; j < 3; j++) {
-                const sh = 1088 + (n0 - j - 6);
-                for (let a = 0; a < 2; a++) {
-                    const v = a ? focus.cy : focus.cx;
-                    if (sh < 24) { doffB[2 * j + a] = 0; continue; }
-                    const M = 256n << BigInt(sh);
-                    const r = ((v % M) + M) % M;
-                    doffB[2 * j + a] = Number(r >> BigInt(sh - 24)) / 16777216;
-                }
-            }
-            gl.uniform2fv(U.u_doff, doffB);
-        }
     }
     const doffB = new Float32Array(6);
 
