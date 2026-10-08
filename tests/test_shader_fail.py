@@ -7,7 +7,11 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
   (b) Perturbation mit Fehlerschätzung defekt -> Seepferdchen 1e9: Toast, CPU-Perturbation, fertig
   (c) direkte Variante mit Fehlerschätzung defekt -> Gesamtbild: Toast, CPU-Rechenweg, fertig
   (d) Gelände-Shader (TERRAIN_VS) defekt -> 3D-Knopf: Toast, 3D bleibt aus, 2D läuft weiter
-Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d]
+      (6.7: zuerst Rückfall auf das Gelände ohne AO/Detail – der Marker trifft auch diesen, also wie bisher Toast + aus)
+  (e) 6.7 nur das Gelände MIT Horizont-AO defekt -> Rückfall auf das Gelände wie 6.6 (Programm t3terr_66), 3D läuft,
+      kein Toast
+  (f) 6.7 TAA- und Bloom-Programm defekt (?taa=1) -> beide aus, 3D läuft ohne Toast
+Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f]
 """
 import sys, os, time, json
 sys.path.insert(0, os.path.dirname(__file__))
@@ -37,8 +41,8 @@ def breaker(markers):
 })();""" % json.dumps(markers)
 
 
-def open_app(p, markers):
-    a = App(p)
+def open_app(p, markers, query='nosw&noanim'):
+    a = App(p, query=query)
     a.page.add_init_script(breaker(markers))
     a.warns = []
     a.page.on('console', lambda m: a.warns.append(m.text) if m.type == 'warning' else None)
@@ -143,8 +147,44 @@ def case_d(p):
     a.close()
 
 
+def case_e(p):
+    print('(e) 6.7 Gelände mit Horizont-AO defekt -> Rückfall wie 6.6')
+    a = open_app(p, [['#define HAO 1', 'u_aoN']])          # trifft nur den Vertex-Shader mit AO
+    pg = a.page
+    a.wait_done(60)
+    pg.evaluate("() => window.__fraktal.set3d(true)")
+    ok = a.wait_3d(40)
+    check(ok, '3D eingeblendet trotz defekter AO-Variante')
+    info = pg.evaluate("() => window.__fraktal.view3dInfo().gpu")
+    check(info and info.get('fallback') == '_66', 'Rückfall-Gelände aktiv (%s)' % (info and info.get('fallback')))
+    check(info and not info['flags']['hao'] and not info['flags']['detail'], 'AO und Detail aus')
+    check(toast_text(pg) == '', 'kein Toast')
+    a.wait_done(60); time.sleep(0.5)
+    check(pg.evaluate("() => window.__fraktal.status().done"), 'Bild fertig')
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
+def case_f(p):
+    print('(f) 6.7 TAA + Bloom defekt (?taa=1) -> nur diese aus')
+    a = open_app(p, [['u_hist', 'u_dtex'], ['u_thr', 'u_dir']], query='nosw&noanim&taa=1')
+    pg = a.page
+    a.wait_done(60)
+    pg.evaluate("() => window.__fraktal.set3d(true)")
+    check(a.wait_3d(40), '3D eingeblendet')
+    info = pg.evaluate("() => window.__fraktal.view3dInfo().gpu")
+    check(info and not info['flags']['taa'] and not info['flags']['bloom'], 'TAA/Bloom abgeschaltet (%s)' % (info and info['flags']))
+    pg.evaluate("() => window.__fraktal.startFly(undefined, { d3: true })")
+    time.sleep(2.0)
+    check(pg.evaluate("() => window.__fraktal.view3dInfo().fly.on"), '3D-Flug läuft')
+    pg.evaluate("() => window.__fraktal.stopFly()")
+    check(toast_text(pg) == '', 'kein Toast')
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f)]:
         if ONLY and k not in ONLY:
             continue
         try:
