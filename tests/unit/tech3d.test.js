@@ -27,7 +27,7 @@ test('Stufen: Schatten 3/6/10 bei gleicher Reichweite, Ausgewogen = 6.6, Akku oh
     for (let i = 1; i <= 6; i++) assert.equal(X.shadowTs(i, 1), 0.024 * Math.pow(1.95, i));   // bit-gleich zur 6.6-Schleife
     assert.ok(m.shK < b.shK, 'Maximal: weicherer Halbschatten');
     assert.equal(e.det, 0); assert.equal(e.bloom, false); assert.ok(e.aoN <= 2);
-    assert.equal(b.aoN, 4); assert.equal(b.aoS, 3);
+    assert.equal(b.aoN, 4); assert.equal(b.aoS, 2);
     assert.ok(e.grid < b.grid && b.grid < m.grid, 'GPU-Budget steigt mit der Stufe');
     const off = X.stage('balanced', X.flags(q('hao=0&detail=0&bloom=0')));
     assert.equal(off.aoN, 0); assert.equal(off.det, 0); assert.equal(off.bloom, false);

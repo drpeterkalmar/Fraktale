@@ -36,8 +36,8 @@ function flags(q) {
 // Ausgewogen ist bei den Schatten bit-gleich zu 6.6 (shN 6, shR 1, shK 5).
 const SH_RANGE = 6;    // Reichweite der Schatten in Schritten von 6.6
 const STAGES = {
-    eco:      { shN: 3,  shK: 5.0, aoN: 2, aoS: 2, det: 0,   bloom: false, grid: 5 },
-    balanced: { shN: 6,  shK: 5.0, aoN: 4, aoS: 3, det: 1,   bloom: true,  grid: 7 },
+    eco:      { shN: 3,  shK: 5.0, aoN: 0, aoS: 2, det: 0,   bloom: false, grid: 5 },   // (6.7: AO aus – Akku spart, nicht mehr)
+    balanced: { shN: 6,  shK: 5.0, aoN: 4, aoS: 2, det: 1,   bloom: true,  grid: 7 },   // (6.7: AO 2 Schritte – Budget)
     max:      { shN: 10, shK: 3.2, aoN: 4, aoS: 3, det: 1,   bloom: true,  grid: 10 },
 };
 function stage(quality, f) {
@@ -80,6 +80,17 @@ function horizonAO(heightFn, P, h0, N, n, s, foot, k) {
 // Stärke (Startwert; TODO am Bild abstimmen: Täler sichtbar tiefer, Kämme unverändert). V-Tal mit Hangneigung 0,5 -> 0,73,
 // 0,8 -> 0,56, 1,5 -> 0,35 (1,6 war rechnerisch zu dunkel: Neigung 0,8 -> 0,21)
 const AO_K = 0.9;
+// Abbildung der rohen Sichtbarkeit auf den Lichtanteil (6.7, am Bild abgestimmt): Das Fraktal-Gebirge ist überall
+// zerklüftet – die rohe AO lag im Mittel bei 0,74 und dunkelte so das ganze Bild um ~15 % ab („grauer“). Leichte
+// Verdeckung (> 0,92) bleibt jetzt ganz hell, erst echte Mulden/Rinnen werden dunkel (tiefste Stellen bis 0,45).
+const AO_FREE = 0.92, AO_FULL = 0.3, AO_DEPTH = 0.55;
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function aoShade(a) { return 1 - AO_DEPTH * (1 - smooth(AO_FULL, AO_FREE, a)); }
+
+// Detail-Normalen (Spiegel der Konstanten in TERRAIN_FS_SRC): Stärke Fels/Boden, Schnee-Faktor, Oktaven-Versatz (Wellenlänge der
+// gröbsten Detail-Oktave = 2^-(oct) lokale Einheiten). Der Vorbau-Startwert (0,35/0,18, Oktave 6) ergab eine Neigung von im
+// Mittel ~0,025 (1,4°) – am Bild nicht zu sehen; jetzt ~3× kräftiger und eine Oktave gröber (am Bild abgestimmt).
+const DET = { rock: 0.7, soil: 0.3, snow: 0.3, oct: 5 };
 
 // ---------------------------------------------------------------- Endpass: Belichtung, Tonemapping, Grading
 // Belichtung nach Sonnenhöhe (rad): 1,0 bei der festen Sonne von 6.6 (0,5 rad) – das Bild bleibt in den Mitteltönen
@@ -223,7 +234,7 @@ function taaAlpha(velPx) {
 const taaReject = (zExpected, zStored) => Math.abs(zStored - zExpected) > TAA.reject * zExpected;
 
 root.FK3DTech = {
-    flags, stage, STAGES, SH_RANGE, shadowTs, aoDir, aoRadius, horizonAO, AO_K, exposure, sunTint, shoulder, toneNeutral, toneAgx, tonemap,
+    flags, stage, STAGES, SH_RANGE, shadowTs, aoDir, aoRadius, horizonAO, AO_K, AO_FREE, AO_FULL, AO_DEPTH, aoShade, DET, exposure, sunTint, shoulder, toneNeutral, toneAgx, tonemap,
     TONE_KNEE, TONE_WHITE, TONE_DESAT, AGX_IN, AGX_OUT, casChannel, sharpForScale, BLOOM, gridSize, gridDivFromGpu, legacyDiv, gridKey, gridLoad, gridSave,
     GRID_MIN, GRID_MAX, GRID_LS, median, halton, taaJitter, taaXf, depthToZc, zcToDepth, reproject, reprojectDir, encZ, decZ, ZC_NEAR, ZC_STOPS,
     TAA, taaAlpha, taaReject,

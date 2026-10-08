@@ -276,6 +276,7 @@ void main() {
             occ += hm * inversesqrt(1.0 + hm * hm) - tanT * inversesqrt(1.0 + tanT * tanT);
         }
         ao = clamp(1.0 - u_aoK * occ / float(u_aoN), 0.0, 1.0);
+        ao = 1.0 - ${fl(TX.AO_DEPTH)} * (1.0 - smoothstep(${fl(TX.AO_FULL)}, ${fl(TX.AO_FREE)}, ao));   // nur echte Mulden dunkel (FK3DTech.aoShade)
     }
     v_ao = ao;
 #endif
@@ -345,7 +346,7 @@ ${CAM}
 ${UNI}
 uniform float u_fog, u_mix, u_time;
 uniform int u_particles;
-uniform int u_dbg;        // Messung: 1 = Wassermaske, 2 = Mengen-Anteil (tests/measure_smooth.py)
+uniform int u_dbg;        // Messung: 1 = Wassermaske, 2 = Mengen-Anteil (tests/measure_smooth.py), 4 = AO, 5 = Detail-Neigung (6.7)
 uniform vec2 u_jit;       // Subpixel-Versatz (NDC) der Mittelung im Stillstand
 uniform vec3 u_setCol;    // 6.2 Farbe der Menge
 uniform vec2 u_noff[4];   // 6.2 Welt-verankertes Rauschen: Versatz je Oktave (Fokus / Wellenlänge, mod 256)
@@ -385,22 +386,22 @@ vec3 wnoise(vec2 P, float foot, bool full) {
 // Überblendung beim Zoomen: Gewicht sin²(π·t/3), Summe konstant 1,5). Zu feine Oktaven (kleiner als ein Pixel) blenden
 // über die Mip-Stufe/den Fußabdruck aus – damit wirkt das Detail nur in der Nähe (Tiefflug) und flimmert in der Ferne nicht.
 uniform vec2 u_doff[3];   // Versatz je Oktave (Fokus / Wellenlänge, mod 256), wie u_noff
+uniform sampler2D u_noiseG;   // Steigung des Rauschens R (zweite Ausgabe des Rauschpasses)
 uniform float u_det;      // Stärke (0 = aus, Stufe Akku)
 vec2 detailGrad(vec2 P, float foot) {
     vec2 g = vec2(0.0);
     for (int j = 0; j < 3; j++) {
-        float sc = exp2(u_nfr + float(j) + 6.0);
+        float sc = exp2(u_nfr + float(j) + ${fl(TX.DET.oct)});
         float t = float(j) + u_nfr;
         float w = sin(1.047198 * t); w *= w;
         w *= 1.0 - smoothstep(0.25, 0.7, foot * sc);
         if (w <= 0.02) continue;
         float k = sc * (1.0 / 256.0);
         vec2 q = (u_doff[j] + P * sc) * (1.0 / 256.0);
-        const float E = 0.35;        // Abstand der Differenzen in Rauschzellen
-        float n0 = textureGrad(u_noise, q, nDx * k, nDy * k).r;
-        float nx = textureGrad(u_noise, q + vec2(E / 256.0, 0.0), nDx * k, nDy * k).r;
-        float ny = textureGrad(u_noise, q + vec2(0.0, E / 256.0), nDx * k, nDy * k).r;
-        g += w * vec2(nx - n0, ny - n0) * (1.0 / E);
+        // Steigung je Rauschzelle aus der Gradienten-Textur (analytisch beim Erzeugen gerechnet, mit Mipmaps): ein Abgriff
+        // je Oktave. Der Vorbau bildete Differenzen aus 3 Abgriffen im Abstand 0,35 Zellen – 3× so teuer, und unter einem
+        // Texel ist die Ableitung der bilinearen Textur stückweise konstant (sichtbares Gittermuster)
+        g += w * (textureGrad(u_noiseG, q, nDx * k, nDy * k).rg - 0.5) * (1.0 / 0.3);
     }
     return g * (1.0 / 1.5);
 }
@@ -557,14 +558,17 @@ void main() {
     // 6.7 Detail-Normalen: Fels kräftig, Boden/Wiese mittel, Schnee schwach, Wasser gar nicht; mit dem Abstand aus
     // (Startwerte, TODO am Bild im Tiefflug abstimmen)
     if (u_det > 0.0) {
-        float aD = u_det * mix(0.18, 0.35, steep) * (1.0 - water) * (1.0 - 0.5 * snowM) * (1.0 - smoothstep(2.0, 5.0, length(v_V)));
-        if (aD > 0.002) n = normalize(vec3(n.xy / max(n.z, 0.05) - aD * detailGrad(v_P, foot), 1.0));
+        float aD = u_det * mix(${fl(TX.DET.soil)}, ${fl(TX.DET.rock)}, steep) * (1.0 - water) * (1.0 - ${fl(1 - TX.DET.snow)} * snowM) * (1.0 - smoothstep(2.0, 5.0, length(v_V)));
+        vec2 dg = aD > 0.002 ? aD * detailGrad(v_P, foot) : vec2(0.0);
+        if (u_dbg == 5) { fragColor = vec4(vec3(length(dg) * 4.0), 1.0); return; }   // Messhilfe: Stärke der Detail-Neigung
+        if (aD > 0.002) n = normalize(vec3(n.xy / max(n.z, 0.05) - dg, 1.0));
     }
 #endif
     float ao = 1.0;
 #if HAO
     ao = v_ao;      // 6.7 Horizont-AO: dämpft Himmelslicht voll, direktes Licht zu 30 % (Talgründe bleiben nicht schwarz)
 #endif
+    if (u_dbg == 4) { fragColor = vec4(vec3(ao), 1.0); return; }   // Messhilfe: Horizont-AO
     float sh = v_sh;
     float dif = max(dot(n, u_sun), 0.0);
     vec3 V = normalize(v_V);
@@ -642,7 +646,8 @@ function terrainSources(F) {
 const NOISE_FS = `#version 300 es
 precision highp float;
 precision highp int;
-out vec4 o;
+layout(location = 0) out vec4 o;
+layout(location = 1) out vec4 og;   // 6.7: Steigung von R (je Rauschzelle) für die Detail-Normalen, 0,5 + 0,3·∂
 vec2 grad2(vec2 c, uint seed) {
     uvec2 q = uvec2(mod(c, 256.0));
     uint h = (q.x * 1597334677u) ^ (q.y * 3812015801u) ^ (seed * 2654435761u);
@@ -655,9 +660,18 @@ float gnoise(vec2 p, uint seed) {
     float c = dot(grad2(i + vec2(0.0, 1.0), seed), f - vec2(0.0, 1.0)), d = dot(grad2(i + vec2(1.0, 1.0), seed), f - vec2(1.0, 1.0));
     return clamp(0.5 + 0.75 * mix(mix(a, b, u.x), mix(c, d, u.x), u.y), 0.0, 1.0);
 }
+// Ableitung von gnoise nach p (Quintic-Interpolation analytisch abgeleitet, ohne die Klemmung auf 0..1)
+vec2 gnoiseD(vec2 p, uint seed) {
+    vec2 i = floor(p), f = fract(p), u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0), du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
+    vec2 ga = grad2(i, seed), gb = grad2(i + vec2(1.0, 0.0), seed), gc = grad2(i + vec2(0.0, 1.0), seed), gd = grad2(i + vec2(1.0, 1.0), seed);
+    float a = dot(ga, f), b = dot(gb, f - vec2(1.0, 0.0)), c = dot(gc, f - vec2(0.0, 1.0)), d = dot(gd, f - vec2(1.0, 1.0));
+    vec2 g = ga + u.x * (gb - ga) + u.y * (gc - ga) + u.x * u.y * (ga - gb - gc + gd) + du * (vec2(b - a, c - a) + (a - b - c + d) * u.yx);
+    return 0.75 * g;
+}
 void main() {
     vec2 Q = gl_FragCoord.xy * 0.5;
     o = vec4(gnoise(Q, 1u), gnoise(Q, 2u), gnoise(Q * 2.0, 3u), 1.0);
+    og = vec4(clamp(0.5 + 0.3 * gnoiseD(Q, 1u), 0.0, 1.0), 0.5, 1.0);
 }`;
 
 const SKY_FS = `#version 300 es
@@ -1199,6 +1213,7 @@ function create(R, flags) {
             else {
                 bindLayers(U, [], true, 0);
                 if (U.u_noise) { gl.activeTexture(gl.TEXTURE0 + 2 * N3); gl.bindTexture(gl.TEXTURE_2D, noiseTex || dummyF()); gl.uniform1i(U.u_noise, 2 * N3); }
+                if (U.u_noiseG) { gl.activeTexture(gl.TEXTURE0 + 2 * N3 + 1); gl.bindTexture(gl.TEXTURE_2D, noiseG || dummyF()); gl.uniform1i(U.u_noiseG, 2 * N3 + 1); }
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
                 const g = makeGrid(48, 64);
                 gl.bindVertexArray(g.vao);
@@ -1312,28 +1327,35 @@ function create(R, flags) {
     }
 
     // ---------------- 6.2 Rauschtextur (einmalig auf der GPU erzeugt, nur für Schnee/Alpin)
-    let noiseTex = null;
+    // 6.7: zweite Textur noiseG = Steigung von R (Detail-Normalen), im selben Pass als zweites Ziel geschrieben
+    let noiseTex = null, noiseG = null;
     function getNoise() {
         if (noiseTex) return noiseTex;
         const N = 512;
-        noiseTex = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, noiseTex);
-        gl.texStorage2D(gl.TEXTURE_2D, Math.log2(N) + 1, gl.RGBA8, N, N);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        const mk = () => {
+            const t = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, t);
+            gl.texStorage2D(gl.TEXTURE_2D, Math.log2(N) + 1, gl.RGBA8, N, N);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+            return t;
+        };
+        noiseTex = mk(); noiseG = mk();
         const fb = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, noiseTex, 0);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, noiseG, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         gl.viewport(0, 0, N, N);
         const pr = R.program('t3noise', NOISE_FS);
         gl.useProgram(pr.p);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.deleteFramebuffer(fb);
-        gl.bindTexture(gl.TEXTURE_2D, noiseTex);
-        gl.generateMipmap(gl.TEXTURE_2D);
+        for (const t of [noiseTex, noiseG]) { gl.bindTexture(gl.TEXTURE_2D, t); gl.generateMipmap(gl.TEXTURE_2D); }
         return noiseTex;
     }
 
@@ -1376,7 +1398,7 @@ function create(R, flags) {
         if (!U.u_noff && !U.u_doff) return;
         const L = Math.log2(u), n0 = Math.floor(L);
         if (U.u_noff) { worldOffsets(noffB, focus, n0, 3, 4); gl.uniform2fv(U.u_noff, noffB); }
-        if (U.u_doff) { worldOffsets(doffB, focus, n0, 6, 3); gl.uniform2fv(U.u_doff, doffB); }   // 6.7 Detail: 3 feinere Oktaven
+        if (U.u_doff) { worldOffsets(doffB, focus, n0, TX.DET.oct, 3); gl.uniform2fv(U.u_doff, doffB); }   // 6.7 Detail: 3 feinere Oktaven
         gl.uniform1f(U.u_nfr, L - n0);
     }
     const doffB = new Float32Array(6);
@@ -1571,6 +1593,7 @@ function create(R, flags) {
         gl.uniform1i(U.u_banded, look.banded ? 1 : 0);
         bindLayers(U, list, true, 0);
         if (U.u_noise && noiseTex) { const nt = noiseTex; gl.activeTexture(gl.TEXTURE0 + 2 * N3); gl.bindTexture(gl.TEXTURE_2D, nt); gl.uniform1i(U.u_noise, 2 * N3); }
+        if (U.u_noiseG) { gl.activeTexture(gl.TEXTURE0 + 2 * N3 + 1); gl.bindTexture(gl.TEXTURE_2D, noiseG || dummyF()); gl.uniform1i(U.u_noiseG, 2 * N3 + 1); }   // 6.7
         gl.bindVertexArray(g.vao);
         let gq = null;
         if (gqWant(v, still)) { gq = gl.createQuery(); gl.beginQuery(GQ.ext.TIME_ELAPSED_EXT, gq); }   // 6.7 nur der Gelände-Pass
@@ -1639,7 +1662,7 @@ function create(R, flags) {
     T.hasAcc = () => !!acc;
     // nach einem Kontextverlust: alle GL-Handles gehören dem alten Kontext -> vergessen, beim nächsten Bild neu anlegen (P1-3)
     T.reset = function () {
-        fbo = fboS = acc = grid = noiseTex = warmT = probeBuf = _df = null;
+        fbo = fboS = acc = grid = noiseTex = noiseG = warmT = probeBuf = _df = null;
         lastTerr = null; warmDone = {}; probeBusy = false;
         TA.h = [null, null]; TA.prev = null; BL.a = BL.b = null; BL.on = false; motionOut = null;   // 6.7
         GQ.q = [];                                                   // Abfragen des alten Kontexts verwerfen
