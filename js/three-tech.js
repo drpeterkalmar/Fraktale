@@ -186,7 +186,9 @@ function gridKey(renderer, W, H) {
 }
 const GRID_LS = 'fk3d_grid_v1';
 function gridLoad(store, key) {
-    try { const o = JSON.parse(store.getItem(GRID_LS) || '{}'); const e = o[key]; return e && e.div >= GRID_MIN && e.div <= GRID_MAX ? e : null; } catch (e) { return null; }
+    // (6.7 Abnahme: der Vorbau prüfte hier ein Feld div, das three.js gar nicht speichert ({ ms, d0, t }) – jeder 3D-Start
+    // maß darum neu. Plausibel = gemessene Zeit > 0 und Teiler der Messung im erlaubten Bereich)
+    try { const o = JSON.parse(store.getItem(GRID_LS) || '{}'); const e = o[key]; return e && e.ms > 0 && e.ms < 1000 && e.d0 >= GRID_MIN && e.d0 <= GRID_MAX ? e : null; } catch (e) { return null; }
 }
 function gridSave(store, key, entry) {
     try { const o = JSON.parse(store.getItem(GRID_LS) || '{}'); o[key] = entry; const ks = Object.keys(o); if (ks.length > 8) delete o[ks[0]]; store.setItem(GRID_LS, JSON.stringify(o)); } catch (e) { /* voll/gesperrt */ }

@@ -1429,7 +1429,12 @@ function create(R, flags) {
     function gqInit() {
         GQ.state = 'off';
         let ren = '';
-        try { ren = gl.getParameter(gl.RENDERER) || ''; } catch (e) { /* egal */ }
+        // (Chrome liefert unter gl.RENDERER nur „WebKit WebGL“ – dann den echten GPU-Namen, sonst teilten sich alle Geräte
+        // einen Schlüssel; Firefox meldet RENDERER schon bereinigt und warnt bei der Erweiterung -> nur wenn nötig)
+        try {
+            ren = gl.getParameter(gl.RENDERER) || '';
+            if (/^WebKit WebGL$/i.test(ren)) { const dbg = gl.getExtension('WEBGL_debug_renderer_info'); if (dbg) ren = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || ren; }
+        } catch (e) { /* egal */ }
         GQ.key = TX.gridKey(ren, R.canvas.width, R.canvas.height);
         try { GQ.store = root.localStorage || null; } catch (e) { GQ.store = null; }
         const e = GQ.store ? TX.gridLoad(GQ.store, GQ.key) : null;

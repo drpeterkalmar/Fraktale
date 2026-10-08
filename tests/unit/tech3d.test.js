@@ -149,11 +149,12 @@ test('Gitter: Geräteschlüssel unabhängig von der Drehung; Speichern/Laden mit
     assert.notEqual(X.gridKey('Mali-G78', 1080, 2400), X.gridKey('Adreno 650', 1080, 2400));
     const mem = {}, st = { getItem: (k) => (k in mem ? mem[k] : null), setItem: (k, v) => { mem[k] = String(v); } };
     assert.equal(X.gridLoad(st, 'a'), null);
-    X.gridSave(st, 'a', { div: 9, ms: 11, d0: 8 });
-    assert.deepEqual(X.gridLoad(st, 'a'), { div: 9, ms: 11, d0: 8 });
-    for (let i = 0; i < 12; i++) X.gridSave(st, 'k' + i, { div: 7, ms: 5, d0: 6 });
+    X.gridSave(st, 'a', { ms: 11, d0: 8, t: 1 });          // Format wie three.js (gqPoll) speichert
+    assert.deepEqual(X.gridLoad(st, 'a'), { ms: 11, d0: 8, t: 1 });
+    for (let i = 0; i < 12; i++) X.gridSave(st, 'k' + i, { ms: 5, d0: 6 });
     assert.ok(Object.keys(JSON.parse(mem[X.GRID_LS])).length <= 8);
-    X.gridSave(st, 'bad', { div: 99 }); assert.equal(X.gridLoad(st, 'bad'), null, 'unplausibel -> ignorieren');
+    X.gridSave(st, 'bad', { ms: 5, d0: 99 }); assert.equal(X.gridLoad(st, 'bad'), null, 'unplausibel -> ignorieren');
+    X.gridSave(st, 'bad2', { div: 9 }); assert.equal(X.gridLoad(st, 'bad2'), null, 'ohne Messzeit -> ignorieren');
     const broken = { getItem: () => '{kaputt', setItem: () => { throw new Error('voll'); } };
     assert.equal(X.gridLoad(broken, 'a'), null); X.gridSave(broken, 'a', { div: 6 });
     assert.equal(X.median([5, 1, 3]), 3); assert.equal(X.median([4, 1, 3, 2]), 2.5);
