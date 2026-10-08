@@ -927,9 +927,17 @@ function create(R, flags) {
     const F = Object.assign({ taa: false, scharf: true, tone: 1, bloom: true, hao: true, detail: true, gpuwahl: true }, flags || {});
     T.flags = F;
     // Gelände-Quelltexte; KS = Namenszusatz nach einem Rückfall (siehe terrainFallback)
-    let TERRAIN_VS = null, TERR = null, KS = '';
-    function buildTerr() { const s = terrainSources(F); TERRAIN_VS = s.vs; TERR = {}; for (const k in s.fs) TERR[k + KS] = s.fs[k]; }
-    buildTerr();
+    // 6.7 E5: Quelltext je Programmname (Look + Stufe). Schaltet die STUFE AO/Detail ab (Akku), wird die Variante ohne diesen
+    // Code übersetzt (Namenszusatz -a0/-d0) – mit nur per Uniform abgeschaltetem Code kostete Akku gemessen +30 % GPU-Zeit.
+    // (Mit ?hao=0/?detail=0 fehlt der Code ohnehin, dann kein Zusatz: je Seitenaufruf gehört zu jedem Namen genau ein Quelltext.)
+    let KS = '';
+    const TSRC = {};
+    const BASES = { t3terr: [0, 0], t3terrS: [1, 0], t3terrX: [2, 0], t3terrB: [0, 1], t3terrSB: [1, 1], t3terrXB: [2, 1] };
+    function terrSrc(k) {
+        if (TSRC[k]) return TSRC[k];
+        const b = BASES[/^t3terr[SX]?B?/.exec(k)[0]], hao = F.hao && !k.includes('-a0'), det = F.detail && !k.includes('-d0');
+        return (TSRC[k] = { fs: TERRAIN_FS_SRC(b[0], b[1], det, hao), vs: TERRAIN_VS_SRC(hao) });
+    }
     const floatRT = !!gl.getExtension('EXT_color_buffer_float');
     T.h8 = !floatRT;                       // ohne Float-Renderziel: 8-bit-Höhen (normiert beim Bauen)
     T.scale = 1;                           // Renderauflösung relativ zum Canvas (dynamisch)
@@ -1090,23 +1098,24 @@ function create(R, flags) {
     // 6.3: Gelände-Variante zum Look; nur sie wird übersetzt. Ist eine neu gewählte Variante noch nicht fertig
     // (Look-Wechsel in 3D), zeichnet die bisherige weiter, bis der Treiber fertig ist – ohne zu blockieren.
     // 6.4: Bunte Menge = eigene Variante (Suffix B) – nur dann wird der Zusatzcode übersetzt
-    // (6.7: TERR/TERRAIN_VS oben in create() aus den Reglern gebaut)
-    const terrainKey = (look) => (look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr')) + (look && look.inner ? 'B' : '') + KS;
-    // ohne Rauschtextur: Standard-Look ohne Detail-Normalen (6.7: mit ?detail braucht jede Variante die Textur)
-    const plainKey = (k) => !F.detail && (k === 't3terr' + KS || k === 't3terrB' + KS);
+    // (6.7: Quelltexte je Name aus terrSrc – Regler und Stufe)
+    const terrainKey = (look) => (look && look.alpine ? 't3terrX' : (look && look.setCol && SH_LUM(look.setCol) > 0.34 ? 't3terrS' : 't3terr')) + (look && look.inner ? 'B' : '')
+        + (F.detail && !(T.stage.det > 0) ? '-d0' : '') + (F.hao && !(T.stage.aoN > 0) ? '-a0' : '') + KS;
+    // ohne Rauschtextur: Standard-Look ohne Detail-Normalen (6.7: mit Detail-Normalen braucht jede Variante die Textur)
+    const plainKey = (k) => /^t3terrB?(-|_|$)/.test(k) && (!F.detail || k.includes('-d0'));
     // 6.7: scheitert eine Gelände-Variante mit Horizont-AO/Detail-Normalen (fremder Treiber), einmal ohne beides neu
     // übersetzen (Gelände wie 6.6, eigene Programmnamen) statt 3D abzuschalten
     function terrainFallback(key) {
         if (!/^t3terr/.test(key) || KS || !(F.detail || F.hao)) return false;
         F.detail = false; F.hao = false; KS = '_66';
-        buildTerr();
         T.stage = TX.stage(T.stageName || 'balanced', F);
         lastTerr = null;
         return true;
     }
     function needs(look) {
         const k = terrainKey(look);
-        const a = [['t3hb', HBUILD_FS], ['t3sky', SKY_FS], [k, TERR[k], TERRAIN_VS], ['t3blit', BLIT_FS], ['t3probe', PROBE_FS]];
+        const ts = terrSrc(k);
+        const a = [['t3hb', HBUILD_FS], ['t3sky', SKY_FS], [k, ts.fs, ts.vs], ['t3blit', BLIT_FS], ['t3probe', PROBE_FS]];
         if (!plainKey(k)) a.splice(2, 0, ['t3noise', NOISE_FS]);    // Schnee/Alpin/Detail: Rauschtextur
         if (F.bloom) a.push(['t3bloom', BLOOM_FS]);                  // 6.7 (auch wenn die Stufe den Bloom gerade aus hat)
         if (F.taa) a.push(['t3taa', TAA_FS]);
@@ -1119,16 +1128,18 @@ function create(R, flags) {
         T.waiting = false;
         const plain = plainKey(k);
         try {
-            if (k === lastTerr || !lastTerr || (R.programReady(k, TERR[k], TERRAIN_VS) && (plain || noiseTex) && (warmDone[k] || R.noWarm))) {
-                const pr = R.program(k, TERR[k], TERRAIN_VS);
+            const ts = terrSrc(k);
+            if (k === lastTerr || !lastTerr || (R.programReady(k, ts.fs, ts.vs) && (plain || noiseTex) && (warmDone[k] || R.noWarm))) {
+                const pr = R.program(k, ts.fs, ts.vs);
                 lastTerr = T.variant = k;
                 return pr;
             }
         } catch (e) { if (e.shaderKey) T.failed = e.shaderKey; throw e; }   // P1-2: Gelände-Variante defekt -> app.js schaltet 3D aus
         // fertig übersetzt, aber noch nicht angewärmt: in diesem Bild anwärmen (vor dem Binden des Ziels), im nächsten nehmen
-        if (R.hasProgram(k) && (plain || noiseTex)) warmOne(k, TERR[k], TERRAIN_VS);
+        if (R.hasProgram(k) && (plain || noiseTex)) { const ts = terrSrc(k); warmOne(k, ts.fs, ts.vs); }
         T.waiting = true;
-        return R.program(lastTerr, TERR[lastTerr], TERRAIN_VS);
+        const tl = terrSrc(lastTerr);
+        return R.program(lastTerr, tl.fs, tl.vs);
     }
     // nicht blockierend: true, wenn alle Programme für ein 3D-Bild in diesem Look fertig sind (T.prep = Fortschritt).
     // Ohne KHR_parallel_shader_compile blockiert jede Statusabfrage -> dann nur ein Programm pro Aufruf (= pro Bild).
@@ -1461,7 +1472,9 @@ function create(R, flags) {
             if (v.mix < 0.999) T.applyGrid();      // noch im Übergang: sofort, sonst beim nächsten 3D-Start
         }
     }
-    const gqWant = (v, still) => GQ.state === 'measure' && !T.benchBusy && !still && v.mix > 0.3 && GQ.q.length + GQ.ms.length < 8;
+    // (6.7 E5: erst ab 60 % des Übergangs – vorher ist das Gelände noch flach und die Messung fiel zu niedrig aus; Bewegungs-
+    // bilder auch nach dem Übergang zählen, angewandt wird ohnehin erst beim nächsten 3D-Start)
+    const gqWant = (v, still) => GQ.state === 'measure' && !T.benchBusy && !still && v.mix > 0.6 && GQ.q.length + GQ.ms.length < 8;
     // app.js ruft das beim Einschalten von 3D (Budget der aktuellen Stufe, gemessene Zeit des Geräts)
     T.applyGrid = function () { if (GQ.entry) T.gridDiv = TX.gridDivFromGpu(GQ.entry.ms, GQ.entry.d0, T.stage.grid); };
     T.gridInfo = () => ({ div: T.gridDiv, state: GQ.state, entry: GQ.entry, key: GQ.key, samples: GQ.ms.slice() });

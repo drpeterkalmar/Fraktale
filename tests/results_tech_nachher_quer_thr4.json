@@ -1,0 +1,340 @@
+{
+ "tag": "nachher",
+ "ori": "quer",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "secs": 10.0,
+ "query": "",
+ "headed": true,
+ "payloadKB": 551.9,
+ "assetsKB": 455.2,
+ "stages": {
+  "eco": {
+   "zoom2d": {
+    "frames": 332,
+    "fps": 54.4,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 34,
+    "long50": 0,
+    "gpuPresent": 1.15,
+    "canvas": [
+     1049,
+     515
+    ]
+   },
+   "still3d": {
+    "frames": 153,
+    "fps": 50.2,
+    "p50": 16.7,
+    "p95": 33.4,
+    "max": 34.9,
+    "long50": 0,
+    "ok3d": true,
+    "gpuStill": 3.91,
+    "gpuStillMax": 10.05,
+    "gpuMove": 2.21,
+    "gpuMoveMax": 6.49,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      150,
+      96
+     ],
+     "target": [
+      682,
+      335
+     ],
+     "still": [
+      1049,
+      515
+     ],
+     "flags": {
+      "taa": false,
+      "scharf": true,
+      "tone": 1,
+      "bloom": true,
+      "hao": true,
+      "detail": true,
+      "gpuwahl": true
+     },
+     "stage": "eco",
+     "gridDiv": 6,
+     "gridState": "done",
+     "taa": null,
+     "taaReset": null,
+     "bloom": false,
+     "fallback": null
+    }
+   },
+   "fly3d": {
+    "frames": 526,
+    "fps": 51.8,
+    "p50": 16.7,
+    "p95": 33.4,
+    "max": 133.3,
+    "long50": 16,
+    "gpuFly": 2.34,
+    "gpuFlyMax": 19.18,
+    "scale": 0.65,
+    "decades": 4.33,
+    "hard": 0,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      150,
+      96
+     ],
+     "target": [
+      682,
+      335
+     ],
+     "still": [
+      1049,
+      515
+     ],
+     "flags": {
+      "taa": false,
+      "scharf": true,
+      "tone": 1,
+      "bloom": true,
+      "hao": true,
+      "detail": true,
+      "gpuwahl": true
+     },
+     "stage": "eco",
+     "gridDiv": 6,
+     "gridState": "done",
+     "taa": null,
+     "taaReset": null,
+     "bloom": false,
+     "fallback": null
+    }
+   }
+  },
+  "balanced": {
+   "zoom2d": {
+    "frames": 323,
+    "fps": 52.7,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 83.7,
+    "long50": 1,
+    "gpuPresent": 2.69,
+    "canvas": [
+     1678,
+     824
+    ]
+   },
+   "still3d": {
+    "frames": 160,
+    "fps": 53.0,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 34.7,
+    "long50": 0,
+    "ok3d": true,
+    "gpuStill": 11.16,
+    "gpuStillMax": 25.88,
+    "gpuMove": 4.9,
+    "gpuMoveMax": 13.44,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      150,
+      96
+     ],
+     "target": [
+      1091,
+      536
+     ],
+     "still": [
+      1678,
+      824
+     ],
+     "flags": {
+      "taa": false,
+      "scharf": true,
+      "tone": 1,
+      "bloom": true,
+      "hao": true,
+      "detail": true,
+      "gpuwahl": true
+     },
+     "stage": "balanced",
+     "gridDiv": 6,
+     "gridState": "done",
+     "taa": null,
+     "taaReset": null,
+     "bloom": true,
+     "fallback": null
+    }
+   },
+   "fly3d": {
+    "frames": 514,
+    "fps": 51.2,
+    "p50": 16.7,
+    "p95": 33.5,
+    "max": 133.4,
+    "long50": 17,
+    "gpuFly": 5.35,
+    "gpuFlyMax": 10.84,
+    "scale": 0.65,
+    "decades": 4.41,
+    "hard": 0,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      150,
+      96
+     ],
+     "target": [
+      1091,
+      536
+     ],
+     "still": [
+      1678,
+      824
+     ],
+     "flags": {
+      "taa": false,
+      "scharf": true,
+      "tone": 1,
+      "bloom": true,
+      "hao": true,
+      "detail": true,
+      "gpuwahl": true
+     },
+     "stage": "balanced",
+     "gridDiv": 6,
+     "gridState": "done",
+     "taa": null,
+     "taaReset": null,
+     "bloom": true,
+     "fallback": null
+    }
+   }
+  },
+  "max": {
+   "zoom2d": {
+    "frames": 327,
+    "fps": 53.2,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 83.4,
+    "long50": 2,
+    "gpuPresent": 4.64,
+    "canvas": [
+     2181,
+     1071
+    ]
+   },
+   "still3d": {
+    "frames": 168,
+    "fps": 53.9,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 34,
+    "long50": 0,
+    "ok3d": true,
+    "gpuStill": 17.03,
+    "gpuStillMax": 48.22,
+    "gpuMove": 7.1,
+    "gpuMoveMax": 21.63,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      150,
+      96
+     ],
+     "target": [
+      1418,
+      696
+     ],
+     "still": [
+      2181,
+      1071
+     ],
+     "flags": {
+      "taa": false,
+      "scharf": true,
+      "tone": 1,
+      "bloom": true,
+      "hao": true,
+      "detail": true,
+      "gpuwahl": true
+     },
+     "stage": "max",
+     "gridDiv": 6,
+     "gridState": "done",
+     "taa": null,
+     "taaReset": null,
+     "bloom": true,
+     "fallback": null
+    }
+   },
+   "fly3d": {
+    "frames": 521,
+    "fps": 51.4,
+    "p50": 16.7,
+    "p95": 33.4,
+    "max": 118.5,
+    "long50": 17,
+    "gpuFly": 8.32,
+    "gpuFlyMax": 17.98,
+    "scale": 0.65,
+    "decades": 2.57,
+    "hard": 0,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      150,
+      96
+     ],
+     "target": [
+      1418,
+      696
+     ],
+     "still": [
+      2181,
+      1071
+     ],
+     "flags": {
+      "taa": false,
+      "scharf": true,
+      "tone": 1,
+      "bloom": true,
+      "hao": true,
+      "detail": true,
+      "gpuwahl": true
+     },
+     "stage": "max",
+     "gridDiv": 6,
+     "gridState": "done",
+     "taa": null,
+     "taaReset": null,
+     "bloom": true,
+     "fallback": null
+    }
+   }
+  }
+ },
+ "version": "6.6.4",
+ "gpu": "WebKit WebGL",
+ "tech": {
+  "taa": false,
+  "scharf": true,
+  "tone": 1,
+  "bloom": true,
+  "hao": true,
+  "detail": true,
+  "gpuwahl": true
+ },
+ "errors": []
+}

@@ -42,6 +42,8 @@ Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, 
 
 **✈ Flug in 2D (seit 6.6):** Der runde **✈-Knopf** sitzt in der flachen Ansicht in der Daumenzone (hochkant unten rechts über der Leiste, quer unten links). Das Bild taucht ruhig und endlos in die Tiefe, der Zoompunkt gleitet am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) und die Bildmitte folgt ihm weich – ohne Berge und Neigung. Gesteuert wird mit derselben Randsuche wie in 3D, nur ohne Kurs: **Tippen = Pause**, **ein Finger ziehen = das Bild schieben** (der Flug taucht an der neuen Stelle weiter), zwei Finger beenden den Flug; im Flug zeigt die Leiste unten **■ Stopp** und das Tempo. **⛰ während des Flugs** wechselt nahtlos in den 3D-Flug, ⛰ aus im 3D-Flug fliegt flach weiter. Der 2D-Flug braucht keine 3D-Shader (nur eine kleine Sonde) und geht deshalb auch dort, wo die 3D-Landschaft nicht läuft. Er fliegt über die GPU-Tiefe 10³⁰ hinaus mit der CPU-Rechnung weiter – dort langsamer und etwas weicher. Vergleich mit 6.5 (Flug nur in 3D): `?fly2d=0`.
 
+**Grafik der Landschaft (seit 6.7):** filmische Tonkurve (helle Flächen behalten Zeichnung, Belichtung nach Sonnenstand), leichter Glanz um die Sonne aus halber Auflösung, nachgeschärftes Hochskalieren im Bewegungsbild, Tiefe in Tälern und Mulden aus dem Höhenfeld (Horizont-Verdeckung je Gitterpunkt), feine Fels-/Schneestruktur im Nahbereich, Schattenschritte je Stufe (Akku 3, Ausgewogen 6, Maximal 10 + weicher Halbschatten) und eine Gitterdichte, die sich beim ersten 3D-Start nach der gemessenen Grafikleistung des Geräts richtet. Zum Vergleich abschaltbar: `?tone=0` (bzw. `?tone=agx`), `?bloom=0`, `?scharf=0`, `?hao=0`, `?detail=0`, `?gpuwahl=0`; alles zusammen = Bild wie 6.6. Kantenglättung im Flug (TAA) ist gebaut, aber aus – sie verschmiert im Dauerzoom (`?taa=1` zum Ausprobieren). Details: `TECHNIK_BERICHT.md`.
+
 **Desktop:** Mausrad = Zoom um den Mauszeiger, Ziehen = verschieben, Shift+Ziehen = Rechteck-Zoom.
 Tasten: `M J B T 3 N` Modi · `P` Palette · `R` Reset · `S` Bild · `F` Vollbild · `I` Oberfläche · `H` Hilfe · `L` Sprache · `+/−` Iterationen · Pfeile verschieben · `Bild↑/↓` Zoom · `Z` Rechteck-Zoom.
 
@@ -95,6 +97,13 @@ Details, Methode und Grenzfälle: `V5_BERICHT.md`. Tests laufen lokal mit `pytho
 Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 -m http.server 8000` und http://localhost:8000 öffnen. Kein Build-Schritt nötig.
 
 ## 📜 Änderungen
+
+**Version 6.7.0** – 3D-Gebirge mit Tiefe, ruhig im Flug (Grafik-Technik)
+- **Endpass:** filmische Tonkurve (Neutral-Schulter ab 0,8, `?tone=agx` zum Vergleich) mit Belichtung und Farbstich nach Sonnenhöhe, leichte Farbkorrektur, dezenter Bloom um Sonne und helle Flächen aus halber Auflösung, CAS-Nachschärfen beim Hochskalieren (Bewegungsbild auf dem Handy 0,65).
+- **Tiefe und Detail:** Horizont-Verdeckung (AO) aus dem Höhenfeld nur für echte Mulden/Täler (Hänge bleiben hell), feine Fels-/Schneestruktur im Nahbereich aus einer vorab berechneten Gradienten-Textur (Gletscher nicht mehr flach weiß).
+- **Stufen und Gerät:** Schatten 3/6/10 Schritte (Akku spart, Maximal weicher), Akku ohne AO und Detail (eigene, schlanke Shader-Variante); Gitterdichte aus einer Kurzmessung der Grafikzeit beim ersten 3D-Start, gespeichert je Gerät (`?gpuwahl=0` = Regel bis 6.6 nach Bildschirmbreite).
+- **TAA im Flug geprüft und aus gelassen:** Reprojektion korrekt, Flimmern halbiert, aber im Dauerzoom verschmieren Kanten und Farbflecken (1,4–2× weiter von der Referenz als ohne) – `?taa=1` zum Ausprobieren.
+- Gemessen (M1, Pixel-7-Ansicht, Profil Mittelklasse: CPU ×4, DPR 2,6, hoch + quer): Bildzeit p95 je Stufe gleich oder besser (3D-Flug hoch 34,6/33,4/48,0 → 33,4/33,4/34,1 ms), GPU-Zeit des Bewegungsbilds (M1, feste Ansichten) +4 bis +30 % je nach Stufe und Lauf (Streuung zwischen Läufen ±15 %) – auf schwächeren GPUs gleicht die Gitterwahl das mit einem gröberen Gitter aus; Ladegröße +53 KB. Zwischenstände 6.6.1–6.6.4 je Etappe. Details: `TECHNIK_BERICHT.md`.
 
 **Version 6.6.0** – Flug auch in 2D
 - **✈ Flug in der flachen Ansicht:** neuer runder ✈-Knopf (hochkant unten rechts, quer unten links). Das Bild taucht wie ein endloses Zoom-Video am Rand der Menge in die Tiefe; dieselbe Randsuche wie im 3D-Flug (Zoompunkt am Rand, ruhiges Nachführen, vorausschauende Bremse, aus leeren Flächen zurück zum Rand), die Bildmitte folgt dem Zoompunkt weich. Tippen = Pause, ziehen = schieben, Tempo-Regler in der Leiste.

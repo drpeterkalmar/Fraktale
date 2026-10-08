@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.6.4';
+const APP_VERSION = '6.7.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -576,7 +576,7 @@ function fail3d() {
     emit('3d');
 }
 // fertig übersetzt (nicht blockierend gefragt) und angewärmt (je Bild ein Programm) – erst dann 3D einblenden
-function ready3d() { const lk = look(); return T3.ready(lk) && T3.warm(lk); }
+function ready3d() { const lk = look(); T3.setStage(S.quality); return T3.ready(lk) && T3.warm(lk); }   // 6.7: Stufe zuerst – die Gelände-Variante hängt von ihr ab
 function baseScale3d() { return Q.get('s3d') ? +Q.get('s3d') : (Math.min(screen.width, screen.height) < 700 ? 0.65 : 1); }
 // 6.7 TAA im Flug (?taa=1): Renderskala im Flug höchstens FK3DTech.TAA.flyScale (0,7; ?taas=x zum Abstimmen) – die
 // zeitliche Mittelung ersetzt die fehlenden Pixel. Nicht mit festem ?s3d. null = keine Absenkung.
@@ -1126,7 +1126,7 @@ const API = {
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
     // 6.3: nur die Programme des aktuellen Looks, nicht blockierend (T3.ready pollt danach pro Bild)
-    prewarm3d() { if (T3 && !V3.on) T3.prewarm(look()); },
+    prewarm3d() { if (T3 && !V3.on) { T3.setStage(S.quality); T3.prewarm(look()); } },
     layers3dInfo() { const now = performance.now(); return layers3d(orderLayers(now, S.cam)).map(l => ({ stage: l.stage, scale: l.scale / (3 / (S.cam.zoom * canvas.height)), alpha: +l.alpha.toFixed(2), w: l.buf.w, h: l.buf.h, h3d: !!l.h3d, out: !!l.outT, front: l === RC.front })); },
     // Test (6.3, tests/compare_3d_shader.py): Ebenen, Ansicht und Look des aktuellen 3D-Bilds – zum Zeichnen mit einer
     // zweiten 3D-Instanz (alter Shader) auf exakt denselben Daten

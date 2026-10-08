@@ -38,7 +38,7 @@ const SH_RANGE = 6;    // Reichweite der Schatten in Schritten von 6.6
 const STAGES = {
     eco:      { shN: 3,  shK: 5.0, aoN: 0, aoS: 2, det: 0,   bloom: false, grid: 5 },   // (6.7: AO aus – Akku spart, nicht mehr)
     balanced: { shN: 6,  shK: 5.0, aoN: 4, aoS: 2, det: 1,   bloom: true,  grid: 7 },   // (6.7: AO 2 Schritte – Budget)
-    max:      { shN: 10, shK: 3.2, aoN: 4, aoS: 3, det: 1,   bloom: true,  grid: 10 },
+    max:      { shN: 10, shK: 3.2, aoN: 4, aoS: 3, det: 1,   bloom: true,  grid: 8.5 },  // (6.7 E5: Budget 8,5 statt 10 ms – GPU-Zeit Maximal +47 %)
 };
 function stage(quality, f) {
     const s = Object.assign({}, STAGES[quality] || STAGES.balanced);
@@ -165,7 +165,9 @@ function gridSize(W, H, div) {
     const rows = Math.max(64, Math.min(300, Math.round(cols * H / W * 1.3)));
     return { cols, rows };
 }
-const GRID_MIN = 5, GRID_MAX = 12;
+// (6.7 E5: feinste Stufe 6 statt 5 – wie der Desktop in 6.6. Auf dem M1 wählte die Kurzmessung sonst je nach Lauf 5–7, mit 5
+// hatte Ausgewogen +76 % Gitterpunkte und +46 % GPU-Zeit; „starke Geräte feiner“ heißt höchstens Desktop-Dichte)
+const GRID_MIN = 6, GRID_MAX = 12;
 // Gemessen: ms = GPU-Zeit des Gelände-Passes bei Teiler d0. Modell: ms(d) = ms0 · ((1 − fV) + fV · (d0/d)²), fV = Anteil der
 // Gitterpunkt-Arbeit (Vertex-Shader: Höhen, Schatten, AO) – Startwert 0,6 (TODO aus der Messung am Handy ableiten).
 // Gesucht: d mit ms(d) = budget; halbe Schritte, Grenzen 5..12; Änderung erst ab 1 Schritt (Hysterese gegen Pendeln).

@@ -186,7 +186,7 @@ def main():
             for vn, vv in (('ohne Bloom', dict(VNEU, bloom=False)), ('mit Bloom', VNEU)):
                 variant(pg, vv); settle(a, pg, 0.4); fb.append(shot(pg, os.path.join(OUT, 'roh', f'bloom_{ori}_{vn.replace(" ", "")}.jpg')))
             outs.append(grid([fb], os.path.join(OUT, f'bloom_{ori}.jpg'), s=0.4 if not land else 0.3, labels=['ohne Bloom', 'mit Bloom']))
-            outs.append(grid([[crop(f, (0.0, 0.25, 1.0, 0.6)) for f in fb]], os.path.join(OUT, f'bloom_{ori}_ausschnitt.jpg'), s=0.6, labels=['ohne Bloom', 'mit Bloom']))
+            outs.append(grid([[crop(f, (0.0, 0.03, 1.0, 0.4)) for f in fb]], os.path.join(OUT, f'bloom_{ori}_ausschnitt.jpg'), s=0.6, labels=['ohne Bloom', 'mit Bloom']))
             sun(pg, 2.35, 0.5); look(pg, setcol='black', palette='neon'); a.set_view(*SEA); a.wait_done(120); cam(pg, 50, 0.6); settle(a, pg, 3.0); settle(a, pg, 1.5)
             fc = []
             for vn, vv in (('gemittelt (Stillstand)', VNEU), ('Bewegung linear', dict(VNEU, scharf=False)), ('Bewegung CAS', VNEU)):
