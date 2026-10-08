@@ -1,0 +1,337 @@
+{
+ "ori": "hoch",
+ "start": "tal",
+ "caps": [
+  60,
+  150,
+  240,
+  300,
+  301,
+  360,
+  450,
+  540,
+  598,
+  599
+ ],
+ "frames": 600,
+ "variants": {
+  "ohne TAA 0,65": {
+   "perFrame": [
+    {
+     "frame": 60,
+     "all": 1.32,
+     "edge": 5.44,
+     "top": 1.68
+    },
+    {
+     "frame": 150,
+     "all": 0.81,
+     "edge": 6.44,
+     "top": 0.96
+    },
+    {
+     "frame": 240,
+     "all": 0.73,
+     "edge": 6.06,
+     "top": 0.83
+    },
+    {
+     "frame": 300,
+     "all": 0.51,
+     "edge": 8.49,
+     "top": 0.54
+    },
+    {
+     "frame": 301,
+     "all": 0.73,
+     "edge": 6.48,
+     "top": 0.68
+    },
+    {
+     "frame": 360,
+     "all": 0.51,
+     "edge": 8.08,
+     "top": 0.64
+    },
+    {
+     "frame": 450,
+     "all": 0.54,
+     "edge": 8.06,
+     "top": 0.68
+    },
+    {
+     "frame": 540,
+     "all": 0.54,
+     "edge": 6.79,
+     "top": 0.79
+    },
+    {
+     "frame": 598,
+     "all": 0.46,
+     "edge": 6.89,
+     "top": 0.78
+    },
+    {
+     "frame": 599,
+     "all": 0.51,
+     "edge": 6.34,
+     "top": 0.89
+    }
+   ],
+   "mean": {
+    "all": 0.67,
+    "edge": 6.91,
+    "top": 0.85
+   },
+   "flicker": 1.46,
+   "flicker598": 1.13
+  },
+  "TAA 0,65": {
+   "perFrame": [
+    {
+     "frame": 60,
+     "all": 2.09,
+     "edge": 11.26,
+     "top": 2.64
+    },
+    {
+     "frame": 150,
+     "all": 1.23,
+     "edge": 11.16,
+     "top": 1.61
+    },
+    {
+     "frame": 240,
+     "all": 0.98,
+     "edge": 8.78,
+     "top": 1.07
+    },
+    {
+     "frame": 300,
+     "all": 0.77,
+     "edge": 10.07,
+     "top": 0.76
+    },
+    {
+     "frame": 301,
+     "all": 1.22,
+     "edge": 9.29,
+     "top": 0.97
+    },
+    {
+     "frame": 360,
+     "all": 0.67,
+     "edge": 8.56,
+     "top": 0.83
+    },
+    {
+     "frame": 450,
+     "all": 0.67,
+     "edge": 8.42,
+     "top": 0.85
+    },
+    {
+     "frame": 540,
+     "all": 0.74,
+     "edge": 7.96,
+     "top": 1.03
+    },
+    {
+     "frame": 598,
+     "all": 0.75,
+     "edge": 10.14,
+     "top": 1.29
+    },
+    {
+     "frame": 599,
+     "all": 0.84,
+     "edge": 10.52,
+     "top": 1.45
+    }
+   ],
+   "mean": {
+    "all": 1.0,
+    "edge": 9.62,
+    "top": 1.25
+   },
+   "flicker": -4.62,
+   "flicker598": -5.15
+  },
+  "TAA 0,55": {
+   "perFrame": [
+    {
+     "frame": 60,
+     "all": 2.43,
+     "edge": 13.27,
+     "top": 3.11
+    },
+    {
+     "frame": 150,
+     "all": 1.36,
+     "edge": 12.67,
+     "top": 1.76
+    },
+    {
+     "frame": 240,
+     "all": 1.11,
+     "edge": 10.12,
+     "top": 1.21
+    },
+    {
+     "frame": 300,
+     "all": 0.86,
+     "edge": 11.59,
+     "top": 0.82
+    },
+    {
+     "frame": 301,
+     "all": 1.39,
+     "edge": 10.83,
+     "top": 1.11
+    },
+    {
+     "frame": 360,
+     "all": 0.76,
+     "edge": 10.87,
+     "top": 0.96
+    },
+    {
+     "frame": 450,
+     "all": 0.74,
+     "edge": 9.9,
+     "top": 0.94
+    },
+    {
+     "frame": 540,
+     "all": 0.83,
+     "edge": 9.52,
+     "top": 1.17
+    },
+    {
+     "frame": 598,
+     "all": 0.85,
+     "edge": 12.22,
+     "top": 1.52
+    },
+    {
+     "frame": 599,
+     "all": 0.97,
+     "edge": 12.5,
+     "top": 1.71
+    }
+   ],
+   "mean": {
+    "all": 1.13,
+    "edge": 11.35,
+    "top": 1.43
+   },
+   "flicker": -5.21,
+   "flicker598": -6.06
+  }
+ },
+ "info": [
+  [
+   "ohne TAA 0,65",
+   {
+    "h8": false,
+    "scale": 0.65,
+    "grid": [
+     137,
+     300
+    ],
+    "target": [
+     536,
+     1091
+    ],
+    "still": null,
+    "flags": {
+     "taa": false,
+     "scharf": true,
+     "tone": 1,
+     "bloom": true,
+     "hao": true,
+     "detail": true,
+     "gpuwahl": true
+    },
+    "stage": "balanced",
+    "gridDiv": 6,
+    "gridState": "done",
+    "taa": null,
+    "taaReset": null,
+    "bloom": true,
+    "fallback": null
+   }
+  ],
+  [
+   "TAA 0,65",
+   {
+    "h8": false,
+    "scale": 0.65,
+    "grid": [
+     137,
+     300
+    ],
+    "target": [
+     536,
+     1091
+    ],
+    "still": null,
+    "flags": {
+     "taa": true,
+     "scharf": true,
+     "tone": 1,
+     "bloom": true,
+     "hao": true,
+     "detail": true,
+     "gpuwahl": true
+    },
+    "stage": "balanced",
+    "gridDiv": 6,
+    "gridState": "done",
+    "taa": [
+     536,
+     1091
+    ],
+    "taaReset": false,
+    "bloom": true,
+    "fallback": null
+   }
+  ],
+  [
+   "TAA 0,55",
+   {
+    "h8": false,
+    "scale": 0.55,
+    "grid": [
+     137,
+     300
+    ],
+    "target": [
+     453,
+     923
+    ],
+    "still": null,
+    "flags": {
+     "taa": true,
+     "scharf": true,
+     "tone": 1,
+     "bloom": true,
+     "hao": true,
+     "detail": true,
+     "gpuwahl": true
+    },
+    "stage": "balanced",
+    "gridDiv": 6,
+    "gridState": "done",
+    "taa": [
+     453,
+     923
+    ],
+    "taaReset": false,
+    "bloom": true,
+    "fallback": null
+   }
+  ]
+ ],
+ "errors": []
+}

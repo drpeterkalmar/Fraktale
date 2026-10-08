@@ -795,12 +795,21 @@ void main() {
     float zc = sky ? 1.0 : u_dp.y / (d * 2.0 - 1.0 - u_dp.x);
     float aOut = sky ? 1.0 : min(encZ(zc), 0.995);
     if (u_reset == 1) { o = vec4(c, aOut); return; }
-    // Nachbarschaft 3×3: Min/Max geschnitten mit Mittel ± Faktor · Streuung
-    vec3 m1 = vec3(0.0), m2 = vec3(0.0), mn = c, mxc = c;
+    // Nachbarschaft 3×3: Min/Max geschnitten mit Mittel ± Faktor · Streuung. Dazu das aktuelle Bild OHNE seinen
+    // Subpixel-Versatz: Abtastung k liegt um (i, j) + Jitter (in Pixeln) neben der Pixelmitte -> Gauß-Gewicht nach diesem
+    // Abstand (Näherung Blackman-Harris wie Unreal/Karis). Mit dem rohen Wert zitterten Kanten im Flug (Gewicht bis 0,4)
+    // um ±0,5 Renderpixel – die TAA-Bilder lagen an Kanten weiter von der Referenz weg als die ohne TAA (gemessen)
+    vec2 jp = u_jit * u_size * 0.5;
+    vec3 m1 = vec3(0.0), m2 = vec3(0.0), mn = c, mxc = c, cf = vec3(0.0);
+    float wf = 0.0;
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
         vec3 s = texelFetch(u_cur, clamp(p + ivec2(i, j), ivec2(0), mx), 0).rgb;
         m1 += s; m2 += s * s; mn = min(mn, s); mxc = max(mxc, s);
+        vec2 dd = vec2(float(i), float(j)) - jp;     // Inhalt dieses Pixels liegt bei Position − Jitter
+        float w = exp(-2.29 * dot(dd, dd));
+        cf += s * w; wf += w;
     }
+    c = cf / wf;
     m1 *= 1.0 / 9.0; m2 *= 1.0 / 9.0;
     vec3 sg = sqrt(max(m2 - m1 * m1, vec3(0.0))) * u_tr.y;
     vec3 lo = max(mn, m1 - sg), hi = min(mxc, m1 + sg);

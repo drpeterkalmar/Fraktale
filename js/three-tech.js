@@ -225,7 +225,11 @@ const ZC_NEAR = 0.02, ZC_STOPS = 12;
 const encZ = (zc) => Math.min(1, Math.max(0, Math.log2(zc / ZC_NEAR) / ZC_STOPS));
 const decZ = (a) => ZC_NEAR * Math.pow(2, a * ZC_STOPS);
 // Gewicht des neuen Bilds: Grundwert 0,1; mit der Bewegung (Pixel je Bild) bis 0,4 (weniger Nachziehen bei schnellem Flug)
-const TAA = { alpha: 0.1, alphaMax: 0.4, velLo: 2, velHi: 24, reject: 0.1, gamma: 1.25, flyScale: 0.7 };
+// (6.7 E3 im Flug abgenommen und DURCHGEFALLEN, Standard bleibt ?taa=0 – tests/taa_series.py, TECHNIK_BERICHT.md: Im
+// Dauerzoom des Flugs wird die History jedes Bild vergrößert und neu abgetastet; mit 0,1/0,4/1,25 (Vorbau) verschmierten Kanten
+// und Farbflecken sichtbar. Diese Werte (Gewicht 0,3–0,5, Klemmung 0,75 σ) waren der beste Kompromiss: halbes Flimmern, aber
+// an Kanten noch ~1,6× weiter von der Referenz als ohne TAA)
+const TAA = { alpha: 0.3, alphaMax: 0.5, velLo: 2, velHi: 24, reject: 0.1, gamma: 0.75, flyScale: 0.7 };
 function taaAlpha(velPx) {
     const t = Math.min(1, Math.max(0, (velPx - TAA.velLo) / (TAA.velHi - TAA.velLo)));
     return TAA.alpha + (TAA.alphaMax - TAA.alpha) * t * t * (3 - 2 * t);
