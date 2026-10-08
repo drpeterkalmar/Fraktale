@@ -92,7 +92,9 @@ function sunTint(el) {
 // Neutral-Schulter (wie Khronos PBR Neutral, aber ohne Fuß-Versatz: die Farben von 6.6 sind schon Anzeigewerte, der Fuß
 // würde alle Mitteltöne um 0,04 abdunkeln). Unter dem Knie unverändert, darüber weich auf 1 zu (Weißpunkt W), sehr helle
 // Werte entsättigen Richtung Weiß – Schnee und Gletscher behalten Zeichnung statt flach auszubrennen.
-const TONE_KNEE = 0.7, TONE_WHITE = 1.6, TONE_DESAT = 0.15;
+// (6.7 am Bild abgestimmt: Knie 0,8 statt 0,7, Weißpunkt 1,5 statt 1,6 – mit 0,7 wurden helle Schneeflächen von 6.6 (Anzeigewert
+// ~0,78–0,95, nicht abgeschnitten) sichtbar grauer; jetzt wirkt die Schulter erst darüber, wo Belichtung und Glanz überlaufen)
+const TONE_KNEE = 0.8, TONE_WHITE = 1.5, TONE_DESAT = 0.15;
 function shoulder(x, knee, white) {
     if (x <= knee) return x;
     const s = 1 - knee, u = (x - knee) / s, w = (white - knee) / s;
@@ -139,9 +141,11 @@ function casChannel(c, n, s, e, w, sharp) {
 function sharpForScale(scale, on) {
     if (!on) return 0;
     if (scale >= 0.999) return 0.2;
-    return Math.min(0.8, 0.3 + (1 / scale - 1) * 0.5);
+    // (am Bild abgestimmt: Vorbau 0,3 + 0,5·(1/s − 1) = 0,57 bei Skala 0,65 schärfte auch die Treppen an Kanten im
+    // Bewegungsbild sichtbar nach – die krabbeln im Flug; 0,39 bei 0,65 schärft die Flächen, kaum die Treppen)
+    return Math.min(0.6, 0.2 + (1 / scale - 1) * 0.35);
 }
-const BLOOM = { thr: 0.78, k: 0.12, spread: 1.5 };   // Schwelle (Anzeigewert), Stärke, Abstand der Blur-Abgriffe (TODO abstimmen)
+const BLOOM = { thr: 0.78, k: 0.12, spread: 1.5 };   // Schwelle (Anzeigewert), Stärke, Abstand der Blur-Abgriffe (6.7 am Bild geprüft: dezent, keine Halos an Kämmen)
 
 // ---------------------------------------------------------------- Gitterdichte aus der GPU-Zeit
 // Spiegel der Gitterformel in T.render: div = Bildpunkte je Gitterzelle (6.6: 6 Desktop, 8 Handy)

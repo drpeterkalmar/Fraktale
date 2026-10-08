@@ -158,7 +158,7 @@ def case_e(p):
     info = pg.evaluate("() => window.__fraktal.view3dInfo().gpu")
     check(info and info.get('fallback') == '_66', 'Rückfall-Gelände aktiv (%s)' % (info and info.get('fallback')))
     check(info and not info['flags']['hao'] and not info['flags']['detail'], 'AO und Detail aus')
-    check(toast_text(pg) == '', 'kein Toast')
+    tt = toast_text(pg); check('Grafikfehler' not in tt and 'nicht' not in tt, 'kein Fehler-Hinweis (%s)' % tt)   # „3D wird vorbereitet …“ ist erlaubt (Rückfall übersetzt neu)
     a.wait_done(60); time.sleep(0.5)
     check(pg.evaluate("() => window.__fraktal.status().done"), 'Bild fertig')
     check(not a.errors, 'keine Fehler %s' % a.errors[:3])
@@ -178,7 +178,7 @@ def case_f(p):
     time.sleep(2.0)
     check(pg.evaluate("() => window.__fraktal.view3dInfo().fly.on"), '3D-Flug läuft')
     pg.evaluate("() => window.__fraktal.stopFly()")
-    check(toast_text(pg) == '', 'kein Toast')
+    tt = toast_text(pg); check('Grafikfehler' not in tt and 'nicht' not in tt, 'kein Fehler-Hinweis (%s)' % tt)   # „3D wird vorbereitet …“ ist erlaubt (Rückfall übersetzt neu)
     check(not a.errors, 'keine Fehler %s' % a.errors[:3])
     a.close()
 
