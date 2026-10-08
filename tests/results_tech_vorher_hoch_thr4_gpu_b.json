@@ -1,0 +1,119 @@
+{
+ "tag": "vorher2",
+ "ori": "hoch",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "secs": 10.0,
+ "query": "",
+ "headed": false,
+ "payloadKB": 498.8,
+ "assetsKB": 455.2,
+ "stages": {
+  "eco": {
+   "gpu3d": {
+    "tal": {
+     "move": 2.22,
+     "still": 3.72
+    },
+    "horizont": {
+     "move": 1.96,
+     "still": 3.35
+    },
+    "rand": {
+     "move": 2.07,
+     "still": 3.8
+    },
+    "moveSum": 6.25,
+    "stillSum": 10.87,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      64,
+      169
+     ],
+     "target": [
+      335,
+      682
+     ],
+     "still": [
+      515,
+      1049
+     ]
+    }
+   }
+  },
+  "balanced": {
+   "gpu3d": {
+    "tal": {
+     "move": 5.34,
+     "still": 10.18
+    },
+    "horizont": {
+     "move": 4.78,
+     "still": 7.91
+    },
+    "rand": {
+     "move": 5.03,
+     "still": 10.75
+    },
+    "moveSum": 15.15,
+    "stillSum": 28.84,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      103,
+      273
+     ],
+     "target": [
+      536,
+      1091
+     ],
+     "still": [
+      824,
+      1678
+     ]
+    }
+   }
+  },
+  "max": {
+   "gpu3d": {
+    "tal": {
+     "move": 6.59,
+     "still": 13.55
+    },
+    "horizont": {
+     "move": 7.22,
+     "still": 11.11
+    },
+    "rand": {
+     "move": 6.24,
+     "still": 15.26
+    },
+    "moveSum": 20.05,
+    "stillSum": 39.92,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      299
+     ],
+     "target": [
+      696,
+      1418
+     ],
+     "still": [
+      1071,
+      2181
+     ]
+    }
+   }
+  }
+ },
+ "version": "6.6.0",
+ "gpu": "WebKit WebGL",
+ "tech": null,
+ "errors": []
+}

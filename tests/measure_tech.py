@@ -60,10 +60,38 @@ def payload_kb():
     return round(tot / 1024, 1), round(assets / 1024, 1)
 
 
+GPU_VIEWS = [('tal', '-0.7453', '0.1127', 300, 42, 0.0), ('horizont', '-0.7453', '0.1127', 300, 60, 1.2),
+             ('rand', '-0.743637214380908705', '0.131822306549061970', 1e6, 50, 2.4)]
+
+
+def med(xs):
+    s = sorted(x for x in xs if x is not None)
+    return round(s[len(s) // 2], 2) if s else None
+
+
+def gpu_views(a, pg, nm=15, ns=8):
+    """3D an ist vorausgesetzt. Je Ansicht: Median der GPU-Zeit eines Bewegungsbilds (nm Messungen) und eines
+    Stillstandsbilds (ns Messungen, volle Auflösung) – jede Messung ein eigenes bench3d(1)."""
+    out = {}
+    for name, vx, vy, vz, tilt, head in GPU_VIEWS:
+        a.set_view(vx, vy, vz); a.wait_done(120)
+        pg.evaluate(f"() => {{ const A = window.__fraktal; A.V3.tilt = {tilt} * Math.PI / 180; A.V3.heading = {head}; A.invalidate(); }}")
+        time.sleep(0.8); a.wait_done(120); time.sleep(0.4)
+        pg.evaluate("() => window.__fraktal.settle3d()")
+        mv = [(pg.evaluate("() => window.__fraktal.bench3d(1, false)") or {}).get('min') for _ in range(nm)]
+        sv = [(pg.evaluate("() => window.__fraktal.bench3d(1, true)") or {}).get('min') for _ in range(ns)]
+        out[name] = {'move': med(mv), 'still': med(sv)}
+    out['moveSum'] = round(sum(out[n]['move'] or 0 for n, *_ in GPU_VIEWS), 2)
+    out['stillSum'] = round(sum(out[n]['still'] or 0 for n, *_ in GPU_VIEWS), 2)
+    out['info'] = pg.evaluate("() => window.__fraktal.view3dInfo().gpu")
+    pg.evaluate("() => { const A = window.__fraktal; A.V3.tilt = 42 * Math.PI / 180; A.V3.heading = 0; A.invalidate(); }")
+    return out
+
+
 def compare(paths):
     rs = [json.load(open(p)) for p in paths]
     keys = [('zoom2d', 'p95'), ('zoom2d', 'gpuPresent'), ('still3d', 'gpuStill'), ('still3d', 'gpuMove'), ('fly3d', 'p50'), ('fly3d', 'p95'),
-            ('fly3d', 'long50'), ('fly3d', 'gpuFly'), ('fly3d', 'scale')]
+            ('fly3d', 'long50'), ('fly3d', 'gpuFly'), ('fly3d', 'scale'), ('gpu3d', 'moveSum'), ('gpu3d', 'stillSum')]
     head = '| Stufe | Wert | ' + ' | '.join(r.get('tag', '?') for r in rs) + ' |'
     print(head); print('|' + '---|' * (2 + len(rs)))
     for st in ['eco', 'balanced', 'max']:
@@ -84,6 +112,7 @@ def main():
     land = bool(arg('land', False)); thr = float(arg('throttle', 4)); dpr = float(arg('dpr', 2.6)); secs = float(arg('secs', 10))
     zsecs = float(arg('zsecs', 6)); tag = arg('tag', 'cur'); shots = bool(arg('shots', False)); moods = bool(arg('moods', False))
     stages = (arg('stages') or 'eco,balanced,max').split(','); extra = arg('query') or ''
+    gpuv = not arg('nogpu', False); only_gpu = bool(arg('onlygpu', False))
     ori = 'quer' if land else 'hoch'
     sdir = os.path.join(os.path.dirname(__file__), 'shots', 'technik')
     if shots: os.makedirs(sdir, exist_ok=True)
@@ -106,6 +135,14 @@ def main():
             res = {}
             pg.evaluate("(q) => { const A = window.__fraktal; A.stopFly(); A.set3d(false); A.S.quality = q; A.resize(); A.invalidate(); }", st)
             time.sleep(0.8)
+            if only_gpu:
+                a.set_view(cx, cy, z); a.wait_done(120)
+                pg.evaluate("() => window.__fraktal.set3d(true)"); a.wait_3d(30); time.sleep(0.5); a.wait_done(120)
+                res['gpu3d'] = gpu_views(a, pg)
+                print('  gpu3d', st, json.dumps({k: v for k, v in res['gpu3d'].items() if k != 'info'}), flush=True)
+                pg.evaluate("() => window.__fraktal.set3d(false)")
+                out['stages'][st] = res
+                continue
             # ---- 2D-Zoom
             a.set_view(cx, cy, z); a.wait_done(120)
             pg.evaluate(FPS_JS)
@@ -136,6 +173,12 @@ def main():
                     time.sleep(0.6); pg.evaluate("() => window.__fraktal.settle3d()"); time.sleep(0.3)
                     snap(st, 'still3d_' + mn)
                 pg.evaluate("() => { const A = window.__fraktal; A.T3.sunAz = 2.35; A.T3.sunEl = 0.5; A.V3.accKey = null; A.invalidate(); }")
+            # ---- GPU-Zeit an festen 3D-Ansichten (Median aus Einzelmessungen, 2D-Rechnung fertig – wiederholbar,
+            # anders als die Flugwerte, die vom Zufallsflug und von gleichzeitiger 2D-Rechnung abhängen)
+            if gpuv:
+                res['gpu3d'] = gpu_views(a, pg)
+                print('  gpu3d', st, json.dumps({k: v for k, v in res['gpu3d'].items() if k != 'info'}), flush=True)
+                a.set_view(cx, cy, z); a.wait_done(120)
             # ---- 3D-Flug
             z0 = pg.evaluate("() => window.__fraktal.S.cam.zoom")
             pg.evaluate("() => { const A = window.__fraktal; A.S.flySpeed = 0.5; A.frameStats(true); A.startFly(undefined, { d3: true }); }")
@@ -158,7 +201,7 @@ def main():
             print(st, json.dumps({k: {kk: vv for kk, vv in v.items() if kk != 'info'} for k, v in res.items()}), flush=True)
         out['errors'] = a.errors
         a.close()
-    fn = os.path.join(os.path.dirname(__file__), f'results_tech_{tag}_{ori}{"_thr%d" % thr if thr > 1 else ""}.json')
+    fn = os.path.join(os.path.dirname(__file__), f'results_tech_{tag}_{ori}{"_thr%d" % thr if thr > 1 else ""}{"_gpu" if only_gpu else ""}.json')
     json.dump(out, open(fn, 'w'), indent=1)
     print('->', fn, '| Fehler', len(out['errors']), out['errors'][:3])
     compare([fn])

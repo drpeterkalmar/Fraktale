@@ -1,0 +1,236 @@
+{
+ "tag": "vorher",
+ "ori": "quer",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "secs": 10.0,
+ "query": "",
+ "headed": true,
+ "payloadKB": 498.8,
+ "assetsKB": 455.2,
+ "stages": {
+  "eco": {
+   "zoom2d": {
+    "frames": 332,
+    "fps": 54.1,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 34.1,
+    "long50": 0,
+    "gpuPresent": 1.12,
+    "canvas": [
+     1049,
+     515
+    ]
+   },
+   "still3d": {
+    "frames": 160,
+    "fps": 51.3,
+    "p50": 16.7,
+    "p95": 33.4,
+    "max": 33.9,
+    "long50": 0,
+    "ok3d": true,
+    "gpuStill": 3.35,
+    "gpuStillMax": 9.1,
+    "gpuMove": 2.27,
+    "gpuMoveMax": 4.54,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      72
+     ],
+     "target": [
+      682,
+      335
+     ],
+     "still": [
+      1049,
+      515
+     ]
+    }
+   },
+   "fly3d": {
+    "frames": 549,
+    "fps": 53.8,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 83.3,
+    "long50": 14,
+    "gpuFly": 1.62,
+    "gpuFlyMax": 2.94,
+    "scale": 0.65,
+    "decades": 3.62,
+    "hard": 0,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      72
+     ],
+     "target": [
+      682,
+      335
+     ],
+     "still": [
+      1049,
+      515
+     ]
+    }
+   }
+  },
+  "balanced": {
+   "zoom2d": {
+    "frames": 328,
+    "fps": 54.4,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 64.7,
+    "long50": 1,
+    "gpuPresent": 3.41,
+    "canvas": [
+     1678,
+     824
+    ]
+   },
+   "still3d": {
+    "frames": 167,
+    "fps": 55.7,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 33.7,
+    "long50": 0,
+    "ok3d": true,
+    "gpuStill": 8.28,
+    "gpuStillMax": 21.56,
+    "gpuMove": 2.92,
+    "gpuMoveMax": 10.53,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      72
+     ],
+     "target": [
+      1091,
+      536
+     ],
+     "still": [
+      1678,
+      824
+     ]
+    }
+   },
+   "fly3d": {
+    "frames": 532,
+    "fps": 52.2,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 117.2,
+    "long50": 17,
+    "gpuFly": 33.63,
+    "gpuFlyMax": 37.93,
+    "scale": 0.65,
+    "decades": 3.69,
+    "hard": 0,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      72
+     ],
+     "target": [
+      1091,
+      536
+     ],
+     "still": [
+      1678,
+      824
+     ]
+    }
+   }
+  },
+  "max": {
+   "zoom2d": {
+    "frames": 321,
+    "fps": 53.3,
+    "p50": 16.7,
+    "p95": 33.3,
+    "max": 83.8,
+    "long50": 2,
+    "gpuPresent": 4.62,
+    "canvas": [
+     2181,
+     1071
+    ]
+   },
+   "still3d": {
+    "frames": 174,
+    "fps": 56.4,
+    "p50": 16.7,
+    "p95": 33,
+    "max": 34.4,
+    "long50": 0,
+    "ok3d": true,
+    "gpuStill": 13.81,
+    "gpuStillMax": 35.46,
+    "gpuMove": 4.29,
+    "gpuMoveMax": 17.33,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      72
+     ],
+     "target": [
+      1418,
+      696
+     ],
+     "still": [
+      2181,
+      1071
+     ]
+    }
+   },
+   "fly3d": {
+    "frames": 513,
+    "fps": 51.1,
+    "p50": 16.7,
+    "p95": 33.7,
+    "max": 150.7,
+    "long50": 20,
+    "gpuFly": 5.12,
+    "gpuFlyMax": 12.5,
+    "scale": 0.65,
+    "decades": 2.81,
+    "hard": 0,
+    "info": {
+     "h8": false,
+     "scale": 0.65,
+     "grid": [
+      113,
+      72
+     ],
+     "target": [
+      1418,
+      696
+     ],
+     "still": [
+      2181,
+      1071
+     ]
+    }
+   }
+  }
+ },
+ "version": "6.6.0",
+ "gpu": "WebKit WebGL",
+ "tech": null,
+ "errors": []
+}
