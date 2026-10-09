@@ -107,6 +107,11 @@ body.immersive #bar3d { transform: translateX(-50%) translateY(24px); }
 #btn-rev, #btn-turn { flex: none; font-size: 20px; color: #fff; }
 #btn-turn.on { background: rgba(167, 139, 250, 0.35); }
 #speed-icon { display: inline-block; min-width: 1.4em; text-align: center; }
+#bar3d.full .fly-btn { min-width: 48px; padding: 0 12px; }
+#bar3d.full #fly-label { display: none; }
+#bar3d.full { gap: 4px; }
+#btn-north { flex: none; }
+@media (orientation: landscape) and (max-height: 540px) { #bar3d.full { width: min(430px, 52vw); } }
 .bar-slider { flex: 1; display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 4px; }
 /* 6.6 Flug in 2D: runder Knopf in der Daumenzone (hoch: unten rechts über dem Dock; quer: unten links) */
 #btn-fly2d { position: fixed; z-index: 19; right: calc(10px + var(--sa-r)); bottom: calc(var(--dock-h) + 36px + var(--sa-b)); font-size: 21px; color: #fff; }

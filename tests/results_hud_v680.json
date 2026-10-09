@@ -1,0 +1,47 @@
+{
+ "hoch_aus": {
+  "n": 16,
+  "sichtbar": []
+ },
+ "quer_aus": {
+  "n": 16,
+  "sichtbar": []
+ },
+ "iphone_knopf": {
+  "hidden": false,
+  "title": "Kino-Modus",
+  "fs": false,
+  "label2": "Kino-Modus"
+ },
+ "iphone_webgl2": true,
+ "checks": [
+  "ok hoch: Bedienung vor dem Vollbild sichtbar (13 Elemente)",
+  "ok hoch: Vollbild an, HUD-Ausblenden aktiv {'hudless': True, 'peek': True, 'fs': True}",
+  "ok hoch: im Vollbild alle 16 Bedienelemente Deckkraft 0 und nicht klickbar (sichtbar: [])",
+  "ok hoch: Wischen/Zwei-Finger-Zoom holen das HUD nicht zurück ({'hudless': True, 'peek': False, 'fs': True}, {'hudless': True, 'peek': False, 'fs': True})",
+  "ok hoch: kurzer Tipp zeigt die Bedienung ([('hud-pill', 1), ('btn-fullscreen', 1), ('btn-fly', 1), ('btn-rev', 1), ('dock', 1)])",
+  "ok hoch: Flug läuft weiter, nicht pausiert (Zoom 3.29e+07 → 1.44e+08)",
+  "ok hoch: nach ≈ 3 s wieder ausgeblendet (0 sichtbar)",
+  "ok hoch: Tipp bei sichtbarem HUD pausiert den Flug wie bisher",
+  "ok hoch: F verlässt das Vollbild, Bedienung wieder da ({'hudless': False, 'peek': False, 'fs': False})",
+  "ok Einstellung aus: Vollbild mit Bedienung ({'hudless': False, 'peek': False, 'fs': True}, 12 sichtbar)",
+  "ok Einstellung wird gespeichert",
+  "ok quer: Bedienung vor dem Vollbild sichtbar (13 Elemente)",
+  "ok quer: Vollbild an, HUD-Ausblenden aktiv {'hudless': True, 'peek': True, 'fs': True}",
+  "ok quer: im Vollbild alle 16 Bedienelemente Deckkraft 0 und nicht klickbar (sichtbar: [])",
+  "ok quer: Wischen/Zwei-Finger-Zoom holen das HUD nicht zurück ({'hudless': True, 'peek': False, 'fs': True}, {'hudless': True, 'peek': False, 'fs': True})",
+  "ok quer: kurzer Tipp zeigt die Bedienung ([('hud-pill', 1), ('btn-fullscreen', 1), ('btn-fly', 1), ('btn-rev', 1), ('dock', 1)])",
+  "ok quer: Flug läuft weiter, nicht pausiert (Zoom 9.38e+06 → 3.93e+07)",
+  "ok quer: nach ≈ 3 s wieder ausgeblendet (0 sichtbar)",
+  "ok quer: Tipp bei sichtbarem HUD pausiert den Flug wie bisher",
+  "ok quer: F verlässt das Vollbild, Bedienung wieder da ({'hudless': False, 'peek': False, 'fs': False})",
+  "ok Maus: Bewegung zeigt das HUD, danach wieder aus ({'hudless': True, 'peek': False, 'fs': True} {'hudless': True, 'peek': True, 'fs': True} {'hudless': True, 'peek': False, 'fs': True})",
+  "ok Maus: Ziehen (Bild verschieben) holt das HUD nicht zurück ({'hudless': True, 'peek': False, 'fs': True})",
+  "ok Desktop: F verlässt das Vollbild",
+  "ok iPhone: Knopf „Kino-Modus“ statt Vollbild: {'hidden': False, 'title': 'Kino-Modus', 'fs': False, 'label2': 'Kino-Modus'}",
+  "ok iPhone Kino-Modus: alles ausgeblendet ohne echtes Vollbild ({'hudless': True, 'peek': False, 'fs': False}, sichtbar [])",
+  "ok iPhone: Tipp zeigt die Bedienung ({'hudless': True, 'peek': True, 'fs': False})",
+  "ok iPhone: Kino-Modus per Knopf verlassen ({'hudless': False, 'peek': False, 'fs': False})",
+  "ok Fehler: []"
+ ]
+}

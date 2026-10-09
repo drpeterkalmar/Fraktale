@@ -532,7 +532,7 @@ if (!FS_API) {
 // Ein kurzer Tipp (ohne Wischen; app.js fragt A.tapHook) bzw. eine Mausbewegung zeigt sie für 3 s (body.hud-peek). Gesten
 // (Zoomen, Schieben, Flug-Lenkung) holen sie nicht zurück, ein laufender Flug läuft weiter (der Tipp pausiert ihn dann nicht).
 // Solange ein Menü offen ist oder die Maus über der Bedienung steht, bleibt sie sichtbar. Esc/F verlassen Vollbild bzw. Kino.
-const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, hinted: false };
+const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, overT: 0, hinted: false };
 const hudless = () => (HUD.fs && S.hudFs) || HUD.cine;
 const peeking = () => document.body.classList.contains('hud-peek');
 function hudApply() {
@@ -556,7 +556,8 @@ function hudPeek(ms) {
 }
 function hudHide(force) {
     clearTimeout(HUD.peekT);
-    const busy = !sheet.hidden || !$('share-pop').hidden || !$('modal').hidden || !$('hud-details').hidden || HUD.over;
+    // (Maus über der Bedienung zählt nur, solange sie sich bewegt – eine ruhende Maus auf dem Vollbild-Knopf hielte sonst alles fest)
+    const busy = !sheet.hidden || !$('share-pop').hidden || !$('modal').hidden || !$('hud-details').hidden || (HUD.over && performance.now() - HUD.overT < 3000);
     if (!force && busy) { HUD.peekT = setTimeout(hudHide, 1000); return; }
     document.body.classList.remove('hud-peek');
 }
@@ -574,6 +575,7 @@ document.addEventListener('webkitfullscreenchange', onFsChange);
 addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     HUD.over = e.target !== A.R.canvas && !!(e.target.closest && e.target.closest('body > :not(#gl):not(#xfade)'));
+    if (HUD.over) HUD.overT = performance.now();
     if (e.buttons || !hudless()) { HUD.mx = e.clientX; HUD.my = e.clientY; return; }    // Ziehen mit der Maus ist eine Geste
     if (HUD.mx >= 0 && Math.hypot(e.clientX - HUD.mx, e.clientY - HUD.my) > 4) hudPeek();
     HUD.mx = e.clientX; HUD.my = e.clientY;
@@ -727,6 +729,8 @@ function sync3d() {
     $('btn-rev').hidden = !fly || !A.RUECK;
     $('btn-turn').hidden = !fly || !on || !A.RUECK;
     $('btn-turn').classList.toggle('on', !!A.V3.turnT);
+    $('bar3d').classList.toggle('full', fly && on && A.RUECK);      // 3D-Flug: fünf Elemente – Stopp nur als Symbol (CSS)
+    $('btn-fly').title = t(fly ? 'fly_stop' : 'fly');
     $('btn-turn').setAttribute('aria-pressed', String(!!A.V3.turnT));
 }
 
