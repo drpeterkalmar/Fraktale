@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.7.0';
+const APP_VERSION = '6.7.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -40,6 +40,7 @@ const S = {
     deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
     setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
+    hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     chrome: true,
 };
 // 6.5 Deko (Glas, weiche Übergänge, 3D-Himmel/Dunst/Wasser): ?deko=0 = Aussehen bis 6.4.1 (A/B-Vergleich)
@@ -57,7 +58,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -66,7 +67,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
@@ -294,7 +295,8 @@ const gestures = self.FKGestures.attach(canvas, {
         if (Math.hypot(vx, vy) > 60 || Math.abs(vs) > 0.3)
             inertia = { vx, vy, vs, ax: last ? last.ax : cssW / 2, ay: last ? last.ay : cssH / 2 };
     },
-    onTap() { if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
+    // 6.8: HUD im Vollbild/Kino-Modus ausgeblendet -> ein Tipp holt es nur zurück (ui.js, API.tapHook), der Flug läuft weiter
+    onTap(x, y) { if (API.tapHook && API.tapHook(x, y)) return; if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
     onDoubleTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 3); else zoomAt(x, y, 3); },
     onTwoFingerTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 1 / 3); else zoomAt(x, y, 1 / 3); },
     onOrbit(dx, dy, phase) {
@@ -548,7 +550,7 @@ const T3 = self.FK3D ? self.FK3D.create(R, TECH) : null;
 const MAXL3 = T3 ? T3.N3 : MAXL;         // P2-3: Ebenen-Höchstzahl in 3D
 const MAX_TILT = 60 * Math.PI / 180;
 const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null,
-             accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null };
+             accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null, turnA: 0, turnT: 0 };   // 6.8 turnA/turnT: Blick umgedreht (Flug)
 function can3d(f) { return !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
 // 6.3: 3D wird erst eingeblendet, wenn alle Shader dafür fertig übersetzt sind (T3.ready fragt nicht blockierend,
 // pro Bild). Bis dahin bleibt das 2D-Bild bedienbar, der ⛰-Knopf zeigt „3D wird vorbereitet …“ (V3.prep = Startzeit).
@@ -619,6 +621,12 @@ function update3d(now, dt) {
     }
     // (Flugschritt: frame(), auch in 2D)
     if (!(FLY.on && !FLY.paused) && (Math.abs(FLY.roll || 0) > 1e-4 || FLY.om)) { FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); FLY.om = 0; if (Math.abs(FLY.roll) <= 1e-4) FLY.roll = 0; RC.dirty = true; }   // Schräglage klingt aus
+    // 6.8 Umdrehen im Flug: der Blick dreht in 0,8 s weich um 180° (Kurs und Flugweg bleiben)
+    if (V3.turnA !== V3.turnT) {
+        const u = Math.min(1, (now - (V3.turnT0 || 0)) / 800), f = V3.turnFrom || 0;
+        V3.turnA = u >= 1 ? V3.turnT : f + (V3.turnT - f) * ease(u);
+        RC.dirty = true;
+    }
     if (V3.northT) {
         const u = Math.min(1, (now - V3.northT) / 450), e = ease(u);
         const h0 = V3.northFrom[0] - Math.round(V3.northFrom[0] / (2 * Math.PI)) * 2 * Math.PI;
@@ -651,7 +659,7 @@ function deko3d() {
 }
 function view3d() {
     const em = e3(V3.mix);
-    return { tilt: V3.tilt * em, heading: V3.heading * (V3.dir < 0 ? em : 1), roll: (FLY.roll || 0) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time,
+    return { tilt: V3.tilt * em, heading: (V3.heading + (V3.turnA || 0)) * (V3.dir < 0 ? em : 1), roll: (FLY.roll || 0) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time,
              deko: deko3d(), ctime: DK.ct };
 }
 // Ebenen für 3D: gültiger Inhalt, schärfste zuerst, höchstens N3 – die größte (Horizont) immer dabei
@@ -1104,7 +1112,7 @@ const { REF, ensureRef, refUsable, requestRefFor } = M_Refs;
 const M_Layers = self.FKLayers.create(CTX);
 const { addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers } = M_Layers;
 const M_Flight = self.FKFlight.create(CTX);
-const { FLY, FLY2D, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, startFly, stopFly } = M_Flight;
+const { FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, trailAt, turnFly, clearance } = M_Flight;
 const M_Scheduler = self.FKScheduler.create(CTX);
 const { governorUpdate, schedule } = M_Scheduler;
 // MODULE_LINK
@@ -1123,6 +1131,21 @@ const API = {
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
+    RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, clearance,
+    // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel
+    // einer gültigen Ebene, 0 = Lücke (kein Bild) – für „Nachladen hinter der Kamera“
+    coverAt(pts) {
+        const now = performance.now(), sig = contentSig(), u = 1.5 / S.cam.zoom, sPx = 3 / (S.cam.zoom * canvas.height);
+        const L = orderLayers(now, S.cam).filter(l => l.sig === sig);
+        return pts.map(([x, y]) => {
+            let best = 0;
+            for (const l of L) {
+                const px = HP.toNumber(S.cam.cx - l.view.cx) / l.scale + x * u / l.scale, py = HP.toNumber(S.cam.cy - l.view.cy) / l.scale + y * u / l.scale;
+                if (Math.abs(px) <= l.buf.w / 2 && Math.abs(py) <= l.buf.h / 2) best = Math.max(best, sPx / l.scale);
+            }
+            return +best.toFixed(3);
+        });
+    },
     // 3D-Shader beim Antippen des 3D-Knopfs vorab übersetzen (Treiber parallel, bis zum Loslassen ~100 ms Vorsprung).
     // Nicht automatisch im Leerlauf: dann warteten 2D-Shader/-Rechnungen hinter den großen 3D-Shadern (gemessen).
     // 6.3: nur die Programme des aktuellen Looks, nicht blockierend (T3.ready pollt danach pro Bild)

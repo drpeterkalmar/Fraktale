@@ -3,13 +3,15 @@ import json, time, os, sys, tempfile
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("FK_BASE", "http://localhost:8472/index.html")
-GPU_ARGS = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
+# 6.8: Test-Browser immer stumm (--mute-audio, Peter 08.10.2026: der Mac darf nicht bimmeln)
+MUTE = ['--mute-audio']
+GPU_ARGS = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] + MUTE
 # Windows (rog): ANGLE/Direct3D 11 wie Chrome dort. FXC übersetzt die 2D-Shader ohne Cache ~80 s lang (gemessen,
 # frisches Profil) – darum ein dauerhaftes Profil je Platz (Shader-Cache bleibt), höchstens 4 Browser gleichzeitig.
 # FK_ANGLE=vulkan: schneller Ersatz ohne FXC.
 WIN = sys.platform == 'win32'
 if WIN:
-    GPU_ARGS = ['--use-angle=' + os.environ.get('FK_ANGLE', 'd3d11'), '--enable-gpu', '--ignore-gpu-blocklist']
+    GPU_ARGS = ['--use-angle=' + os.environ.get('FK_ANGLE', 'd3d11'), '--enable-gpu', '--ignore-gpu-blocklist'] + MUTE
 
 
 def launch_ctx(p, args, headless, **ctx):
@@ -59,7 +61,7 @@ class App:
         if extra_ctx:
             dev.update(extra_ctx)
         dev.pop('default_browser_type', None)
-        self.browser, self.ctx = launch_ctx(p, GPU_ARGS if gpu else [], os.environ.get('FK_HEADED') != '1', **dev)
+        self.browser, self.ctx = launch_ctx(p, GPU_ARGS if gpu else MUTE, os.environ.get('FK_HEADED') != '1', **dev)
         self.page = self.ctx.new_page()
         if WIN:   # kalter Shader-Cache: das erste Laden blockiert unter FXC bis ~80 s
             self.page.set_default_navigation_timeout(240000)

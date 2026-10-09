@@ -44,6 +44,12 @@ body.immersive .chrome { opacity: 0; pointer-events: none; }
 body.immersive #hud { transform: translateY(-24px); }
 body.immersive #dock { transform: translateY(24px); }
 body:not(.ready) .chrome { opacity: 0; }
+/* 6.8 HUD im Vollbild / Kino-Modus: nur das Bild bleibt (alles außer Canvas, Überblendung und Grafik-Meldung); Tipp bzw.
+   Mausbewegung zeigt die Bedienung 3 s (body.hud-peek) */
+body.hudless > :not(#gl):not(#xfade):not(#gpu-note) { transition: opacity .3s var(--ease), transform .45s var(--ease); }
+body.hudless:not(.hud-peek) > :not(#gl):not(#xfade):not(#gpu-note) { opacity: 0 !important; pointer-events: none !important; }
+body.hudless:not(.hud-peek) #gl { cursor: none; }
+#btn-fullscreen.on { background: rgba(167, 139, 250, 0.35); border-color: rgba(167, 139, 250, 0.8); }
 
 /* ---------- HUD ---------- */
 #hud { position: fixed; z-index: 20; top: calc(10px + var(--sa-t)); left: calc(10px + var(--sa-l)); max-width: calc(100vw - 90px); }
@@ -97,6 +103,10 @@ body.julia-on #bar3d { bottom: calc(var(--dock-h) + 80px + var(--sa-b)); }
 body.immersive #bar3d { transform: translateX(-50%) translateY(24px); }
 .fly-btn { flex: none; min-width: 96px; font-size: 14px; color: #fff; background: rgba(167, 139, 250, 0.22); border-color: rgba(167, 139, 250, 0.55); }
 .fly-btn.on { background: rgba(244, 114, 182, 0.3); border-color: rgba(244, 114, 182, 0.7); }
+/* 6.8 Richtung wechseln / Umdrehen: runde Knöpfe in der Flug-Leiste; Tempo-Symbol ⏪ ⏸ ⏩ fest breit (kein Springen) */
+#btn-rev, #btn-turn { flex: none; font-size: 20px; color: #fff; }
+#btn-turn.on { background: rgba(167, 139, 250, 0.35); }
+#speed-icon { display: inline-block; min-width: 1.4em; text-align: center; }
 .bar-slider { flex: 1; display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 4px; }
 /* 6.6 Flug in 2D: runder Knopf in der Daumenzone (hoch: unten rechts über dem Dock; quer: unten links) */
 #btn-fly2d { position: fixed; z-index: 19; right: calc(10px + var(--sa-r)); bottom: calc(var(--dock-h) + 36px + var(--sa-b)); font-size: 21px; color: #fff; }

@@ -152,7 +152,7 @@ def launch(p):
     elif angle: args = ['--use-angle=' + angle, '--ignore-gpu-blocklist']
     elif not win and sys.platform == 'darwin': args = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
     else: args = ['--ignore-gpu-blocklist']          # Windows: Standard-Backend (ANGLE/Direct3D 11)
-    kw = dict(args=args, headless=not arg('headed'))
+    kw = dict(args=args + ['--mute-audio'], headless=not arg('headed'))   # 6.8: immer stumm
     br = arg('browser', 'chrome' if win else 'chromium')
     if br == 'chrome':
         try: return p.chromium.launch(channel='chrome', **kw), 'chrome'

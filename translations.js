@@ -241,7 +241,7 @@ const TRANSLATIONS_UI = {
         g_2tap: "<strong>Zwei-Finger-Tipp:</strong> herauszoomen (×3)",
         g_long: "<strong>Lange drücken:</strong> Julia-Menge an dieser Stelle",
         g_tap: "<strong>Einmal tippen:</strong> Bedienelemente aus-/einblenden",
-        g_desk: "<strong>Maus:</strong> Rad = Zoom, Ziehen = verschieben, Shift+Ziehen = Rechteck. <strong>Tasten:</strong> M J B T 3 N Modi · P Palette · R Reset · S Bild · F Vollbild · I Oberfläche · +/− Iterationen · Pfeile verschieben · Bild↑/↓ Zoom",
+        g_desk: "<strong>Maus:</strong> Rad = Zoom, Ziehen = verschieben, Shift+Ziehen = Rechteck. <strong>Tasten:</strong> M J B T 3 N Modi · P Palette · R Reset · S Bild · F Vollbild · I Oberfläche · +/− Iterationen · Pfeile verschieben · Bild↑/↓ Zoom · im Flug: R Richtung wechseln, ↑/↓ Tempo, U umdrehen",
         deep_note: "Tiefe Zooms: GPU-Perturbation bis 10³⁰, darunter CPU bis 10²⁹⁰.",
         inside_toast: "Du bist im Inneren der Menge – zoome heraus oder zum farbigen Rand.",
         f_mandelbrot: "z² + c", f_julia: "z² + c, c fest", f_burning_ship: "(|Re z| + i|Im z|)² + c", f_tricorn: "z̄² + c",
@@ -285,7 +285,7 @@ const TRANSLATIONS_UI = {
         g_2tap: "<strong>Two-finger tap:</strong> zoom out (×3)",
         g_long: "<strong>Long press:</strong> Julia set at this spot",
         g_tap: "<strong>Single tap:</strong> hide/show controls",
-        g_desk: "<strong>Mouse:</strong> wheel = zoom, drag = pan, Shift+drag = rectangle. <strong>Keys:</strong> M J B T 3 N modes · P palette · R reset · S image · F fullscreen · I interface · +/− iterations · arrows pan · PgUp/PgDn zoom",
+        g_desk: "<strong>Mouse:</strong> wheel = zoom, drag = pan, Shift+drag = rectangle. <strong>Keys:</strong> M J B T 3 N modes · P palette · R reset · S image · F fullscreen · I interface · +/− iterations · arrows pan · PgUp/PgDn zoom · in flight: R reverse, ↑/↓ speed, U turn around",
         deep_note: "Deep zooms: GPU perturbation to 10³⁰, CPU beyond to 10²⁹⁰.",
         inside_toast: "You are inside the set – zoom out or move to the colored edge.",
         f_mandelbrot: "z² + c", f_julia: "z² + c, fixed c", f_burning_ship: "(|Re z| + i|Im z|)² + c", f_tricorn: "z̄² + c",
@@ -342,6 +342,37 @@ const TRANSLATIONS_FLY2D = {
           g_fly2d: "<strong>✈ 비행(3D 없이도):</strong> 집합의 가장자리를 따라 차분히 깊은 곳으로 내려갑니다. 탭 = 일시정지, 드래그 = 조종, ⛰ = 3D로 계속." }
 };
 for (const l of Object.keys(TRANSLATIONS_FLY2D)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_FLY2D[l]);
+// 6.8 Rückwärtsflug + HUD im Vollbild / Kino-Modus
+const TRANSLATIONS_V68 = {
+    de: { fly_rev: "Richtung wechseln (R)", fly_turn: "Umdrehen (U)", fly_out: "Ganz draußen", cinema: "Kino-Modus", hud_fs: "HUD im Vollbild ausblenden",
+          hud_fs_hint: "Im Vollbild (bzw. Kino-Modus) bleibt nur das Bild. Kurz tippen oder die Maus bewegen zeigt die Bedienung für 3 s.", hud_hint: "Kurz tippen zeigt die Bedienung",
+          g_rev: "<strong>⏪ Rückwärts:</strong> Tempo-Regler nach links (Mitte = Schweben) oder ⇄ – der Flug taucht auf demselben Weg wieder auf bis zur Übersicht. Im 3D-Flug dreht ↶ den Blick um." },
+    en: { fly_rev: "Reverse direction (R)", fly_turn: "Turn around (U)", fly_out: "All the way out", cinema: "Cinema mode", hud_fs: "Hide HUD in fullscreen",
+          hud_fs_hint: "In fullscreen (or cinema mode) only the picture remains. Tap briefly or move the mouse to show the controls for 3 s.", hud_hint: "Tap briefly to show the controls",
+          g_rev: "<strong>⏪ Reverse:</strong> speed slider to the left (middle = hover) or ⇄ – the flight surfaces along the same path back to the overview. In 3D flight ↶ turns the view around." },
+    hu: { fly_rev: "Irányváltás (R)", fly_turn: "Megfordulás (U)", fly_out: "Teljesen kint", cinema: "Mozi mód", hud_fs: "Kezelőfelület elrejtése teljes képernyőn",
+          hud_fs_hint: "Teljes képernyőn (vagy mozi módban) csak a kép marad. Rövid koppintás vagy egérmozgatás 3 mp-re megmutatja a kezelőelemeket.", hud_hint: "Rövid koppintás: kezelőelemek",
+          g_rev: "<strong>⏪ Visszafelé:</strong> tempócsúszka balra (közép = lebegés) vagy ⇄ – a repülés ugyanazon az úton tér vissza az áttekintésig. 3D-ben a ↶ megfordítja a nézetet." },
+    es: { fly_rev: "Cambiar dirección (R)", fly_turn: "Dar la vuelta (U)", fly_out: "Totalmente fuera", cinema: "Modo cine", hud_fs: "Ocultar la interfaz en pantalla completa",
+          hud_fs_hint: "En pantalla completa (o modo cine) solo queda la imagen. Un toque breve o mover el ratón muestra los controles 3 s.", hud_hint: "Toca brevemente para ver los controles",
+          g_rev: "<strong>⏪ Marcha atrás:</strong> control de velocidad a la izquierda (centro = flotar) o ⇄ – el vuelo vuelve a subir por el mismo camino hasta la vista general. En 3D, ↶ gira la vista." },
+    fr: { fly_rev: "Changer de sens (R)", fly_turn: "Faire demi-tour (U)", fly_out: "Tout à fait sorti", cinema: "Mode cinéma", hud_fs: "Masquer l’interface en plein écran",
+          hud_fs_hint: "En plein écran (ou mode cinéma), seule l’image reste. Un bref toucher ou un mouvement de souris affiche les commandes 3 s.", hud_hint: "Touchez brièvement pour les commandes",
+          g_rev: "<strong>⏪ Marche arrière :</strong> curseur de vitesse à gauche (milieu = flotter) ou ⇄ – le vol remonte par le même chemin jusqu’à la vue d’ensemble. En 3D, ↶ retourne la vue." },
+    pt: { fly_rev: "Inverter direção (R)", fly_turn: "Dar meia-volta (U)", fly_out: "Totalmente fora", cinema: "Modo cinema", hud_fs: "Ocultar a interface em tela cheia",
+          hud_fs_hint: "Em tela cheia (ou modo cinema) só fica a imagem. Um toque breve ou mover o mouse mostra os controles por 3 s.", hud_hint: "Toque brevemente para ver os controles",
+          g_rev: "<strong>⏪ Ré:</strong> controle de velocidade para a esquerda (meio = pairar) ou ⇄ – o voo volta pelo mesmo caminho até a visão geral. Em 3D, ↶ vira a vista." },
+    zh: { fly_rev: "切换方向 (R)", fly_turn: "掉头 (U)", fly_out: "已完全退出", cinema: "影院模式", hud_fs: "全屏时隐藏界面",
+          hud_fs_hint: "全屏（或影院模式）下只保留画面。轻点一下或移动鼠标可显示控件 3 秒。", hud_hint: "轻点一下显示控件",
+          g_rev: "<strong>⏪ 倒飞：</strong>速度滑块向左（中间 = 悬停）或 ⇄ —— 沿原路浮出，直到全景。3D 飞行中 ↶ 可掉转视角。" },
+    ja: { fly_rev: "方向を切替 (R)", fly_turn: "振り返る (U)", fly_out: "いちばん外です", cinema: "シアターモード", hud_fs: "全画面で操作表示を隠す",
+          hud_fs_hint: "全画面（またはシアターモード）では画像だけが残ります。短くタップするかマウスを動かすと操作部が 3 秒表示されます。", hud_hint: "短くタップで操作部を表示",
+          g_rev: "<strong>⏪ 後退:</strong> 速度スライダーを左へ（中央 = ホバー）または ⇄ – 同じ道をたどって全体表示まで浮上します。3D 飛行では ↶ で視点を反転。" },
+    ko: { fly_rev: "방향 전환 (R)", fly_turn: "뒤돌기 (U)", fly_out: "완전히 바깥입니다", cinema: "시네마 모드", hud_fs: "전체 화면에서 인터페이스 숨기기",
+          hud_fs_hint: "전체 화면(또는 시네마 모드)에서는 화면만 남습니다. 짧게 탭하거나 마우스를 움직이면 3초간 컨트롤이 보입니다.", hud_hint: "짧게 탭하면 컨트롤 표시",
+          g_rev: "<strong>⏪ 후진:</strong> 속도 슬라이더를 왼쪽으로(가운데 = 정지 비행) 또는 ⇄ – 같은 길로 전체 보기까지 떠오릅니다. 3D 비행에서는 ↶ 로 시점을 돌립니다." }
+};
+for (const l of Object.keys(TRANSLATIONS_V68)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_V68[l]);
 (function () {
     for (const lang of Object.keys(TRANSLATIONS)) {
         TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS_UI.en, TRANSLATIONS[lang], TRANSLATIONS_UI[lang] || {});

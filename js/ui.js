@@ -208,6 +208,7 @@ A.on((w) => {
         if (!sheet.hidden && sheet.classList.contains('open')) closeSheet();
         else if (!$('share-pop').hidden) $('share-pop').hidden = true;
         else if (!$('hud-details').hidden) { $('hud-details').hidden = true; $('hud-pill').setAttribute('aria-expanded', 'false'); }
+        else if (hudless()) hudHide(true);         // 6.8: Vollbild/Kino-Modus – Tipp auf das Bild blendet die Bedienung wieder aus
         else setChrome(!S.chrome);
     } else if (w === 'frame') hudUpdate(false);
     else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); }
@@ -409,6 +410,7 @@ const toggles = [
     bindToggle('t-governor', () => S.governor, (v) => { S.governor = v; }),
     bindToggle('t-deon', () => S.deOn, (v) => { S.deOn = v; }),
     bindToggle('t-aa', () => S.aa, (v) => { S.aa = v; }),
+    bindToggle('t-hudfs', () => S.hudFs, (v) => { S.hudFs = v; hudApply(); }),
 ];
 function bindSeg(id, get, set) {
     const g = $(id);
@@ -508,15 +510,76 @@ $('share-link').addEventListener('click', shareLink);
 $('btn-link').addEventListener('click', shareLink);
 
 // ------------------------------------------------------------------ Mehr
+// 6.8: ohne Vollbild-Schnittstelle (iPhone, auch als installierte App) ist derselbe Knopf der Kino-Modus: HUD aus wie im
+// Vollbild, nur ohne echtes Vollbild (bis 6.7 war der Knopf dort ausgeblendet, P3-7)
+const FS_API = !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
 function toggleFullscreen() {
     const d = document;
+    if (!FS_API) { setCinema(!HUD.cine); return; }
     if (d.fullscreenElement) d.exitFullscreen && d.exitFullscreen();
-    else if (d.documentElement.requestFullscreen) d.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    else d.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
 }
 $('btn-fullscreen').addEventListener('click', toggleFullscreen);
-$('btn-fullscreen2').addEventListener('click', toggleFullscreen);
-// P3-7: ohne Vollbild-Schnittstelle (iPhone) täte der Knopf stumm nichts -> ausblenden
-if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen) $('btn-fullscreen').hidden = $('btn-fullscreen2').hidden = true;
+$('btn-fullscreen2').addEventListener('click', () => { closeSheet(); toggleFullscreen(); });
+if (!FS_API) {
+    $('btn-fullscreen').dataset.i18nTitle = 'cinema';
+    $('btn-fullscreen2').querySelector('[data-i18n]').dataset.i18n = 'cinema';
+}
+
+// ------------------------------------------------------------------ 6.8 HUD im Vollbild / Kino-Modus
+// Im Vollbild (Einstellung „HUD im Vollbild ausblenden“, Standard an) und im Kino-Modus verschwinden alle Bedienelemente
+// weich (0,3 s, CSS body.hudless: alles außer dem Bild) – Leisten, Dock, Knöpfe, Flug-Leiste, Zoom-Anzeige, Hinweise, Toasts.
+// Ein kurzer Tipp (ohne Wischen; app.js fragt A.tapHook) bzw. eine Mausbewegung zeigt sie für 3 s (body.hud-peek). Gesten
+// (Zoomen, Schieben, Flug-Lenkung) holen sie nicht zurück, ein laufender Flug läuft weiter (der Tipp pausiert ihn dann nicht).
+// Solange ein Menü offen ist oder die Maus über der Bedienung steht, bleibt sie sichtbar. Esc/F verlassen Vollbild bzw. Kino.
+const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, hinted: false };
+const hudless = () => (HUD.fs && S.hudFs) || HUD.cine;
+const peeking = () => document.body.classList.contains('hud-peek');
+function hudApply() {
+    const on = hudless(), b = document.body, was = b.classList.contains('hudless');
+    if (on && !was) {
+        closeSheet(); closeModal(); $('share-pop').hidden = true;
+        $('hud-details').hidden = true; $('hud-pill').setAttribute('aria-expanded', 'false');
+        if (!S.chrome) setChrome(true);
+    }
+    b.classList.toggle('hudless', on);
+    if (!on) { b.classList.remove('hud-peek'); clearTimeout(HUD.peekT); }
+    else if (!was && !HUD.hinted) { HUD.hinted = true; hudPeek(2200); toast(t('hud_hint'), 2200); }     // einmal pro Sitzung: kurz zeigen, wie es zurückkommt
+    const fb = $('btn-fullscreen'), act = HUD.fs || HUD.cine;
+    fb.classList.toggle('on', act); fb.setAttribute('aria-pressed', String(act));
+}
+function hudPeek(ms) {
+    if (!hudless()) return;
+    document.body.classList.add('hud-peek');
+    clearTimeout(HUD.peekT);
+    HUD.peekT = setTimeout(hudHide, ms || 3000);
+}
+function hudHide(force) {
+    clearTimeout(HUD.peekT);
+    const busy = !sheet.hidden || !$('share-pop').hidden || !$('modal').hidden || !$('hud-details').hidden || HUD.over;
+    if (!force && busy) { HUD.peekT = setTimeout(hudHide, 1000); return; }
+    document.body.classList.remove('hud-peek');
+}
+function setCinema(on) { HUD.cine = !!on; hudApply(); }
+// Tipp auf das Bild: ausgeblendet -> nur zeigen (true = erledigt); sichtbar im Flug -> pausieren wie immer, Zeit neu
+A.tapHook = () => {
+    if (!hudless()) return false;
+    if (!peeking()) { hudPeek(); return true; }
+    if (A.FLY.on) hudPeek();
+    return false;
+};
+const onFsChange = () => { HUD.fs = !!(document.fullscreenElement || document.webkitFullscreenElement); hudApply(); };
+document.addEventListener('fullscreenchange', onFsChange);
+document.addEventListener('webkitfullscreenchange', onFsChange);
+addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    HUD.over = e.target !== A.R.canvas && !!(e.target.closest && e.target.closest('body > :not(#gl):not(#xfade)'));
+    if (e.buttons || !hudless()) { HUD.mx = e.clientX; HUD.my = e.clientY; return; }    // Ziehen mit der Maus ist eine Geste
+    if (HUD.mx >= 0 && Math.hypot(e.clientX - HUD.mx, e.clientY - HUD.my) > 4) hudPeek();
+    HUD.mx = e.clientX; HUD.my = e.clientY;
+}, { passive: true });
+// Bedienung angefasst (Knopf, Regler, Menü): sichtbar lassen, Zeit neu
+addEventListener('pointerdown', (e) => { if (hudless() && peeking() && e.target !== A.R.canvas) hudPeek(); }, { passive: true, capture: true });
 $('btn-reset').addEventListener('click', () => { A.goHome(); });
 $('btn-help').addEventListener('click', () => openModal('help'));
 $('btn-gestures').addEventListener('click', () => openModal('gestures'));
@@ -528,7 +591,7 @@ $('btn-install').addEventListener('click', async () => { if (!installEvt) return
 function openModal(kind) {
     const b = $('modal-body');
     const g = `<div class="info-section"><h3>${t('gestures_title')}</h3><ul class="gest">
-        <li>${t('g_pan')}</li><li>${t('g_pinch')}</li><li>${t('g_dtap')}</li><li>${t('g_2tap')}</li><li>${t('g_long')}</li><li>${t('g_tap')}</li><li>${t('g_3d')}</li><li>${t('g_fly2d')}</li><li>${t('g_desk')}</li></ul>
+        <li>${t('g_pan')}</li><li>${t('g_pinch')}</li><li>${t('g_dtap')}</li><li>${t('g_2tap')}</li><li>${t('g_long')}</li><li>${t('g_tap')}</li><li>${t('g_3d')}</li><li>${t('g_fly2d')}</li><li>${t('g_rev')}</li><li>${t('g_desk')}</li></ul>
         <p class="hint">${t('deep_note')}</p></div>`;
     if (kind === 'gestures') b.innerHTML = g;
     else {
@@ -558,6 +621,13 @@ window.addEventListener('keydown', (e) => {
         else A.V3.tilt = Math.max(0, Math.min(A.MAX_TILT, A.V3.tilt + (k === 'ArrowUp' ? 0.07 : -0.07)));
         A.RC.dirty = true; return;
     }
+    // 6.8 im Flug: R = Richtung wechseln, Pfeil ↑/↓ = Tempo, U = Umdrehen (3D); sonst wie bisher (R = Zurücksetzen, Pfeile schieben)
+    if (A.FLY.on && A.RUECK) {
+        const kl = k.toLowerCase();
+        if (kl === 'r') { A.reverseFly(); A.saveSettings(); return; }
+        if (kl === 'u') { A.turnFly(); return; }
+        if (k === 'ArrowUp' || k === 'ArrowDown') { e.preventDefault(); A.setFlySpeed(S.flySpeed + (k === 'ArrowUp' ? 0.1 : -0.1)); A.saveSettings(); return; }
+    }
     const pan = (dx, dy) => { A.stopFly(); const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
     switch (k) {
         case 'ArrowLeft': pan(-1, 0); break; case 'ArrowRight': pan(1, 0); break;
@@ -574,11 +644,11 @@ window.addEventListener('keydown', (e) => {
                 case 'r': A.goHome(); break;
                 case 's': $('share-image').click(); break;
                 case 'z': S.rectMode = !S.rectMode; syncControls(); break;
-                case 'f': toggleFullscreen(); break;
+                case 'f': if (HUD.cine) setCinema(false); else toggleFullscreen(); break;
                 case 'i': setChrome(!S.chrome); break;
                 case 'h': case '?': openModal('help'); break;
                 case 'l': { const ks = Object.keys(TRANSLATIONS); S.lang = ks[(ks.indexOf(S.lang) + 1) % ks.length]; $('sel-lang').value = S.lang; A.saveSettings(); applyI18n(); break; }
-                case 'escape': closeSheet(); closeModal(); break;
+                case 'escape': closeSheet(); closeModal(); if (HUD.cine) setCinema(false); break;
                 case 'd': toggle3d(); break;
                 case 'v': if (A.FLY.on) A.stopFly(); else A.startFly(); break;      // 6.6: fliegt im aktuellen Modus
             }
@@ -618,8 +688,12 @@ $('btn-fly2d').addEventListener('click', () => A.startFly(undefined, { d3: false
 $('btn-north').addEventListener('click', () => A.north3d());
 $('r-height').addEventListener('input', (e) => { S.h3d = +e.target.value; A.RC.dirty = true; });
 $('r-height').addEventListener('change', () => A.saveSettings());
-$('r-speed').addEventListener('input', (e) => { S.flySpeed = +e.target.value; });
+// 6.8: Tempo −1,5 … +1,5 mit Einrasten bei 0 (A.setFlySpeed), ⇄ = Richtung wechseln (weich), ↶ = Umdrehen (3D)
+$('r-speed').addEventListener('input', (e) => { const v = A.setFlySpeed(+e.target.value); if (+e.target.value !== v) e.target.value = v; });
 $('r-speed').addEventListener('change', () => A.saveSettings());
+if (!A.RUECK) $('r-speed').min = '0.1';
+$('btn-rev').addEventListener('click', () => { A.reverseFly(); A.saveSettings(); });
+$('btn-turn').addEventListener('click', () => A.turnFly());
 let hintFly2d = false;
 function sync3d() {
     const can = A.can3d(), on = A.V3.on && A.V3.dir >= 0, fly = A.FLY.on, prep = !!A.V3.prep && !A.V3.on;
@@ -648,6 +722,12 @@ function sync3d() {
     $('lbl-speed').hidden = !fly;
     $('r-height').value = S.h3d;
     $('r-speed').value = S.flySpeed;
+    // 6.8: ⏪ rückwärts, ⏩ vorwärts, ⏸ Schweben; ⇄ im Flug, ↶ im 3D-Flug
+    $('speed-icon').textContent = S.flySpeed > 0 ? '⏩' : S.flySpeed < 0 ? '⏪' : '⏸';
+    $('btn-rev').hidden = !fly || !A.RUECK;
+    $('btn-turn').hidden = !fly || !on || !A.RUECK;
+    $('btn-turn').classList.toggle('on', !!A.V3.turnT);
+    $('btn-turn').setAttribute('aria-pressed', String(!!A.V3.turnT));
 }
 
 // ------------------------------------------------------------------ Start

@@ -8,7 +8,7 @@
 root.FKFlight = { create(ctx) {
     let GOV, HP, MODE_HOME, Q, S, T3, V3, can3d, clampZoom, emit, look, ready3d, set3d, setCam, setJulia, setMode, smooth01, stopAnims, t, toast;   // aus app.js, gesetzt in link()
 
-    const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, z0: 1, off0: 0, dir: [0, 1], d3: true };
+    const FLY = { on: false, paused: false, mode: 'random', target: null, hdgT: 0, z0: 1, off0: 0, dir: [0, 1], d3: true, sp: 0.5, trail: [] };
     // Flug: Zoom + Vorwärtsflug. Gezoomt wird um einen Punkt vor dem Fokus -> die Kamera gleitet vorwärts und
     // taucht tiefer; Berge wirken in jeder Tiefe gleich hoch (lokale Einheiten).
     // Ziel-Flug: Start im Gesamtbild (wie ▶ Tour), gerade auf den Ort zu, Ankunft exakt am Ort.
@@ -36,6 +36,21 @@ root.FKFlight = { create(ctx) {
     const G3 = { rmin: FLY_RMIN, rmax: FLY_RMAX, rpref: FLY_RPREF, ang: true, hiR: 0.5, chk: 1 };
     const G2 = { rmin: 0, rmax: 0.6, rpref: 0, ang: false, hiR: 0.15, chk: 0.7, amax: 0.9 };
     const FLY_C2 = 0.35;          // 2D: Bildmitte gleitet zum Zoompunkt (Anteil/s; verloren schneller)
+    // 6.8 Rückwärtsflug: Das Tempo hat ein Vorzeichen (S.flySpeed −1,5 … +1,5 Zehnerpotenzen/s, 0 = Schweben). FLY.sp ist das
+    // tatsächliche Tempo: Es folgt dem Regler weich (≈ 0,2 s), beim Richtungswechsel (⇄, Taste R) in 0,6 s auf einer S-Kurve
+    // über 0 auf den Gegenwert – Zoom- und Seitentempo bleiben stetig, kein Ruck.
+    // Rückwärts fliegt der Flug den Weg des Hinflugs zurück: Beim Vorwärtsflug wird je 1/100 Zehnerpotenz die Bildmitte (und in
+    // 3D der Kurs) gemerkt (FLY.trail); rückwärts folgt die Kamera diesem Verlauf, Abweichungen (Schieben, Sprünge im Verlauf)
+    // klingen weich ab. Gleiche Mitte bei gleichem Zoom = dasselbe Bild wie beim Hinflug (in 3D mit Blick nach vorn, wie ein
+    // rückwärts abgespielter Kameraflug; „Umdrehen“ dreht nur den Blick um 180°). Ohne Verlauf (tief gestartet, im
+    // Rückflug geschoben/gelenkt): 2D zentriert heraus, 3D Zoom um den Zoompunkt vor dem Fokus heraus -> die Kamera gleitet
+    // rückwärts, der Kurs folgt dem Zoompunkt; in den letzten 1,5 Zehnerpotenzen gleitet die Mitte zur Startübersicht.
+    // Bei Zoom 1 (Ziel-Flug: Start-Zoom) bremst der Flug mit konstanter Verzögerung und hält: „Ganz draußen“.
+    // A/B: ?rueck=0 = ohne Rückwärts-Möglichkeit (Regler 0,1–1,5 wie bis 6.7).
+    const RUECK = ctx.Q.get('rueck') !== '0';
+    const REV_MS = 600;           // Richtungswechsel: Dauer der S-Kurve
+    const TRAIL_STEP = 0.01;      // Kursverlauf: ein Eintrag je 1/100 Zehnerpotenz
+    const REV_VMAX = 2;           // Rückflug: höchstens so schnell seitlich zum Verlauf (Bildhälften/s)
     function canFly2d(f) { return FLY2D && !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
     function canFly(f) { return can3d(f) || canFly2d(f); }
     const in3d = () => V3.on && V3.dir >= 0;
@@ -62,20 +77,81 @@ root.FKFlight = { create(ctx) {
             if (d3) V3.heading = Math.atan2(FLY.dir[0], FLY.dir[1]);
         } else { FLY.mode = 'random'; FLY.target = null; }
         if (d3) set3d(true); else if (in3d()) set3d(false);     // 2D-Flug aus 3D heraus: 3D aus, der Flug läuft flach
+        // 6.8: Start mit dem eingestellten Tempo; steht der Regler auf 0 (oder rückwärts in der Übersicht), vorwärts
+        if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && (place || S.cam.zoom < 1.5))) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.5);
+        FLY.sp = S.flySpeed; FLY.ramp = null; FLY.rev = FLY.sp < 0; FLY.out = false; FLY.lastDir = Math.sign(FLY.sp) || 1;
+        // Kursverlauf: weiter benutzen, wenn der Flug genau dort weitergeht, wo der letzte endete (sonst neu)
+        const te = FLY.trailEnd, c0 = S.cam;
+        if (place || !te || te.cx !== c0.cx || te.cy !== c0.cy || te.zoom !== c0.zoom) FLY.trail = [];
         FLY.on = true; FLY.paused = false; FLY.hdgT = V3.heading; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0; FLY.d3 = d3;
         // 6.2: Zoompunkt startet geradeaus, Kurs ruhend (2D: in der Bildmitte)
         const f = [Math.sin(V3.heading), Math.cos(V3.heading)];
         FLY.A = d3 ? [f[0] * FLY_AHEAD, f[1] * FLY_AHEAD] : [0, 0]; FLY.VA = [0, 0]; FLY.T = null; FLY.Tt = 0; FLY.om = 0; FLY.roll = 0;
         FLY.userPrev = 0; FLY.userT = -1e9; FLY.zf = 1; FLY.glide = null; FLY.dA = null; FLY.gap = false;
+        if (FLY.mode === 'random') trailRec();
         emit('fly');
     }
     // Ausrichten: Drehung weich auf Norden, Neigung auf den Standard
     function north3d() { V3.northT = performance.now(); V3.northFrom = [V3.heading, V3.tilt]; stopFly(); }
-    function stopFly() { if (!FLY.on) return; FLY.on = false; FLY.paused = false; ctx.camDirty = true; emit('fly'); }
+    function stopFly() {
+        if (!FLY.on) return;
+        FLY.on = false; FLY.paused = false; FLY.ramp = null; ctx.camDirty = true;
+        FLY.trailEnd = { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom };
+        // 6.8 Umdrehen: der Blick wird zum Kurs (nach dem Flug zeigt die Ansicht weiter dorthin, wohin sie schaute)
+        if (V3.turnA || V3.turnT) { V3.heading += V3.turnA || 0; V3.turnA = V3.turnT = 0; }
+        emit('fly');
+    }
     function pauseFly(p) { if (!FLY.on) return; FLY.paused = p === undefined ? !FLY.paused : p; emit('fly'); }
+    // 6.8: Richtung wechseln (⇄, Taste R): Tempo in 0,6 s über 0 auf den Gegenwert (steht der Regler auf 0: 0,5 gegen die
+    // zuletzt geflogene Richtung). Ein pausierter Flug läuft dabei weiter.
+    function reverseFly() {
+        if (!RUECK || !FLY.on) return;
+        const v = Math.abs(S.flySpeed) >= 0.05 ? -S.flySpeed : -(FLY.lastDir || 1) * 0.5;
+        S.flySpeed = v;
+        FLY.ramp = { from: FLY.sp, to: v, t0: performance.now() };
+        if (FLY.paused) FLY.paused = false;
+        emit('fly');
+    }
+    // Tempo setzen (Regler, Pfeiltasten): bei 0 einrasten; ?rueck=0: 0,1–1,5 wie bis 6.7
+    function setFlySpeed(v) {
+        S.flySpeed = RUECK ? Math.max(-1.5, Math.min(1.5, Math.abs(v) < 0.08 ? 0 : Math.round(v * 100) / 100)) : Math.max(0.1, Math.min(1.5, v));
+        FLY.ramp = null;
+        emit('fly');
+        return S.flySpeed;
+    }
+    // 6.8 Umdrehen (nur 3D): der Blick dreht weich um 180° (app.js update3d), der Kurs bleibt
+    function turnFly() { if (!RUECK || !FLY.on || !FLY.d3) return; V3.turnFrom = V3.turnA || 0; V3.turnT0 = performance.now(); V3.turnT = V3.turnT ? 0 : Math.PI; emit('fly'); }
+    function flySpeedStep(now, dt) {
+        const tgt = RUECK ? S.flySpeed : Math.max(0.1, S.flySpeed);
+        if (FLY.ramp) {
+            const u = (now - FLY.ramp.t0) / REV_MS;
+            if (u >= 1) { FLY.sp = FLY.ramp.to; FLY.ramp = null; } else FLY.sp = FLY.ramp.from + (FLY.ramp.to - FLY.ramp.from) * smooth01(u);
+        } else FLY.sp += (tgt - FLY.sp) * (1 - Math.exp(-dt / 0.18));
+        if (Math.abs(FLY.sp) > 0.02) FLY.lastDir = Math.sign(FLY.sp);
+    }
+    // Kursverlauf aufzeichnen (Vorwärtsflug): Einträge oberhalb des aktuellen Zooms gehören zu einem alten Weg (nach einem
+    // Rückflug geht es jetzt anders weiter) und fallen weg
+    function trailRec() {
+        const tr = FLY.trail || (FLY.trail = []), lz = Math.log10(S.cam.zoom);
+        while (tr.length && tr[tr.length - 1].lz > lz) tr.pop();
+        if (!tr.length || lz - tr[tr.length - 1].lz >= TRAIL_STEP) tr.push({ lz, cx: S.cam.cx, cy: S.cam.cy, h: V3.heading });
+    }
+    // Kursverlauf bei log10(Zoom) = lz (linear zwischen den Einträgen); null außerhalb (oberhalb bis 0,1 Zehnerpotenzen
+    // Spielraum: der letzte Eintrag liegt bis zu einem Schritt zurück)
+    function trailAt(lz) {
+        const tr = FLY.trail;
+        if (!tr || !tr.length || lz < tr[0].lz - 1e-9 || lz > tr[tr.length - 1].lz + 0.1) return null;
+        const n = tr.length;
+        if (lz >= tr[n - 1].lz) return tr[n - 1];
+        let lo = 0, hi = n - 1;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (tr[m].lz <= lz) lo = m; else hi = m; }
+        const a = tr[lo], b = tr[hi], f = (lz - a.lz) / Math.max(1e-12, b.lz - a.lz);
+        return { lz, cx: a.cx + HP.mulNumber(b.cx - a.cx, f), cy: a.cy + HP.mulNumber(b.cy - a.cy, f), h: a.h + angDiff(b.h, a.h) * f };
+    }
     // 6.6: im 2D-Flug mit einem Finger geschoben (die App verschiebt die Kamera): der Zoompunkt bleibt an seiner Stelle im
     // Bild und liegt damit auf einem neuen Weltpunkt; 3 s lang wird nur in seiner Nähe nach dem Rand gesucht
-    function flyPanned() { if (!FLY.on) return; FLY.userT = FLY.Tt = performance.now(); FLY.T = null; FLY.VA = [0, 0]; FLY.glide = null; }
+    // (6.8: im Rückflug gilt der Kursverlauf danach nicht mehr – es geht von der neuen Stelle aus zentriert heraus)
+    function flyPanned() { if (!FLY.on) return; FLY.userT = FLY.Tt = performance.now(); FLY.T = null; FLY.VA = [0, 0]; FLY.glide = null; if (FLY.sp < 0 && FLY.trail) FLY.trail.length = 0; }
     // 6.6: Wechsel 2D <-> 3D während des Flugs (⛰ im Flug): der Flug läuft im neuen Modus weiter
     function flyMode() {
         const d3 = in3d();
@@ -87,7 +163,11 @@ root.FKFlight = { create(ctx) {
     }
     // ein Flugschritt (rein rechnerisch, auch für die Vorhersage): liefert { cam, heading }
     function flyStep(cam, heading, dt) {
-        const g = GOV.g, dec = S.flySpeed * dt * g;
+        const g = GOV.g, sp = FLY.sp || 0, dec = sp * dt * g;
+        if (sp < 0) return revStep(cam, heading, dt, dec);
+        // 6.8: Seitengleiten mit dem Tempo bis 0,1 (wie bis 6.7 der kleinste Reglerwert) – bei 0 (Schweben) steht das Bild,
+        // und beim Richtungswechsel läuft das Seitentempo stetig über 0
+        const ks = Math.min(1, sp / 0.1);
         if (FLY.mode === 'place' && FLY.target) {
             const T = FLY.target;
             const z1 = Math.min(T.zoom, cam.zoom * Math.pow(10, dec));
@@ -105,26 +185,107 @@ root.FKFlight = { create(ctx) {
         const done = (FLY.d3 && z1 >= 1e28) || (dec > 0 && z1 <= cam.zoom);
         if (!FLY.d3) {
             // 2D: Zoom um den Zoompunkt A, dazu gleitet die Bildmitte zu A (verloren schneller: zum Randstück hin)
-            const k = 1 - cam.zoom / z1, u1 = 1.5 / z1, c = Math.min(0.5, dt * g * (FLY_C2 + 1.2 * lost));
+            const k = 1 - cam.zoom / z1, u1 = 1.5 / z1, c = Math.min(0.5, dt * g * (FLY_C2 + 1.2 * lost)) * ks;
             const pan = [FLY.A[0] * c, FLY.A[1] * c];
             return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + pan[0] * u1), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + pan[1] * u1), zoom: z1 }, heading, done, lat: pan, pan: true };
         }
         // 6.4: verloren -> erst zum Randstück drehen, dann vorwärts dorthin gleiten (statt seitlich zu rutschen)
         const al = FLY.glide ? Math.max(0, f[0] * FLY.glide[0] + f[1] * FLY.glide[1]) : 1;
-        const k = 1 - cam.zoom / z1, gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * al * dt * g, lat = gl * u;
+        const k = 1 - cam.zoom / z1, gl = lost * 0.8 * (FLY.glide ? FLY.gv : 1) * al * dt * g * ks, lat = gl * u;
         return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + f[0] * lat), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + f[1] * lat), zoom: z1 }, heading, done, lat: [f[0] * gl, f[1] * gl] };
+    }
+    // 6.8 ein Rückflug-Schritt (rein rechnerisch wie flyStep, auch für die Vorhersage): herauszoomen bis zur Startübersicht,
+    // dabei dem Kursverlauf folgen (bzw. ohne Verlauf: 2D zentriert, 3D um den Zoompunkt vor dem Fokus -> rückwärts)
+    function revStep(cam, heading, dt, dec) {
+        const place = FLY.mode === 'place' && FLY.target;
+        const zf = place ? FLY.z0 : 1;
+        // weich anhalten: in den letzten 0,6 Zehnerpotenzen Tempo ∝ √Abstand (konstante Verzögerung), Ende exakt bei zf
+        const lz0 = Math.log10(cam.zoom / zf);
+        const br = Math.min(1, Math.max(0.03, Math.sqrt(Math.max(0, lz0) / 0.6)));
+        const z1 = cam.zoom <= zf ? cam.zoom : Math.max(zf, cam.zoom * Math.pow(10, dec * br));
+        const out = z1 <= zf * (1 + 1e-9);
+        if (place) {
+            // Ziel-Flug: derselbe Weg wie hinein (Lage ist eine Funktion des Zooms), zurück bis zum Start
+            const T = FLY.target, p = Math.max(0, Math.min(1, Math.log(z1 / FLY.z0) / Math.max(1e-9, Math.log(T.zoom / FLY.z0))));
+            const off = FLY.off0 * Math.pow(1 - p, 1.5), u = 1.5 / z1;
+            return { cam: { cx: T.cx - HP.fromNumber(FLY.dir[0] * off * u), cy: T.cy - HP.fromNumber(FLY.dir[1] * off * u), zoom: z1 }, heading, done: false, out, rev: true };
+        }
+        const u0 = 1.5 / cam.zoom, u1 = 1.5 / z1, lz1 = Math.log10(z1);
+        const cap = (x, y, m) => { const r = Math.hypot(x, y); return r > m ? [x * m / r, y * m / r] : [x, y]; };
+        const P1 = trailAt(lz1);
+        let cx, cy, h = heading, trail = false;
+        if (P1) {
+            // Kursverlauf: seiner Bewegung folgen (Vorsteuerung, gedeckelt – ein Sprung im Verlauf wird zum weichen Gleiten),
+            // die Abweichung klingt mit τ = 0,3 s ab
+            trail = true;
+            const P0 = trailAt(Math.log10(cam.zoom));
+            let ff = [0, 0], dh = 0;
+            if (P0) { ff = cap(HP.toNumber(P1.cx - P0.cx) / u1, HP.toNumber(P1.cy - P0.cy) / u1, REV_VMAX * dt); dh = angDiff(P1.h, P0.h); }
+            cx = cam.cx + HP.fromNumber(ff[0] * u1); cy = cam.cy + HP.fromNumber(ff[1] * u1);
+            const e = cap(HP.toNumber(P1.cx - cx) / u1 * Math.min(1, dt / 0.3), HP.toNumber(P1.cy - cy) / u1 * Math.min(1, dt / 0.3), 1.2 * dt);
+            cx += HP.fromNumber(e[0] * u1); cy += HP.fromNumber(e[1] * u1);
+            if (FLY.d3) h = heading + dh + angDiff(P1.h, heading + dh) * Math.min(1, dt / 0.35);
+        } else {
+            // ohne Verlauf: Fixpunkt des Zooms ist in 2D die Bildmitte, in 3D der Zoompunkt vor dem Fokus
+            const A = FLY.d3 ? FLY.A : [0, 0], k = 1 - cam.zoom / z1;
+            cx = cam.cx + HP.fromNumber(A[0] * u0 * k); cy = cam.cy + HP.fromNumber(A[1] * u0 * k);
+            // die letzten 1,5 Zehnerpotenzen: Mitte gleitet zur Startübersicht (MODE_HOME), angekommen bei Zoom 1
+            if (lz1 < 1.5) {
+                const H = MODE_HOME[S.formula], hx = HP.fromString(H[0]), hy = HP.fromString(H[1]);
+                const w = 1 - smooth01(lz1 / 1.5), a = Math.min(1, dt * 3 * w);
+                const e = cap(HP.toNumber(hx - cx) / u1 * a, HP.toNumber(hy - cy) / u1 * a, 1.5 * dt);
+                cx += HP.fromNumber(e[0] * u1); cy += HP.fromNumber(e[1] * u1);
+            }
+        }
+        return { cam: { cx, cy, zoom: z1 }, heading: h, done: false, out, rev: true, trail };
     }
     function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
     const rot2 = (v, a) => [v[0] * Math.cos(a) + v[1] * Math.sin(a), -v[0] * Math.sin(a) + v[1] * Math.cos(a)];   // Kurs +a (im Uhrzeigersinn)
+    // Kurs (3D): gedämpfte Drehung zur Richtung des Zoompunkts (kritisch gedämpft, Rate und Beschleunigung begrenzt).
+    // 6.8: Drehen mit dem Tempo bis 0,1 (ks) – beim Schweben und im Richtungswechsel steht der Kurs, die Drehrate bleibt stetig
+    function steerHeading(dt, ks) {
+        const err = angDiff(Math.atan2(FLY.A[0], FLY.A[1]), V3.heading);
+        const lost = Math.min(1, FLY.lost || 0);
+        const wmax = FLY_TURN * (1 + 0.5 * lost);
+        const K = 1.4, acc = Math.max(-FLY_ACC * (1 + lost), Math.min(FLY_ACC * (1 + lost), K * err - 2 * Math.sqrt(K) * FLY.om));
+        FLY.om = Math.max(-wmax, Math.min(wmax, FLY.om + acc * dt));
+        V3.heading += FLY.om * dt * ks;
+        // leichte Schräglage in Kurven (max. ~6°), weich
+        FLY.roll += (-0.35 * FLY.om * ks - FLY.roll) * Math.min(1, dt * 2);
+    }
+    // 6.8: Wechsel vorwärts <-> rückwärts (das Tempo geht durch 0): Zielwahl neu, 2D-Zoompunkt in die Mitte
+    function flyDir(rev, now) {
+        FLY.rev = rev;
+        FLY.T = null; FLY.VA = [0, 0]; FLY.glide = null; FLY.gap = false; FLY.lost = 0; FLY.dA = null; FLY.Tt = now;
+        if (!FLY.d3) FLY.A = [0, 0];
+        if (!rev) FLY.out = false;
+    }
     function flyUpdate(now, dt) {
         flyMode();
-        if (FLY.mode === 'random') {
+        flySpeedStep(now, dt);
+        const rev = FLY.sp < 0;
+        if (rev !== !!FLY.rev) flyDir(rev, now);
+        const ks = Math.min(1, Math.abs(FLY.sp) / 0.1);
+        let revTrail = false;
+        if (FLY.mode === 'random' && rev) {
+            // Rückflug: keine Zielwahl (der Weg ist der Kursverlauf bzw. heraus; am Rand bleibt man beim Herauszoomen ohnehin)
+            if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; if (FLY.rec && (T3.lastCam || !FLY.d3)) FLY.recM.push(flyMetrics(V3.probe, now)); }
+            // 3D: Wischen lenkt auch rückwärts (Zoompunkt dreht, der Kurs folgt) – der Kursverlauf gilt danach nicht mehr
+            const du = (FLY.user || 0) - (FLY.userPrev || 0);
+            if (du && FLY.d3) { FLY.A = rot2(FLY.A, du); FLY.userPrev = FLY.user; FLY.userT = now; if (FLY.trail) FLY.trail.length = 0; }
+            revTrail = !!trailAt(Math.log10(S.cam.zoom));
+            if (FLY.d3 && !revTrail) {
+                const ra = Math.hypot(FLY.A[0], FLY.A[1]);
+                if (ra < FLY_RMIN || ra > FLY_RMAX) { const c = Math.max(FLY_RMIN, Math.min(FLY_RMAX, ra)) / Math.max(1e-9, ra); FLY.A = [FLY.A[0] * c, FLY.A[1] * c]; }
+                steerHeading(dt, ks);
+            } else { FLY.om = 0; FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); }
+        } else if (FLY.mode === 'random') {
             if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; flyEdgeSteer(now); }
             // Wischen: Zoompunkt und Ziel um den Fokus drehen (der Kurs folgt gedämpft), danach führt die Automatik
             // von der neuen Richtung aus weiter (2D: Schieben verschiebt das Bild, siehe flyPanned)
             const du = (FLY.user || 0) - (FLY.userPrev || 0);
             if (du && FLY.d3) { FLY.A = rot2(FLY.A, du); if (FLY.T) FLY.T = rot2(FLY.T, du); FLY.userPrev = FLY.user; FLY.userT = now; FLY.Tt = now; }
-            const g = GOV.g, sp = S.flySpeed * g;
+            const g = GOV.g, sp = Math.max(0, FLY.sp) * g;
             // Zoompunkt gleitet zum Ziel: Geschwindigkeit begrenzt, Änderung der Geschwindigkeit weich
             if (FLY.T) {
                 const dx = FLY.T[0] - FLY.A[0], dy = FLY.T[1] - FLY.A[1], d = Math.hypot(dx, dy);
@@ -150,22 +311,17 @@ root.FKFlight = { create(ctx) {
             if (!FLY.d3) {
                 // 2D: kein Kurs, keine Schräglage (klingt aus, falls gerade aus 3D gewechselt)
                 FLY.om = 0; FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3);
-            } else {
-            // Kurs: gedämpfte Drehung zur Richtung des Zoompunkts (kritisch gedämpft, Rate und Beschleunigung begrenzt)
-            const err = angDiff(Math.atan2(FLY.A[0], FLY.A[1]), V3.heading);
-            const lost = Math.min(1, FLY.lost || 0);
-            const wmax = FLY_TURN * (1 + 0.5 * lost);
-            const K = 1.4, acc = Math.max(-FLY_ACC * (1 + lost), Math.min(FLY_ACC * (1 + lost), K * err - 2 * Math.sqrt(K) * FLY.om));
-            FLY.om = Math.max(-wmax, Math.min(wmax, FLY.om + acc * dt));
-            V3.heading += FLY.om * dt;
-            // leichte Schräglage in Kurven (max. ~6°), weich
-            FLY.roll += (-0.35 * FLY.om - FLY.roll) * Math.min(1, dt * 2);
-            }
+            } else steerHeading(dt, ks);
         }
         const z0 = S.cam.zoom;
         const st = flyStep(S.cam, V3.heading, dt);
         setCam(st.cam.cx, st.cam.cy, st.cam.zoom);
-        if (FLY.mode === 'random' && FLY.T) {
+        if (st.rev) {
+            if (FLY.d3 && st.trail) V3.heading = st.heading;
+            // ganz draußen: weich angehalten (der Flug bleibt an, ⇄ fliegt wieder hinein)
+            if (st.out && !FLY.out) { FLY.out = true; toast(t('fly_out'), 2600); emit('fly'); }
+        } else if (FLY.mode === 'random') trailRec();
+        if (FLY.mode === 'random' && !st.rev && FLY.T) {
             // Ziel ist ein Weltpunkt: der Zoom (Fixpunkt A) schiebt es in lokalen Einheiten nach außen, Gleiten verschiebt es
             const q = S.cam.zoom / z0;
             FLY.T = [FLY.A[0] + (FLY.T[0] - FLY.A[0]) * q, FLY.A[1] + (FLY.T[1] - FLY.A[1]) * q];
@@ -357,7 +513,27 @@ root.FKFlight = { create(ctx) {
         return { dA: deAt(FLY.A), dT: deAt(FLY.T), dF: deAt([0, 0]), A: FLY.A ? FLY.A.map(x => +x.toFixed(3)) : null, T: FLY.T ? FLY.T.map(x => +x.toFixed(3)) : null, t: +now.toFixed(0), z: S.cam.zoom, edgeMid: nMid ? edgeMid / nMid : null, inFrac: nAll ? nIn / nAll : null, emptyFrac: nAll ? nEmpty / nAll : null, edgeFrac: nAll ? nEdge / nAll : null, n: nAll, lost: +(FLY.lost || 0).toFixed(2), hasDE: !!pb.hasDE, d3: FLY.d3 };
     }
 
+    // Test (6.8, tests/test_rueck.py): Bodenabstand der 3D-Kamera aus der Sonde – Augenhöhe minus höchstes Gelände im Umkreis
+    // 0,25 um den Fußpunkt (lokale Einheiten = Bildhälften; Geländehöhe wie im Shader höchstens h3d·1,1)
+    function clearance() {
+        const pb = V3.probe, c = T3 && T3.lastCam;
+        if (!pb || !c || !pb.data) return null;
+        const M = probeMap(pb), L0 = V3.L[0], inv = 1 / Math.max(0.3, V3.L[1] - V3.L[0]), hgt = S.h3d * 1.1;
+        let hmax = 0, n = 0;
+        for (let a = 0; a < 16; a++) for (const r of [0, 0.12, 0.25]) {
+            const q = M.toP(c.cam[0] + Math.sin(a * Math.PI / 8) * r, c.cam[1] + Math.cos(a * Math.PI / 8) * r);
+            const i = Math.floor((q[0] / pb.win * 0.5 + 0.5) * pb.w), j = Math.floor((q[1] / pb.win * 0.5 + 0.5) * pb.h);
+            if (i < 0 || j < 0 || i >= pb.w || j >= pb.h) continue;
+            const v = pb.data[j * pb.w + i];
+            if (Number.isNaN(v)) continue;
+            n++;
+            const h = v < 0 ? 0 : Math.max(0, Math.min(1, (Math.log2(1 + (S.formula === 5 ? v % 1000 : v)) - L0) * inv)) * hgt;
+            if (h > hmax) hmax = h;
+        }
+        return { eye: c.cam[2], terr: hmax, clear: c.cam[2] - hmax, n };
+    }
+
     return { link() { ({ GOV, HP, MODE_HOME, Q, S, T3, V3, can3d, clampZoom, emit, look, ready3d, set3d, setCam, setJulia, setMode, smooth01, stopAnims, t, toast } = ctx); },
-             FLY, FLY2D, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, startFly, stopFly };
+             FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, trailAt, turnFly, clearance };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

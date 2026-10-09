@@ -21,6 +21,7 @@ root.FKScheduler = { create(ctx) {
     const MAXDIV = { gpu: 6, cpu: 8 };
     const OVER = 1.5;                          // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
     const OVER_MOVE = 1.2;                     // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
+    const REV_W = 2.5;                         // 6.8 Rückflug: Vorschau-Ebene für Zoom ÷ 2,5 (≈ 1 s bei Tempo 0,4–0,5)
     const SIDE3D = 1600;                       // P2-3: größte Kantenlänge des quadratischen 3D-Rechenpuffers (px)
     // view: Kamera, für die gerechnet wird (Standard: aktuelle). opts: { prefetch, w, h, scale }
     function startJob(key, div, p, view, opts) {
@@ -113,7 +114,7 @@ root.FKScheduler = { create(ctx) {
     }
     // Bekanntes Ziel der laufenden Animation (Flug/Tour/Doppeltipp, Schwung) und Restzeit in s
     function animTarget() {
-        if (FLY.on && !FLY.paused && FLY.mode === 'place' && FLY.target) return { cam: FLY.target, rest: Math.log10(FLY.target.zoom / S.cam.zoom) / Math.max(0.05, S.flySpeed * GOV.g) };
+        if (FLY.on && !FLY.paused && FLY.mode === 'place' && FLY.target && FLY.sp > 0.05) return { cam: FLY.target, rest: Math.log10(FLY.target.zoom / S.cam.zoom) / Math.max(0.05, FLY.sp * GOV.g) };
         if (ctx.flight) return { cam: flightCamAt(ctx.flight, 1), rest: (1 - (ctx.flight.u || 0)) * ctx.flight.dur / 1000 / Math.max(0.3, GOV.g) };
         if (ctx.inertia) {
             const v = Math.hypot(ctx.inertia.vx, ctx.inertia.vy);
@@ -217,6 +218,9 @@ root.FKScheduler = { create(ctx) {
                 const tg = animTarget();
                 if (tg && (viewKey(tg.cam) === job.key || farFrom(job.view, tg.cam).r < 4.5)) cancel = false;
             }
+            // 6.8 Rückflug-Ebene (weiter als die Ansicht, daher nur ein kleiner Teil sichtbar): rechnen lassen, solange sie
+            // noch weiter ist als die Ansicht und nicht zu grob wird
+            if (job.rev && !stale && zr < 1 && zr > 1 / 6 && now - job.t0 < 1500 && FLY.on && FLY.sp < 0) cancel = false;
             if (cancel) { cancelJob(); job = null; }
         }
         if (job) {
@@ -245,6 +249,22 @@ root.FKScheduler = { create(ctx) {
                 const view = predictCam(Math.min(0.3, (RC.estPreviewMs + FADE_MOVE_MS / 2) / 1000));
                 // 3D: jede dritte Vorschau eine ferne Detailstufe (Horizont), jede neunte eine noch weitere
                 RC.farTick = (RC.farTick || 0) + 1;
+                // 6.8 Rückflug: Das Bild wächst nach außen – neu ins Bild kommt der Rand (2D) bzw. das Gelände hinter der Kamera
+                // (3D), die Mitte ist aus den tieferen Ebenen schon scharf. Darum jede zweite Vorschau (3D: die nicht-fernen) eine
+                // gröbere, weitere Ebene für die Kamera in ~1 s (Zoom ÷ REV_W, gleiche Pufferauflösung wie die Vorschau – bei
+                // Ankunft genauso scharf), in 3D um eine Bildhälfte nach hinten versetzt: die CPU rechnet ihre Kacheln von der
+                // Mitte aus, also das Gelände hinter der Kamera zuerst. A/B (Messung): ?revpf=0 = ohne diese Ebenen.
+                if (FLY.on && !FLY.paused && FLY.sp < -0.02 && Q.get('revpf') !== '0' && !(V3.on && RC.farTick % 3 === 0) && RC.farTick % 2 === 0) {
+                    const rd = Math.max(2, RC.previewDiv[p.kind]), zw = Math.max(FLY.mode === 'place' ? FLY.z0 : 1, view.zoom / REV_W) * (1 + 1e-12);
+                    let vw = { cx: view.cx, cy: view.cy, zoom: zw };
+                    if (V3.on) { const u = 1.5 / view.zoom, h = V3.heading; vw = { cx: view.cx - HP.fromNumber(Math.sin(h) * u), cy: view.cy - HP.fromNumber(Math.cos(h) * u), zoom: zw }; }
+                    if (zw < view.zoom * 0.9) {
+                        const rj = startJob(viewKey(vw) + '|rev', rd, p, vw, { preview: true }); rj.part = true; rj.rev = true;
+                        RC.revJobs = (RC.revJobs || 0) + 1;
+                        if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
+                        return;
+                    }
+                }
                 if (V3.on && RC.farTick % 3 === 0) {
                     const far = RC.farTick % 9 === 0 ? 64 : 8, sC = 3 / (view.zoom * canvas.height), sz = Math.max(canvas.width, canvas.height) / (far === 8 ? 2 : 4);
                     startJob(viewKey(view) + '|far' + far, far, p, view, { preview: true, w: Math.ceil(sz), h: Math.ceil(sz), scale: sC * far }).part = true;
