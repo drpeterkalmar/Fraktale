@@ -21,7 +21,7 @@ root.FKScheduler = { create(ctx) {
     const MAXDIV = { gpu: 6, cpu: 8 };
     const OVER = 1.5;                          // Stillstand/Lückenfüller; in Bewegung OVER_MOVE
     const OVER_MOVE = 1.2;                     // mit Vorhersage reicht wenig Überhang (A/B: 1.5 kostet eine Auflösungsstufe)
-    const REV_W = 2.5;                         // 6.8 Rückflug: Vorschau-Ebene für Zoom ÷ 2,5 (≈ 1 s bei Tempo 0,4–0,5)
+    const REV_W = 1.6, REV_W3 = 1.3;           // 6.8 Rückflug: Vorschau-Ebene für Zoom ÷ 1,6 (2D) bzw. ÷ 1,3 hinter der Kamera (3D)
     const SIDE3D = 1600;                       // P2-3: größte Kantenlänge des quadratischen 3D-Rechenpuffers (px)
     // view: Kamera, für die gerechnet wird (Standard: aktuelle). opts: { prefetch, w, h, scale }
     function startJob(key, div, p, view, opts) {
@@ -220,7 +220,7 @@ root.FKScheduler = { create(ctx) {
             }
             // 6.8 Rückflug-Ebene (weiter als die Ansicht, daher nur ein kleiner Teil sichtbar): rechnen lassen, solange sie
             // noch weiter ist als die Ansicht und nicht zu grob wird
-            if (job.rev && !stale && zr < 1 && zr > 1 / 6 && now - job.t0 < 1500 && FLY.on && FLY.sp < 0) cancel = false;
+            if (job.rev && !stale && zr < 1.05 && zr > 1 / 6 && now - job.t0 < 1500 && FLY.on && FLY.sp < 0) cancel = false;
             if (cancel) { cancelJob(); job = null; }
         }
         if (job) {
@@ -250,15 +250,20 @@ root.FKScheduler = { create(ctx) {
                 // 3D: jede dritte Vorschau eine ferne Detailstufe (Horizont), jede neunte eine noch weitere
                 RC.farTick = (RC.farTick || 0) + 1;
                 // 6.8 Rückflug: Das Bild wächst nach außen – neu ins Bild kommt der Rand (2D) bzw. das Gelände hinter der Kamera
-                // (3D), die Mitte ist aus den tieferen Ebenen schon scharf. Darum jede zweite Vorschau (3D: die nicht-fernen) eine
-                // gröbere, weitere Ebene für die Kamera in ~1 s (Zoom ÷ REV_W, gleiche Pufferauflösung wie die Vorschau – bei
-                // Ankunft genauso scharf), in 3D um eine Bildhälfte nach hinten versetzt: die CPU rechnet ihre Kacheln von der
-                // Mitte aus, also das Gelände hinter der Kamera zuerst. A/B (Messung): ?revpf=0 = ohne diese Ebenen.
+                // (3D: der untere Bildrand liegt bis ~1,7 Bildhälften hinter dem Fokus, die normale Vorschau deckt nur ±1,2), die
+                // Mitte ist aus den tieferen Ebenen schon scharf. Darum ist jede zweite Vorschau (3D: die nicht-fernen) eine Ebene
+                // für die Kamera, die als Nächstes kommt: 2D Zoom ÷ 1,6 um die Mitte, 3D Zoom ÷ 1,3 eine Bildhälfte hinter dem
+                // Fokus (die CPU rechnet ihre Kacheln von der Mitte aus – das Gelände hinter der Kamera zuerst), in
+                // Vorschau-Auflösung. Nur wenn dort Lücken oder ein grobes Viertel drohen – die Ebenen des Hinflugs decken den
+                // Anfang des Rückflugs meist schon, die Zusatz-Ebene nähme sonst der normalen Vorschau den Platz (gemessen).
+                // A/B (Messung): ?revpf=0 = ohne diese Ebenen.
                 if (FLY.on && !FLY.paused && FLY.sp < -0.02 && Q.get('revpf') !== '0' && !(V3.on && RC.farTick % 3 === 0) && RC.farTick % 2 === 0) {
-                    const rd = Math.max(2, RC.previewDiv[p.kind]), zw = Math.max(FLY.mode === 'place' ? FLY.z0 : 1, view.zoom / REV_W) * (1 + 1e-12);
+                    const rd = RC.previewDiv[p.kind], zw = Math.max(FLY.mode === 'place' ? FLY.z0 : 1, view.zoom / (V3.on ? REV_W3 : REV_W)) * (1 + 1e-12);
                     let vw = { cx: view.cx, cy: view.cy, zoom: zw };
                     if (V3.on) { const u = 1.5 / view.zoom, h = V3.heading; vw = { cx: view.cx - HP.fromNumber(Math.sin(h) * u), cy: view.cy - HP.fromNumber(Math.cos(h) * u), zoom: zw }; }
-                    if (zw < view.zoom * 0.9) {
+                    let need = V3.on || zw < view.zoom * 0.95;
+                    if (need) { const c = coverage(orderLayers(now, vw), vw, { sig, opaque: true, gx: 8, gy: 16, quantile: 0.25 }); need = c.unc > 0.01 || c.q < 0.6 / rd; }
+                    if (need) {
                         const rj = startJob(viewKey(vw) + '|rev', rd, p, vw, { preview: true }); rj.part = true; rj.rev = true;
                         RC.revJobs = (RC.revJobs || 0) + 1;
                         if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }

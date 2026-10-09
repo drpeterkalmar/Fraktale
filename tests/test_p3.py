@@ -48,7 +48,11 @@ with sync_playwright() as p:
     a = App(p)
     a.page.add_init_script("Object.defineProperty(Document.prototype, 'fullscreenEnabled', { get: () => false });")
     a.open()
-    need(not a.page.is_visible('#btn-fullscreen') and a.page.evaluate("() => document.getElementById('btn-fullscreen2').hidden"), 'ohne Vollbild-Schnittstelle: beide Vollbild-Knöpfe ausgeblendet')
+    # 6.8: ohne Vollbild-Schnittstelle (iPhone) sind beide Knöpfe der Kino-Modus (bis 6.7 ausgeblendet, P3-7) – Klick schaltet ihn
+    kb = a.page.evaluate("() => [document.getElementById('btn-fullscreen').title, document.getElementById('btn-fullscreen2').hidden]")
+    a.page.click('#btn-fullscreen'); time.sleep(0.4)
+    kin = a.page.evaluate("() => [document.body.classList.contains('hudless'), !!document.fullscreenElement]")
+    need(a.page.is_visible('#btn-fullscreen') and kb == ['Kino-Modus', False] and kin == [True, False], f'ohne Vollbild-Schnittstelle: Knopf = Kino-Modus, schaltet das HUD aus ohne Vollbild ({kb}, {kin})')
     need(not a.errors, f'0 Fehler (ohne Vollbild) {a.errors[:3]}')
     a.close()
 print('\n'.join(chk))
