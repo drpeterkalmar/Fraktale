@@ -42,7 +42,7 @@ root.FKCapture = { create(ctx) {
         if (W * H > MAX_PX) { const k = Math.sqrt(MAX_PX / (W * H)); W = Math.floor(W * k); H = Math.floor(H * k); }
         return [Math.min(MAX_SIDE, W), Math.min(MAX_SIDE, H)];
     }
-    function kindNow() { return S.formula === 7 ? 'buddha' : S.formula === 6 ? 'bulb' : V3.on ? '3d' : '2d'; }
+    function kindNow() { return S.formula === 7 ? 'buddha' : ctx.isRay() ? 'bulb' : V3.on ? '3d' : '2d'; }
     // Buddhabrot: nur Bildschirmauflösung (siehe oben)
     function supports(res) { return kindNow() !== 'buddha' || res === 'screen'; }
 

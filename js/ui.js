@@ -236,17 +236,30 @@ function buildModes() {
 }
 // 7.0 Mandelbulb-Panel (Welten-Tab): Exponent, Atmen, Stil, Julia-Bulb, Nebel, Tiefenunschärfe
 function syncBulb() {
-    const BU = A.BULB, on = S.formula === 6;
+    const BU = A.BULB, on = A.isRay();
     $('bulb-panel').hidden = !on;
     if (!on || !BU) return;
-    $('s-bpow').value = BU.B.power0; $('o-bpow').textContent = BU.B.power0.toFixed(2);
+    // 7.0 Etappe 7: Regler je Art – Mandelbulb Exponent 2–16, Mandelbox Skalierung −3…3, Menger ohne Parameter/Julia
+    const k = BU.kindOf(), sp = $('s-bpow');
+    $('bulb-panel').querySelector('h3').textContent = cap(MODE_NAMES()[S.formula] || 'Mandelbulb');
+    sp.closest('label').hidden = k === 2;
+    sp.closest('label').querySelector('span').textContent = t(k === 1 ? 'bulb_scale' : 'bulb_power');
+    if (k === 1) { sp.min = -3; sp.max = 3; sp.value = BU.B.boxS; $('o-bpow').textContent = BU.B.boxS.toFixed(2); }
+    else { sp.min = 2; sp.max = 16; sp.value = BU.B.power0; $('o-bpow').textContent = BU.B.power0.toFixed(2); }
+    $('t-bbreathe').closest('label').hidden = k !== 0;
+    $('t-bjulia').closest('label').hidden = k === 2;
     $('t-bbreathe').checked = S.bulbBreathe;
     $('t-bjulia').checked = BU.B.julia;
     document.querySelectorAll('#seg-bstyle button').forEach(b => b.classList.toggle('on', +b.dataset.v === S.bulbStyle));
     $('s-bfog').value = S.bulbFog; $('o-bfog').textContent = Math.round(S.bulbFog * 100) + ' %';
     $('s-bdof').value = S.bulbDof; $('o-bdof').textContent = S.bulbDof > 0 ? Math.round(S.bulbDof * 100) + ' %' : t('off');
 }
-$('s-bpow').addEventListener('input', (e) => { const BU = A.BULB; BU.B.power0 = BU.B.power = +e.target.value; BU.invalidate(); A.RC.dirty = true; syncBulb(); });
+$('s-bpow').addEventListener('input', (e) => {
+    const BU = A.BULB, v = +e.target.value;
+    if (BU.kindOf() === 1) BU.setBoxS(Math.abs(v) < 1.05 ? (v < 0 ? -1.05 : 1.05) : v);      // |s| ≤ 1 ergibt keinen Körper
+    else { BU.B.power0 = BU.B.power = v; BU.invalidate(); }
+    A.RC.dirty = true; syncBulb();
+});
 $('t-bbreathe').addEventListener('change', (e) => { S.bulbBreathe = e.target.checked; A.saveSettings(); A.RC.dirty = true; syncBulb(); });
 $('t-bjulia').addEventListener('change', (e) => { const BU = A.BULB; BU.B.julia = e.target.checked; BU.invalidate(); A.RC.dirty = true; if (e.target.checked) toast(t('bulb_julia_hint'), 3000); syncBulb(); });
 document.querySelectorAll('#seg-bstyle button').forEach(b => b.addEventListener('click', () => { if (S.bulbStyle !== +b.dataset.v) crossfade(420); S.bulbStyle = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncBulb(); }));
@@ -386,11 +399,11 @@ function syncSet() {
     $('set-color-custom').hidden = S.setCol !== 'custom';
     $('set-color-custom').value = S.setHex;
     // 6.9 Außen: Palette / Grenznah (+ Saumbreite) / Schwarz – nur in den 2D-Welten mit Menge
-    const outOK = S.formula < 5 || S.formula === 6;
+    const outOK = S.formula < 5 || A.isRay();
     document.querySelectorAll('#seg-out button').forEach(b => { b.classList.toggle('on', b.dataset.v === S.outMode); b.disabled = !outOK; });
     $('seg-out').classList.toggle('dim', !outOK);
     $('l-edgew').hidden = S.outMode !== 'edge' || !outOK;
-    $('out-hint').textContent = !outOK ? t('out_hint_na') : S.formula === 6 ? t('out_hint_bulb') : t('out_hint_' + S.outMode) + (S.alpine && S.outMode !== 'pal' ? ' ' + t('out_hint_alp') : '');
+    $('out-hint').textContent = !outOK ? t('out_hint_na') : A.isRay() ? t('out_hint_bulb') : t('out_hint_' + S.outMode) + (S.alpine && S.outMode !== 'pal' ? ' ' + t('out_hint_alp') : '');
     $('t-alpine').checked = S.alpine;
     $('seg-valley').hidden = !S.alpine;
     document.querySelectorAll('#seg-valley button').forEach(b => b.classList.toggle('on', b.dataset.v === S.valley));
@@ -799,7 +812,7 @@ window.addEventListener('keydown', (e) => {
         if (A.FLY.on) A.stopFly(); else if (A.canFly()) A.startFly();
         return;
     }
-    const pan = (dx, dy) => { A.stopFly(); const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
+    const pan = (dx, dy) => { A.stopFly(); if (A.isRay()) { A.BULB.keyOrbit(-dx, dy); return; } const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
     switch (k) {
         case 'ArrowLeft': pan(-1, 0); break; case 'ArrowRight': pan(1, 0); break;
         case 'ArrowUp': pan(0, 1); break; case 'ArrowDown': pan(0, -1); break;

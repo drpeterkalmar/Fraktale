@@ -1,14 +1,14 @@
 {
- "version": "6.8.0",
+ "version": "6.9.1",
  "slowSimMs": 2000.0,
- "doneS": 4.01,
+ "doneS": 4.74,
  "done": true,
  "longTasksOver50": [],
- "maxFrameGapMs": 33.3,
- "idleMaxGapMs": 33.4,
+ "maxFrameGapMs": 146.1,
+ "idleMaxGapMs": 133.4,
  "links": [
-  14.6,
-  1530.1
+  119.8,
+  2210.3
  ],
  "errors": []
 }

@@ -1,8 +1,8 @@
-# 🌀 Fraktal-Explorer 6 – Deep Zoom fürs Handy, auch als 3D-Landschaft
+# 🌀 Fraktal-Explorer 7 – Deep Zoom fürs Handy, 3D-Landschaft und echte 3D-Fraktale
 
 **Live:** https://drpeterkalmar.github.io/Fraktale/ · installierbar als App (PWA), funktioniert offline.
 
-Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Handy flüssig bis in Tiefen von 10³⁰ (GPU) und 10²⁹⁰ (CPU) zoomt – ohne Kachel-Aufbau, ohne Flackern, mit mathematisch geprüften Bildern. Seit 6.1 sieht die Menge aus wie in den bekannten vorgerenderten Zoom-Videos: geschlossen, ruhig, mit glattem Rand. Seit 6.2 kann sie jede Farbe haben – in 3D wird Weiß zum Gletscher, der Alpin-Look macht daraus ein Alpenpanorama mit Wald oder See im Tal – und der Flug gleitet ruhig am Mengenrand in die Tiefe. Seit 6.4 kann das Innere auch bunt sein: jede Knospe, jedes Mini-Mandelbrot in einer eigenen Farbe. Seit 6.6 fliegt der ✈ Flug auch flach in 2D – wie ein endloses Zoom-Video, das ruhig am Rand der Menge in die Tiefe taucht. Seit 6.8 auch rückwärts (auf demselben Weg wieder hinaus), und im Vollbild bleibt nur das Bild. Seit 6.8.1 fliegt der Flug ungestört durch Vollbild und Drehen, und Screenshots gibt es in beliebig hoher Auflösung (bis 1 Gigapixel, in Kacheln nahtlos gerechnet). Seit 6.9 kann das Äußere schwarz bleiben – nur grenznah leuchtend oder ganz schwarz mit bunter Menge.
+Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Handy flüssig bis in Tiefen von 10³⁰ (GPU) und 10²⁹⁰ (CPU) zoomt – ohne Kachel-Aufbau, ohne Flackern, mit mathematisch geprüften Bildern. Seit 6.1 sieht die Menge aus wie in den bekannten vorgerenderten Zoom-Videos: geschlossen, ruhig, mit glattem Rand. Seit 6.2 kann sie jede Farbe haben – in 3D wird Weiß zum Gletscher, der Alpin-Look macht daraus ein Alpenpanorama mit Wald oder See im Tal – und der Flug gleitet ruhig am Mengenrand in die Tiefe. Seit 6.4 kann das Innere auch bunt sein: jede Knospe, jedes Mini-Mandelbrot in einer eigenen Farbe. Seit 6.6 fliegt der ✈ Flug auch flach in 2D – wie ein endloses Zoom-Video, das ruhig am Rand der Menge in die Tiefe taucht. Seit 6.8 auch rückwärts (auf demselben Weg wieder hinaus), und im Vollbild bleibt nur das Bild. Seit 6.8.1 fliegt der Flug ungestört durch Vollbild und Drehen, und Screenshots gibt es in beliebig hoher Auflösung (bis 1 Gigapixel, in Kacheln nahtlos gerechnet). Seit 6.9 kann das Äußere schwarz bleiben – nur grenznah leuchtend oder ganz schwarz mit bunter Menge. **Seit 7.0 ist der Mandelbulb ein echtes 3D-Fraktal-Rendering** – mit Licht, weichen Schatten, Tiefe, Materialien, frei fliegender Kamera und Zoom bis ≈ 8·10⁴ – und Mandelbox und Menger-Schwamm kommen als neue Welten dazu.
 
 ![6.2 Alpin-Look: oben Standard, Mitte Wald, unten See (Zoom 1, 300×, 10⁶)](docs/img/vergleich_alpin_quer.jpg)
 
@@ -22,6 +22,31 @@ Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Ha
 | Einmal tippen | Bedienelemente aus-/einblenden (Vollbild-Genuss); schließt offene Menüs. Im Vollbild/Kino-Modus: Bedienung für 3 s zeigen |
 | Unten: **Welten · Farben · Orte · Teilen · Mehr** | Bottom-Sheet mit allen Einstellungen (Griff ziehen: groß/zu) |
 
+## 💠 Mandelbulb, Mandelbox, Menger-Schwamm (seit 7.0)
+
+![7.0: vorher (6.9) / nachher, Zoom 10² und 10⁴](docs/img/v70_vergleich_hoch.jpg)
+
+Drei echte 3D-Fraktale (Welten-Tab), gerechnet per Raymarching mit Licht und Schatten:
+
+| Geste | Wirkung |
+|---|---|
+| Ein Finger ziehen | um den Körper drehen (mit Schwung) |
+| Zwei Finger spreizen/zusammen | hinein-/herauszoomen auf die Stelle unter den Fingern zu |
+| Doppeltipp | zu dieser Stelle der Oberfläche fliegen (Abstand ÷ 3, Blick dreht hin) |
+| Zwei-Finger-Tipp | herauszoomen ×3 |
+| Lange drücken | **Julia-Bulb**: c = dieser Oberflächenpunkt (Mandelbulb, Mandelbox) |
+| Tippen (Tiefenunschärfe an) | Fokus auf diese Stelle |
+| ✈ | Flug durch die Strukturen (Tempo, ⏪ Rückwärts, Pause, Ziehen lenkt – wie der 2D-Flug) |
+| Desktop | Ziehen/rechte Maustaste drehen, Mausrad zoomt zum Mauszeiger, Pfeile drehen, `Bild↑/↓` zoomt, `R` Startansicht, `Leertaste` Flug |
+
+- **Licht & Material:** Hauptlicht schräg hinter der Kamera, Himmels- und Rückstreulicht, weiche Schatten, Ambient Occlusion, Glanzlicht, Fresnel-Randlicht, filmische Tonkurve. Hintergrund: Verlauf mit Sternen (oder nach **Außen**: schwarz mit Leuchten am Rand / ganz schwarz).
+- **Farbe nach Struktur:** Orbit-Traps (kleinster Abstand der Bahn) wählen die Palettenfarbe – jede App-Palette inkl. eigener; Farbanimation läuft, ohne das Bild neu zu rechnen. Leuchten in Rissen und Kerben. **Stile:** Klassisch, Stein, Metall, Glas/Neon.
+- **Echtes Hineinzoomen:** Treffer-Genauigkeit wächst mit dem Zoom (je Pixel), Iterationen und Schritte wachsen mit; ab Zoom ~60 wird die erste Iteration um einen Ankerpunkt entwickelt (Taylor), dadurch reicht die float32-Genauigkeit der Grafikkarte bis ≈ 8·10⁴ (ohne Anker zerfällt das Bild dort schon in Körner). Dort hält die Kamera mit Hinweis an. Menger bis ≈ 2·10⁴ und weiter, Mandelbox bis ~10³–10⁴.
+- **Ruhebild:** steht die Kamera, werden 6–24 Bilder mit Subpixel-Versatz, wechselnden Schatten-/AO-Proben (und Linsenpunkten bei Tiefenunschärfe) gemittelt – nach ≈ 0,6–2 s rauscharm (gemessen M1, Mittelklasse-Profil). In Bewegung rechnet die App in angepasster Auflösung (hält ≥ 30 Bilder/s).
+- **Parameter** (Welten → Mandelbulb): Exponent 2–16 stufenlos, **Atmen** (Exponent schwingt), Julia-Bulb an/aus, **Nebel**, **Tiefenunschärfe**; Mandelbox: **Skalierung** −3…3. Alles im Teilen-Link (`b=` Kamera/Parameter, `bs`/`bf`/`bd` Stil/Nebel/Unschärfe) und in „Ansicht merken“ (Rundflug landet exakt). Alte Mandelbulb-Links öffnen weiter.
+- **Screenshot** in beliebiger Auflösung auch für die 3D-Fraktale: Kacheln mit verschobenem Bildausschnitt, volle Ruhebild-Qualität, bitgleich zum Bild aus einem Stück.
+- Geht etwas mit der Grafik nicht (kein Float-Renderziel, Shader-Fehler): einfacher Mandelbulb wie bis 6.9 mit Hinweis. Vergleich: `?bulb=0`. Messhilfen: `?bulbslow=N` (GPU-Last ×N simulieren), `?bulbtay=0` (ohne Anker), `?bulbk=N` (Bilder im Ruhebild). Details: `V7_BERICHT.md`.
+
 ## 🏔 3D & Flug
 
 ![3D-Landschaft im Flug](docs/img/quer_flug_4.jpg)
@@ -37,7 +62,7 @@ Oben rechts **⛰ (3D-Landschaft)** antippen: die aktuelle Ansicht richtet sich 
 | Doppeltipp / Zwei-Finger-Tipp | Zoom ×3 / ÷3 |
 | Leiste unten: **✈ Flug**, ⛰ Höhe, 🧭 Ausrichten | Flug starten/stoppen, Bergehöhe, zurück auf Norden + Standardneigung |
 
-**✈ Flug in 3D:** Die Kamera gleitet über die Landschaft und taucht dabei endlos in die Tiefe (Zoom + Vorwärtsflug); die Berge wirken in jeder Tiefe gleich hoch. Der **Zufallsflug** (✈ in der Leiste) gleitet seit 6.2 ruhig am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) – der Zoompunkt sitzt auf dem Rand, der Kurs dreht gedämpft (höchstens 17 °/s) mit leichter Schräglage; das Innere und leere Ebenen meidet er, aus einer leeren Fläche gleitet er erst zum nächsten Rand. **✈ Flug** an einem gespeicherten Ort (Orte-Tab) startet im Gesamtbild und landet exakt dort – seit 6.6 im aktuellen Modus (in 2D flach, in 3D über die Landschaft). **Tippen = Pause**, **nach links/rechts wischen = lenken**, Tempo-Regler (seit 6.8 mit Rückwärts, siehe unten). Drehrate: `?flyturn=` (rad/s). Bei Mandelbulb (schon 3D) und Buddhabrot gibt es keinen 3D-Schalter und keinen Flug.
+**✈ Flug in 3D:** Die Kamera gleitet über die Landschaft und taucht dabei endlos in die Tiefe (Zoom + Vorwärtsflug); die Berge wirken in jeder Tiefe gleich hoch. Der **Zufallsflug** (✈ in der Leiste) gleitet seit 6.2 ruhig am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) – der Zoompunkt sitzt auf dem Rand, der Kurs dreht gedämpft (höchstens 17 °/s) mit leichter Schräglage; das Innere und leere Ebenen meidet er, aus einer leeren Fläche gleitet er erst zum nächsten Rand. **✈ Flug** an einem gespeicherten Ort (Orte-Tab) startet im Gesamtbild und landet exakt dort – seit 6.6 im aktuellen Modus (in 2D flach, in 3D über die Landschaft). **Tippen = Pause**, **nach links/rechts wischen = lenken**, Tempo-Regler (seit 6.8 mit Rückwärts, siehe unten). Drehrate: `?flyturn=` (rad/s). Bei den 3D-Fraktalen (Mandelbulb, Mandelbox, Menger) gibt es keinen 3D-Schalter, aber seit 7.0 einen eigenen Flug (siehe oben); Buddhabrot hat keinen Flug.
 Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, `D` = 3D an/aus, `V` = Flug (im aktuellen Modus).
 
 **✈ Flug in 2D (seit 6.6):** Der runde **✈-Knopf** sitzt in der flachen Ansicht in der Daumenzone (hochkant unten rechts über der Leiste, quer unten links). Das Bild taucht ruhig und endlos in die Tiefe, der Zoompunkt gleitet am Mengenrand entlang (Filamente, Spiralen, Minibrot-Ränder) und die Bildmitte folgt ihm weich – ohne Berge und Neigung. Gesteuert wird mit derselben Randsuche wie in 3D, nur ohne Kurs: **Tippen = Pause**, **ein Finger ziehen = das Bild schieben** (der Flug taucht an der neuen Stelle weiter), zwei Finger beenden den Flug; im Flug zeigt die Leiste unten **■ Stopp** und das Tempo. **⛰ während des Flugs** wechselt nahtlos in den 3D-Flug, ⛰ aus im 3D-Flug fliegt flach weiter. Der 2D-Flug braucht keine 3D-Shader (nur eine kleine Sonde) und geht deshalb auch dort, wo die 3D-Landschaft nicht läuft. Er fliegt über die GPU-Tiefe 10³⁰ hinaus mit der CPU-Rechnung weiter – dort langsamer und etwas weicher. Vergleich mit 6.5 (Flug nur in 3D): `?fly2d=0`.
@@ -62,7 +87,7 @@ Das HUD oben zeigt Modus und Tiefe (z. B. `1,23 × 10⁹`). Antippen öffnet Det
 
 ## ✨ Funktionen
 
-- **8 Welten:** Mandelbrot, Julia (mit c-Pad: Punkt ziehen, Julia-Menge folgt live; Feinsteller ±0.1…10⁻⁴), Burning Ship, Tricorn, Mandelbrot z³, Newton, Mandelbulb 3D, Buddhabrot.
+- **10 Welten:** Mandelbrot, Julia (mit c-Pad: Punkt ziehen, Julia-Menge folgt live; Feinsteller ±0.1…10⁻⁴), Burning Ship, Tricorn, Mandelbrot z³, Newton, Mandelbulb 3D, Buddhabrot, Mandelbox 3D, Menger-Schwamm 3D.
 - **Farben:** 11 Paletten als echte Farbverlaufs-Vorschau + eigene Palette mit 6 Farbwählern (wird gespeichert), **Farbe der Menge** (Schwarz, Weiß, dunkelste/hellste Palettenfarbe, eigene, **Bunt** mit Inseln/Ringen; 2D + 3D, im Link `sc=`), **Außen** (Palette, Grenznah mit Saumbreite, Schwarz; Link `ou=`), **Alpin-Look (3D)** mit Tal Wald/See/Wiese (Link `al=`), Farbdichte, Farbanimation (an/aus, Tempo von 1 Runde in 1,3 s bis 8,3 min), 3D-Relief, weiche Übergänge/Bänder, Funkeln im Inneren (nur bei dunkler Menge).
 - **Orte:** eigene Orte merken (in jeder Welt, mit Mini-Bild), **▶ Tour** = automatischer Zoom-Flug vom Gesamtbild zum Ziel. Fest eingebaute Sehenswürdigkeiten gibt es seit 5.0.1 nicht mehr – sie lagen alle auf Mandelbrot-Koordinaten und passten in den anderen Welten nicht.
 - **Teilen:** Bild in beliebiger Auflösung (Bildschirm bis 1 Gigapixel, Kachel-Rendern, Web Share API bzw. Download, Beschriftung abschaltbar) oder Link zur exakten Stelle (Deeplink `#m=…&x=…&y=…&z=…`).
@@ -84,6 +109,7 @@ Das HUD oben zeigt Modus und Tiefe (z. B. `1,23 × 10⁹`). Antippen öffnet Det
 - **Flug bleibt am Rand (6.4.1)**: Im Flug Mindest-Rechenanteil (`pumpCtl().minS`, Vorschau in ~0,6 s), Tempo-Bremse bis 30 %, Datenlücke ≠ verloren, vorausschauende Zoombremse über die Distanz des Zoompunkts zum Rand, verloren: drehen statt seitlich gleiten (`?flyhold=0` = 6.4.0).
 - **Flug am Mengenrand (6.2)**: Die 3D-Sonde liefert neben der Höhe die Distanz zur Menge (8 Bit im selben Auslesewert, im Flug alle 150 ms, Positionen auf die aktuelle Kamera umgerechnet). Der Zoompunkt wird auf Stellen ≤ 0,04 Bildhälften am Rand gelegt, mit jeder Sonde nachgeführt und nur mit Hysterese neu gewählt; der Kurs folgt ihm kritisch gedämpft. Im 3D-Modus begrenzt der Rechen-Regler sein Budget auf einen Bildtakt (vorher bis 8 → Flug ruckelte; `?flycap=0` = alt).
 - **Screenshot in Kacheln (6.8.1)** (`js/capture.js`, `js/png-worker.js`): Kacheln ≤ GPU-Maximum (Handy 1024, sonst 2048 px), Streifen von oben nach unten; 2D: Rechenpuffer mit 4 px Rand + Anzeige-Pass je Kachel, Pixelversatz `u_pxoff` (Rechen-Shader) und Bildlage `u_vp` (Anzeige/Mandelbulb) machen jede Kachel bitgleich zum ganzen Bild; 3D: `T3.capFrame` mit Projektions-Transformation `u_vt` (Gelände-Vertex-Shader, Himmel, Vignette), gleicher Kamera und gleichem Gitter, Mittelung wie im Stillstand, Rand für Bloom/Schärfen. Der Planer pausiert, die Ansicht steht; gerechnet wird in Häppchen im App-Takt.
+- **3D-Fraktale (7.0)** (`js/bulb.js`): Kamera in f64 (Position, Gieren, Nicken), Raymarching mit Kegel-Epsilon in einer umhüllenden Kugel; Marsch-Pass schreibt in drei RGBA16F-Ziele palettenfreie Lichtterme (diffus, Zusatzlicht, Leuchten/Halo) und den Paletten-Index × Deckung – der Post-Pass wendet Palette, Stil-Albedo, Tonkurve an (Farbanimation ohne Neuberechnung, Mittelung linear). Exponent 8 ohne Winkelfunktionen (Polynom). Taylor-Anker: F(P0), Jacobi- und Hesse-Matrix in JS (f64), Shader rechnet die erste Iteration aus δ = p − P0. Bewegungsbild in adaptiver Skala (Bildrate), Ruhebild in Streifen per Fence getaktet, Zahl der Durchgänge nach gemessener Dauer. Antippen/Zoom/Kollision/Flug-Sonde mit derselben Distanzschätzung in JS. Mandelbox (Kasten-/Kugelfaltung), Menger (Kreuz-Schnitte je Stufe) mit derselben Technik.
 - **CPU-Pfad** (`js/tile-worker.js`): gleicher Algorithmus in f64 für Zoom > 10³⁰, Newton-Tiefzoom, als Fallback (Rechenweg „CPU") und für die exakte Nachrechnung. Worker-Zahl = Kerne − 1.
 - **PWA** (`manifest.webmanifest`, `sw.js`): versionierter Cache (`fraktale-<Version>`), jede Datei mit `?v=<Version>`, HTML network-first. Worker-URLs hängen automatisch an `APP_VERSION`.
 
@@ -110,7 +136,12 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
-**Version 6.9.1** – Zwischenstand 7.0: neuer Mandelbulb (Details im Abschnitt 7.0, sobald fertig)
+**Version 7.0.0** – Mandelbulb richtig + Mandelbox + Menger-Schwamm
+- **Mandelbulb neu** (siehe Abschnitt oben): Licht, weiche Schatten, AO, Glanz, Fresnel, Farbe nach Struktur in der App-Palette, vier Stile, Hintergrund nach „Außen“; freie Kamera mit Doppeltipp-Anflug; echtes Hineinzoomen mit neuen Details bis ≈ 8·10⁴ (Taylor-Anker gegen die float32-Grenze, gemessen: ohne Anker dort körnig); Ruhebild gemittelt; ✈ Flug an der Oberfläche (sucht raue, strukturreiche Stellen, hält Abstand, rückwärts auf demselben Weg, Ganz draußen); Exponent 2–16, Atmen, Julia-Bulb, Nebel, Tiefenunschärfe; Link/Orte mit allen Parametern; Screenshot in Kacheln bitgleich; Rückfall auf das alte Bild bei Grafikfehlern.
+- **Neue Welten:** Mandelbox 3D (Skalierung −3…3) und Menger-Schwamm 3D, gleiche Bedienung, Flug, Ruhebild, Screenshot.
+- **Bildrate** (M1, Pixel-7-Ansicht, Mittelklasse-Profil: CPU ×4, DPR 2,6, Ausgewogen): Drehen gesamt/nah 60/49 (hoch) bzw. 60/50 (quer) Bilder/s, Flug 51,5/50,2; mit simulierter 4× langsamerer GPU (`?bulbslow=4`) 57/47 bzw. 56,5/46,6, Flug 47,5/42,8 – die Auflösung im Bewegungsbild sinkt automatisch. Ruhebild fertig nach 0,6 s (gesamt) bzw. 1,6–2,1 s (nah); mit 4× langsamerer GPU 2,3–7,4 s mit weniger Durchgängen. Details: `V7_BERICHT.md`.
+
+**Version 6.9.1** – Zwischenstand 7.0: neuer Mandelbulb
 - Mandelbulb mit Licht (Haupt-, Himmels-, Rückstreulicht), weichen Schatten, Ambient Occlusion, Glanz und Randlicht; Farbe nach Struktur (Orbit-Traps) in der App-Palette inkl. Farbanimation; Stile Klassisch/Stein/Metall/Glas-Neon; freie Kamera (Ziehen = drehen, zwei Finger = zoomen, Doppeltipp = zur Stelle fliegen); echtes Hineinzoomen bis ≈ 4·10⁴ mit neuen Details; Ruhebild gemittelt; ✈ Flug an der Oberfläche; Exponent 2–16, Atmen, Julia-Bulb (Langdruck), Nebel, Tiefenunschärfe; Screenshot in Kacheln. Rückfall auf das einfache Bild bis 6.9, wenn die Grafik es nicht kann.
 
 **Version 6.9.0** – Außen: Palette, Grenznah oder Schwarz + langsamere Farbanimation

@@ -19,11 +19,17 @@ with sync_playwright() as p:
     a.open(); pg = a.page
     pg.evaluate("() => document.body.classList.add('immersive')")
     pg.wait_for_timeout(800)
-    for i in range(8):
+    for i in range(10):
         if only and f'm{i}' not in only: continue
         pg.evaluate(f"() => window.__fraktal.setMode({i})")
-        if i in (6, 7):
-            pg.wait_for_timeout(4000 if i == 7 else 1500)
+        if i in (6, 8, 9):
+            # 7.0 Strahlen-Welten: warten, bis das Ruhebild fertig gemittelt ist
+            for k in range(200):
+                inf = pg.evaluate("() => window.__fraktal.BULB.info()")
+                if inf.get('still', 0) >= inf.get('K', 99): break
+                pg.wait_for_timeout(150)
+        elif i == 7:
+            pg.wait_for_timeout(4000)
         else:
             a.wait_done(120)
         shot(pg, os.path.join(ROOT, 'assets', 'modes', f'{i}.jpg')); print('mode', i)

@@ -53,7 +53,7 @@ root.FKFlight = { create(ctx) {
     const REV_VMAX = 2;           // Rückflug: höchstens so schnell seitlich zum Verlauf (Bildhälften/s)
     function canFly2d(f) {
         const m = f === undefined ? S.formula : f;
-        if (m === 6) return !!ctx.BULB && ctx.BULB.canFly();       // 7.0: Flug durch den Mandelbulb (js/bulb.js)
+        if (ctx.isRay(m)) return !!ctx.BULB && ctx.BULB.canFly();       // 7.0: Flug durch Mandelbulb & Co. (js/bulb.js)
         return FLY2D && !!T3 && m !== 7;
     }
     function canFly(f) { return can3d(f) || canFly2d(f); }
@@ -61,10 +61,10 @@ root.FKFlight = { create(ctx) {
     // opts.d3: in 3D fliegen (Standard: im aktuellen Modus; mit ?fly2d=0 immer 3D wie bis 6.5)
     function startFly(place, opts) {
         const fm = place && place.formula !== undefined ? place.formula : S.formula;
-        if (fm === 6) {
+        if (ctx.isRay(fm)) {
             // 7.0 Mandelbulb: eigener Flug (js/bulb.js); Tempo, Pause, Rückwärts und die Leiste wie im 2D-Flug
             stopAnims();
-            if (S.formula !== 6) setMode(6, true);
+            if (S.formula !== fm) setMode(fm, true);
             if (!ctx.BULB.startFly(place)) return;
             if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && S.cam.zoom < 1.5)) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.5);
             FLY.sp = S.flySpeed; FLY.ramp = null; FLY.rev = FLY.sp < 0; FLY.out = false; FLY.lastDir = Math.sign(FLY.sp) || 1;

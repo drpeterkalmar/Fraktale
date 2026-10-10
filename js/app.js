@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.9.1';
+const APP_VERSION = '7.0.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -22,9 +22,12 @@ const DIRECT_MAX = 1000;        // bis hier direkte f32-Iteration auf der GPU (P
 const GPU_MAX = 1e30;           // f32-Perturbation (Deltas bis ~1e-35 darstellbar)
 const DEEP_MAX = 1e290;         // CPU-f64-Perturbation
 const NEWTON_GPU_MAX = 3000;
-const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
-const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot'];
-const MODE_HOME = [['-0.5', '0', 1], ['0', '0', 1], ['-0.5', '-0.5', 1], ['-0.3', '0', 1], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1], ['-0.5', '0', 1]];
+const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6, 1e7, 1e7];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
+const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot', 'mandelbox', 'menger'];
+// 7.0: Strahlen-Welten (3D-Fraktale per Raymarching, js/bulb.js): Mandelbulb, Mandelbox, Menger-Schwamm
+const RAY = [6, 8, 9];
+const isRay = (f) => RAY.includes(f === undefined ? S.formula : f);
+const MODE_HOME = [['-0.5', '0', 1], ['0', '0', 1], ['-0.5', '-0.5', 1], ['-0.3', '0', 1], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1], ['-0.5', '0', 1], ['0', '0', 1], ['0', '0', 1]];
 
 function autoIter(zoom) { const l = Math.log10(zoom + 1); return Math.min(30000, Math.max(300, Math.floor(l * l * 50))); }
 
@@ -58,7 +61,7 @@ function deActive() { return (S.deOn || S.outMode === 'edge') && S.formula !== 5
 function deMaskOn() { return S.deOn && S.formula !== 5; }
 // 6.9 Außen: 0 Palette, 1 Grenznah, 2 Schwarz – in den 2D-Welten mit Menge und (7.0) im Mandelbulb (Hintergrund: Verlauf /
 // Leuchten nahe der Oberfläche / schwarz); nicht Newton, Buddhabrot
-function outActive() { return S.formula < 5 || S.formula === 6 ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
+function outActive() { return S.formula < 5 || isRay() ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
 function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
@@ -378,13 +381,14 @@ function gesture2dFly(b, ax0, ay0, ax, ay, scale, n) {
 }
 function zoomAt(x, y, f) {
     stopAnims();
+    if (isBulb()) { BULB.keyZoom(f); return; }
     flyTo(null, null, S.cam.zoom * f, { anchor: { x, y }, duration: 0.42 });
 }
 
 // ------------------------------------------------------------------ Tour (Auto-Zoom zu einem Ort)
 function startTour(p) {
     stopAnims();
-    if (p.formula === 6) { setMode(6, true); if (p.b) BULB.tourTo(p.b, 7); return; }
+    if (isRay(p.formula)) { setMode(p.formula, true); if (p.b) BULB.tourTo(p.b, 7); return; }
     setMode(p.formula || 0, true);
     if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
     const home = MODE_HOME[S.formula];
@@ -408,8 +412,8 @@ function setMode(m, keepView) {
         setCam(HP.fromString(h[0]), HP.fromString(h[1]), h[2]);
         S.iterManual = false;
     } else setCam(S.cam.cx, S.cam.cy, S.cam.zoom);
-    if (m !== prev) { markFramesForeign(); buddhaReset(); if (FLY.on && (m === 6 || prev === 6)) stopFly(); }   // 7.0: Mandelbulb hat einen eigenen Flug
-    if (m === 6 && (!keepView || m !== prev)) BULB.home();
+    if (m !== prev) { markFramesForeign(); buddhaReset(); if (FLY.on && (isRay(m) || isRay(prev))) stopFly(); }   // 7.0: Mandelbulb hat einen eigenen Flug
+    if (isRay(m) && (!keepView || m !== prev)) BULB.home();
     invalidate('mode');
     emit('mode');
 }
@@ -426,7 +430,7 @@ function setIterAuto(on) { S.iterManual = !on; if (!on) S.iterValue = currentMax
 // ------------------------------------------------------------------ Render-Plan
 function plan() {
     const f = S.formula, z = S.cam.zoom;
-    if (f === 6) return { kind: 'bulb' };
+    if (isRay(f)) return { kind: 'bulb' };
     if (f === 7) return { kind: 'buddha' };
     const rcpu = S.renderer === 'cpu' || forceCPU;
     if (f === 5) return z <= NEWTON_GPU_MAX && !rcpu ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
@@ -580,7 +584,7 @@ const MAXL3 = T3 ? T3.N3 : MAXL;         // P2-3: Ebenen-Höchstzahl in 3D
 const MAX_TILT = 60 * Math.PI / 180;
 const V3 = { on: false, mix: 0, dir: 0, tilt: 42 * Math.PI / 180, heading: 0, L: [4, 9], Lt: null, probeT: 0, probe: null,
              accKey: null, accN: 0, accPending: false, keyT: 0, animTick: 0, moved: false, accMs: null, turnA: 0, turnT: 0 };   // 6.8 turnA/turnT: Blick umgedreht (Flug)
-function can3d(f) { return !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
+function can3d(f) { const m = f === undefined ? S.formula : f; return !!T3 && m !== 7 && !isRay(m); }
 // 6.3: 3D wird erst eingeblendet, wenn alle Shader dafür fertig übersetzt sind (T3.ready fragt nicht blockierend,
 // pro Bild). Bis dahin bleibt das 2D-Bild bedienbar, der ⛰-Knopf zeigt „3D wird vorbereitet …“ (V3.prep = Startzeit).
 // Unter Windows (Direct3D 11) kann das Übersetzen Sekunden dauern – vorher hing der Tab so lange.
@@ -1167,6 +1171,7 @@ const CTX = {
     get invalidate() { return invalidate; },
     get isDone() { return isDone; },
     get BULB() { return BULB; },
+    get isRay() { return isRay; },
     get stopFly() { return stopFly; },
     get setFlySpeed() { return setFlySpeed; },
     get RM() { return RM; },
@@ -1186,7 +1191,7 @@ const { governorUpdate, schedule } = M_Scheduler;
 const M_Capture = self.FKCapture.create(CTX);
 const shotStep = (now) => M_Capture.step(now);
 const BULB = self.FKBulb.create(CTX);          // 7.0 Mandelbulb (js/bulb.js)
-const isBulb = () => S.formula === 6;
+const isBulb = () => isRay();
 // MODULE_LINK
 // Module verknüpfen
 M_Scheduler.link();
@@ -1209,7 +1214,7 @@ const API = {
     shot: { plan: (o) => M_Capture.plan(o), size: (o) => M_Capture.shotSize(o), cancel: () => M_Capture.cancel(), busy: () => M_Capture.busy(), supports: (r) => M_Capture.supports(r), kind: () => M_Capture.kindNow(), devSize: () => M_Capture.devSize() },
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
     RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, dblTapHook: null, clearance,
-    BULB,
+    BULB, isRay,
     // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel
     // einer gültigen Ebene, 0 = Lücke (kein Bild) – für „Nachladen hinter der Kamera“
     coverAt(pts) {
@@ -1248,10 +1253,10 @@ const API = {
         return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
             const ms = qs.map(q => gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); qs.forEach(q => gl.deleteQuery(q)); res({ min: +Math.min(...ms).toFixed(2), max: +Math.max(...ms).toFixed(2), scale: T3.scale }); }; poll(); });
     },
-    goHome() { const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
+    goHome() { if (isBulb()) { stopFly(); BULB.goHome(); return; } const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
     goTo(p) {
         if ((p.formula || 0) !== S.formula) setMode(p.formula || 0, true);
-        if (p.formula === 6) { if (p.b) BULB.tourTo(p.b, 1.2); return; }
+        if (isRay(p.formula)) { if (p.b) BULB.tourTo(p.b, 1.2); return; }
         if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
         S.iterManual = !!p.iter; if (p.iter) S.iterValue = p.iter;
         flyTo(HP.fromString(p.cx), HP.fromString(p.cy), +p.zoom);

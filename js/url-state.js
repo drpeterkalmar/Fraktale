@@ -21,7 +21,7 @@ root.FKUrlState = { create(ctx) {
         if (S.alpine) p.set('al', S.valley[0]);
         const ou = outParam(); if (ou) p.set('ou', ou);
         // 7.0 Mandelbulb: Kamera (Position, Gieren, Nicken), Exponent, Julia-c; Stil/Nebel/Tiefenunschärfe, wenn nicht Standard
-        if (S.formula === 6 && ctx.BULB) {
+        if (ctx.isRay() && ctx.BULB) {
             p.set('b', ctx.BULB.stateString());
             if (S.bulbStyle) p.set('bs', S.bulbStyle);
             if (S.bulbFog !== 0.15) p.set('bf', S.bulbFog);
@@ -34,7 +34,7 @@ root.FKUrlState = { create(ctx) {
         if (!h) return false;
         const p = new URLSearchParams(h);
         if (!p.has('x')) return false;
-        const m = Math.max(0, Math.min(7, parseInt(p.get('m') || '0', 10) || 0));
+        const m = Math.max(0, Math.min(9, parseInt(p.get('m') || '0', 10) || 0));
         S.formula = m;
         if (p.has('jx')) S.julia = { x: HP.fromString(p.get('jx')), y: HP.fromString(p.get('jy') || '0') };
         if (p.has('p')) S.palette = PAL.indexOf(p.get('p'));
@@ -47,8 +47,12 @@ root.FKUrlState = { create(ctx) {
         // von Minuten (Windows-Watchdog -> Kontextverlust)
         if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
         setCam(HP.fromString(p.get('x')), HP.fromString(p.get('y') || '0'), parseFloat(p.get('z')) || 1);
-        if (m === 6 && ctx.BULB) {
-            if (!(p.has('b') && ctx.BULB.applyState(p.get('b')))) ctx.BULB.applyLegacy(parseFloat(p.get('x')) || 0, parseFloat(p.get('y')) || 0, parseFloat(p.get('z')) || 1);
+        if (ctx.isRay(m) && ctx.BULB) {
+            // ohne b= : Mandelbulb-Link bis 6.9 (x/y = Drehung, z = Abstand), sonst Startansicht
+            if (!(p.has('b') && ctx.BULB.applyState(p.get('b')))) {
+                if (m === 6) ctx.BULB.applyLegacy(parseFloat(p.get('x')) || 0, parseFloat(p.get('y')) || 0, parseFloat(p.get('z')) || 1);
+                else ctx.BULB.home();
+            }
             S.bulbStyle = Math.max(0, Math.min(3, parseInt(p.get('bs') || '0', 10) || 0));
             S.bulbFog = p.has('bf') ? Math.max(0, Math.min(1, +p.get('bf') || 0)) : 0.15;
             S.bulbDof = p.has('bd') ? Math.max(0, Math.min(1, +p.get('bd') || 0)) : 0;

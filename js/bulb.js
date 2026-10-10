@@ -71,6 +71,8 @@ uniform mat3 u_J;           // Jacobi-Matrix von F in P0
 uniform mat3 u_H[3];        // Hesse-Matrizen der drei Komponenten
 uniform float u_tayR;       // Gültigkeitsradius
 uniform float u_dr1;        // Ableitung nach dem ersten Schritt in P0 (skalar wie die Distanzschätzung)
+uniform int u_kind;         // 7.0 Etappe 7: 0 Mandelbulb, 1 Mandelbox, 2 Menger-Schwamm
+uniform float u_boxS;       // Mandelbox: Skalierung
 layout(location = 0) out vec4 o0;
 layout(location = 1) out vec4 o1;
 layout(location = 2) out vec4 o2;
@@ -86,8 +88,47 @@ vec3 bulbPow(vec3 w, float r, out float rp) {
     float st = sin(th);
     return rp * r * vec3(st * sin(ph), cos(th), st * cos(ph));
 }
+// Mandelbox (Kastenfaltung, Kugelfaltung, Skalierung): Abstandsschätzung |z| / |dr|
+float deBox(vec3 p) {
+    vec3 c = u_julia == 1 ? u_jc : p;
+    vec3 z = p;
+    float dr = 1.0;
+    vec4 tr = vec4(abs(z), dot(z, z));
+    for (int i = 0; i < 64; i++) {
+        if (i >= u_iter) break;
+        z = clamp(z, -1.0, 1.0) * 2.0 - z;
+        float r2 = dot(z, z);
+        if (r2 < 0.25) { z *= 4.0; dr *= 4.0; } else if (r2 < 1.0) { z /= r2; dr /= r2; }
+        z = u_boxS * z + c;
+        dr = dr * abs(u_boxS) + 1.0;
+        tr = min(tr, vec4(abs(z), r2));
+        if (dot(z, z) > 1e5) break;
+    }
+    g_trap = vec4(tr.xyz * 0.25, tr.w);
+    return length(z) / abs(dr);
+}
+// Menger-Schwamm: Würfel, aus dem je Stufe die mittleren Kreuze herausgeschnitten werden (Abstand exakt bis auf die Stufe)
+float deMenger(vec3 p) {
+    vec3 qb = abs(p) - vec3(1.0);
+    float d = length(max(qb, 0.0)) + min(max(qb.x, max(qb.y, qb.z)), 0.0);
+    float s = 1.0;
+    vec4 tr = vec4(0.5, 0.5, 0.5, 1.0);
+    for (int m = 0; m < 24; m++) {
+        if (m >= u_iter) break;
+        vec3 a = mod(p * s, 2.0) - 1.0;
+        s *= 3.0;
+        vec3 r = abs(1.0 - 3.0 * abs(a));
+        float da = max(r.x, r.y), db = max(r.y, r.z), dc = max(r.z, r.x);
+        float cc = (min(da, min(db, dc)) - 1.0) / s;
+        if (cc > d) { d = cc; tr = vec4(abs(a), float(m + 1) * 0.12); }
+    }
+    g_trap = vec4(tr.xyz, tr.w * tr.w);
+    return d;
+}
 // Distanzschätzung. q = Position relativ zur Kamera (q = rd·t): p = u_ro + q; im Taylor-Bereich δ = u_d0 + q
 float deQ(vec3 q) {
+    if (u_kind == 1) return deBox(u_ro + q);
+    if (u_kind == 2) return deMenger(u_ro + q);
     vec3 p = u_ro + q;
     vec3 c = u_julia == 1 ? u_jc : p;
     vec3 w = p;
@@ -355,8 +396,37 @@ function tPow(x, y, z, n) {
     const th = n * Math.acos(Math.max(-1, Math.min(1, y / r))), ph = n * Math.atan2(x, z), rn = Math.pow(r, n), st = Math.sin(th);
     return [rn * st * Math.sin(ph), rn * Math.cos(th), rn * st * Math.cos(ph)];
 }
-// Distanzschätzung in f64 (gleiche Formel wie der Shader); P: { power, julia, jc, iter }
+function deBoxJS(p, P) {
+    const c = P.julia ? P.jc : p, s = P.boxS;
+    let x = p[0], y = p[1], z = p[2], dr = 1;
+    for (let i = 0; i < P.iter; i++) {
+        x = Math.max(-1, Math.min(1, x)) * 2 - x; y = Math.max(-1, Math.min(1, y)) * 2 - y; z = Math.max(-1, Math.min(1, z)) * 2 - z;
+        const r2 = x * x + y * y + z * z;
+        if (r2 < 0.25) { x *= 4; y *= 4; z *= 4; dr *= 4; } else if (r2 < 1) { x /= r2; y /= r2; z /= r2; dr /= r2; }
+        x = s * x + c[0]; y = s * y + c[1]; z = s * z + c[2];
+        dr = dr * Math.abs(s) + 1;
+        if (x * x + y * y + z * z > 1e5) break;
+    }
+    return Math.sqrt(x * x + y * y + z * z) / Math.abs(dr);
+}
+function deMengerJS(p, P) {
+    const qb = [Math.abs(p[0]) - 1, Math.abs(p[1]) - 1, Math.abs(p[2]) - 1];
+    let d = Math.hypot(Math.max(qb[0], 0), Math.max(qb[1], 0), Math.max(qb[2], 0)) + Math.min(Math.max(qb[0], qb[1], qb[2]), 0);
+    let s = 1;
+    const md = (v) => v - 2 * Math.floor(v / 2);
+    for (let m = 0; m < P.iter; m++) {
+        const a = [md(p[0] * s) - 1, md(p[1] * s) - 1, md(p[2] * s) - 1];
+        s *= 3;
+        const r = a.map(v => Math.abs(1 - 3 * Math.abs(v)));
+        const c = (Math.min(Math.max(r[0], r[1]), Math.max(r[1], r[2]), Math.max(r[2], r[0])) - 1) / s;
+        if (c > d) d = c;
+    }
+    return d;
+}
+// Distanzschätzung in f64 (gleiche Formel wie der Shader); P: { kind, power, boxS, julia, jc, iter }
 function deJS(p, P) {
+    if (P.kind === 1) return deBoxJS(p, P);
+    if (P.kind === 2) return deMengerJS(p, P);
     const n = P.power, c = P.julia ? P.jc : p;
     let w = p, m = V.dot(w, w), dr = 1;
     for (let i = 0; i < P.iter; i++) {
@@ -370,7 +440,36 @@ function deJS(p, P) {
     }
     return 0.25 * Math.log(m) * Math.sqrt(m) / dr;
 }
-function boundOf(P) { return P.julia ? 2.2 : (P.power < 3.5 ? 2.2 : (P.power < 6 ? 1.7 : 1.45)); }
+function boundOf(P) {
+    // Mandelbox: Ausdehnung hängt stark von der Skalierung ab (s = 2: Würfel ±6, s = −1,5: ±~2,6) -> abgetastet
+    if (P.kind === 1) return boxExtent(P.boxS || 2, P.julia ? P.jc : null) * 1.08 + 0.05;
+    if (P.kind === 2) return 1.75;
+    return P.julia ? 2.2 : (P.power < 3.5 ? 2.2 : (P.power < 6 ? 1.7 : 1.45));
+}
+// Ausdehnung der Mandelbox (größter Abstand eines Oberflächenpunkts vom Ursprung): Strahlen aus 14 Richtungen (Achsen,
+// Raumdiagonalen) von außen auf den Ursprung zu; zwischengespeichert je Skalierung/Julia-c
+const EXT = new Map();
+function boxExtent(sc, jc) {
+    const key = sc + '|' + (jc ? jc.join(',') : '');
+    if (EXT.has(key)) return EXT.get(key);
+    const P = { kind: 1, boxS: sc, julia: !!jc, jc: jc || [0, 0, 0], iter: 14 };
+    const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    for (const a of [1, -1]) for (const b of [1, -1]) for (const c of [1, -1]) dirs.push(V.norm([a, b, c]));
+    let R = 0.5;
+    for (const d of dirs) {
+        let t = 0;
+        const R0 = 40;
+        for (let i = 0; i < 400; i++) {
+            const p = V.mul(d, R0 - t);
+            const e = deBoxJS(p, P);
+            if (e < 1e-3) { R = Math.max(R, R0 - t); break; }
+            t += e * 0.9;
+            if (t > R0) break;
+        }
+    }
+    EXT.set(key, R);
+    return R;
+}
 // Strahl gegen die Oberfläche (f64). Rückgabe: { t, p, steps, hit }
 function marchJS(ro, rd, P, pix, maxT) {
     const R = boundOf(P);
@@ -389,7 +488,7 @@ function marchJS(ro, rd, P, pix, maxT) {
     return { hit: false, t: Infinity, steps: 600 };
 }
 // Anker für die Entwicklung der ersten Iteration: F(P0), Jacobi J (3×3) und Hesse H_k (je 3×3), Spaltenweise (GLSL mat3)
-function anchorJS(P0, P) {
+function anchorJS(P0, P) {        // (nur Mandelbulb)
     const n = P.power;
     const F = (p) => { const t = tPow(p[0], p[1], p[2], n); const c = P.julia ? P.jc : p; return [c[0] + t[0], c[1] + t[1], c[2] + t[2]]; };
     const K = F(P0);
@@ -423,13 +522,26 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         fov: 50 * Math.PI / 180,
         // Parameter
         // (Stil, Nebel, Tiefenunschärfe, Atmen sind Einstellungen: S.bulbStyle, S.bulbFog, S.bulbDof, S.bulbBreathe)
-        power: 8, power0: 8, julia: false, jc: [0.35, 0.45, -0.25], focus: 0,
+        power: 8, power0: 8, julia: false, jc: [0.35, 0.45, -0.25], focus: 0, boxS: 2,
         // Laufzeit
         anim: null, inertia: null, gest: null, zoom: 1, dSurf: 1.45, limit: false, limitWarned: false,
         ok: null, why: '', key: '', still: null, mot: null, scaleM: 0.6, rows: 0, info: {},
     };
-    const HOME = { pos: [1.38, 1.05, -2.15], yaw: -0.5706, pitch: -0.39 };     // schräg von oben (3/4-Ansicht), Abstand 2,75
+    // Etappe 7: Art des 3D-Fraktals aus der Welt (6 Mandelbulb, 8 Mandelbox, 9 Menger-Schwamm)
+    const KIND = { 6: 0, 8: 1, 9: 2 };
+    const kindOf = () => KIND[S.formula] || 0;
+    // Startansicht: schräg von oben (3/4-Ansicht), Abstand je Art (Mandelbulb 2,76; Mandelbox ~2,1 × Hülle; Menger 4,6)
+    const HDIR = V.norm([1.38, 1.05, -2.15]);
+    function homeOf(k) {
+        const d = k === 1 ? 2.3 * boxExtent(B.boxS, null) : k === 2 ? 4.6 : 2.7621;
+        return { pos: V.mul(HDIR, d), yaw: Math.atan2(-HDIR[0], -HDIR[2]), pitch: Math.asin(-HDIR[1]) };
+    }
+    let HOME = homeOf(0);
     let Z0 = 1.45;                     // Abstandsschätzung der Startansicht (Zoom 1)
+    function setHome() {
+        HOME = homeOf(kindOf());
+        Z0 = deJS(HOME.pos, Object.assign(params(), { iter: iterFor(1) + 2 }));
+    }
 
     // ---------------- Kamera
     // Blickrichtung aus Gieren/Nicken; rt zeigt im Bild nach rechts, up nach oben
@@ -441,8 +553,13 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         return { fw, rt, up: V.dot(up, [0, 1, 0]) < 0 ? V.mul(up, -1) : up };
     }
     // Iterationen in JS (Antippen, Zoom, Kollision) wie im Ruhebild – dieselbe Oberfläche wie im Bild
-    const params = (extra) => ({ power: B.power, julia: B.julia, jc: B.jc, iter: iterFor(B.zoom) + 2 + (extra || 0) });
-    function iterFor(z) { return Math.max(8, Math.min(28, Math.round(8 + 2.6 * Math.log10(Math.max(1, z))))); }
+    const params = (extra) => ({ kind: kindOf(), power: B.power, boxS: B.boxS, julia: B.julia && kindOf() !== 2, jc: B.jc, iter: iterFor(B.zoom) + 2 + (extra || 0) });
+    function iterFor(z) {
+        const lz = Math.log10(Math.max(1, z)), k = kindOf();
+        if (k === 1) return Math.max(10, Math.min(30, Math.round(11 + 2.6 * lz)));      // Mandelbox
+        if (k === 2) return Math.max(4, Math.min(16, Math.round(5 + 2.2 * lz)));        // Menger: eine Stufe je Faktor 3
+        return Math.max(8, Math.min(28, Math.round(8 + 2.6 * lz)));
+    }
     // Strahl durch einen Bildschirmpunkt (CSS-Pixel)
     function rayAt(x, y) {
         const cb = camBasis(), H = ctx.cssH, W = ctx.cssW, tf = Math.tan(B.fov / 2), mn = Math.min(W, H);
@@ -458,8 +575,10 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         S.cam = { cx: S.cam.cx, cy: S.cam.cy, zoom: B.zoom };
     }
     // kleinster erlaubter Abstand: ein Pixel an der Oberfläche ≥ PIXMIN (Taylor-Anker, s. o.)
-    const PIXMIN = +(Q.get('bulbpix') || 3.5e-8);
-    function minDist() { return PIXMIN / (2 * Math.tan(B.fov / 2) / Math.max(1, Math.min(canvas.width, canvas.height))); }
+    const PIXMIN = +(Q.get('bulbpix') || 2e-8);     // gemessen: mit Anker sauber bis ~8·10⁴ (ohne Anker dort schon körnig), 1,6·10⁵ körnig
+    // Mandelbox/Menger ohne Anker: float32 allein (Positionen bis ~6 groß) – Grenze am Bild bestimmt
+    const PIXK = [1, 12, 8];
+    function minDist() { return PIXMIN * PIXK[kindOf()] / (2 * Math.tan(B.fov / 2) / Math.max(1, Math.min(canvas.width, canvas.height))); }
     function setPos(p) {
         // Kollision: nie in die Oberfläche (Abstand ≥ halber Mindestabstand) und nicht beliebig weit weg
         const d = deJS(p, params()), lim = minDist();
@@ -631,6 +750,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     function moving() { return !!(B.anim || B.inertia || B.gest); }
     // (ein per Tipp gesetzter Fokus gilt, bis sich die Kamera bewegt; danach wieder Auto-Fokus auf die Bildmitte)
     function home() {
+        setHome();
         B.pos = HOME.pos.slice(); B.yaw = HOME.yaw; B.pitch = HOME.pitch; B.anim = null; B.inertia = null; B.limit = false;
         ctx.camDirty = true; updateZoom();
     }
@@ -703,16 +823,18 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         g.uniform3fv(L.u_fw, cb.fw); g.uniform3fv(L.u_rt, cb.rt); g.uniform3fv(L.u_up, cb.up);
         g.uniform1f(L.u_tanF, Math.tan(B.fov / 2));
         g.uniform1f(L.u_power, B.power);
+        g.uniform1i(L.u_kind, kindOf());
+        g.uniform1f(L.u_boxS, B.boxS);
         g.uniform1i(L.u_iter, iterFor(zoom) + (o.still ? 2 : 0));
         const lz = Math.log10(Math.max(1, zoom));
         g.uniform1i(L.u_steps, Math.round((o.still ? tr.stepsS : tr.stepsM) * (1 + (o.still ? 0.25 : 0.12) * lz)));
         g.uniform1i(L.u_shN, o.still ? tr.shS : tr.shM);
         g.uniform1i(L.u_aoN, o.still ? tr.aoS : tr.aoM);
-        g.uniform1i(L.u_julia, B.julia ? 1 : 0);
+        g.uniform1i(L.u_julia, B.julia && kindOf() !== 2 ? 1 : 0);
         g.uniform3fv(L.u_jc, B.jc);
-        g.uniform1f(L.u_bound, boundOf(B));
+        g.uniform1f(L.u_bound, boundOf(params()));
         g.uniform1f(L.u_epsK, o.still ? 0.5 : tr.epsM);
-        g.uniform1f(L.u_stepK, B.power < 4 || B.julia ? 0.75 : 0.9);
+        g.uniform1f(L.u_stepK, kindOf() === 2 ? 1.0 : kindOf() === 1 ? 0.85 : (B.power < 4 || B.julia ? 0.75 : 0.9));
         g.uniform1f(L.u_scale, Math.max(1e-9, B.dSurf * 1.1));
         g.uniform1i(L.u_style, S.bulbStyle);
         g.uniform1i(L.u_outM, lk.outM || 0);
@@ -746,7 +868,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     }
     let ANC = null;
     function anchorNow() {
-        if (B.zoom < 60 || Q.get('bulbtay') === '0') { ANC = null; return null; }
+        if (B.zoom < 60 || Q.get('bulbtay') === '0' || B.noTay || kindOf() !== 0) { ANC = null; return null; }     // (B.noTay: Vergleich im Test)
         // Anker = Oberfläche in der Bildmitte (sonst Punkt im Abstand der Oberfläche); neu, wenn er aus dem halben Gültigkeitsradius läuft
         const R0 = 6e-4;
         const center = (() => { const r = rayAt(ctx.cssW / 2, ctx.cssH / 2); const h = marchJS(r.ro, r.rd, params(), r.pix); return h.hit ? h.p : V.add(B.pos, V.mul(r.rd, B.dSurf)); })();
@@ -798,7 +920,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     }
     // Schlüssel: Änderung = neu marschieren (Kamera, Parameter, Größe, Qualität, Stil, Außen); Palette/Farbzyklus nur POST
     function marchKey(lk) {
-        return [B.pos.join(','), B.yaw, B.pitch, B.power, B.julia, B.jc.join(','), S.bulbStyle, S.bulbFog, S.bulbDof, B.focus, canvas.width, canvas.height, S.quality, lk.outM, Math.round(lk.outW)].join('|');
+        return [B.pos.join(','), B.yaw, B.pitch, B.power, S.formula, B.boxS, B.julia, B.jc.join(','), S.bulbStyle, S.bulbFog, S.bulbDof, B.focus, canvas.width, canvas.height, S.quality, lk.outM, Math.round(lk.outW)].join('|');
     }
     // ---------------- Bild je App-Takt
     let lastPost = '';
@@ -1022,7 +1144,8 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     function tourTo(st, dur) {
         const cam = parseState(st);
         if (!cam) return;
-        Object.assign(B, { power0: cam.power, power: cam.power, julia: cam.julia, jc: cam.jc });
+        Object.assign(B, { power0: cam.power, power: cam.power, boxS: cam.boxS, julia: cam.julia, jc: cam.jc });
+        setHome();
         B.pos = HOME.pos.slice(); B.yaw = HOME.yaw; B.pitch = HOME.pitch;
         updateZoom();
         const cb = basisOf(cam.yaw, cam.pitch);
@@ -1039,10 +1162,16 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         B.anim = { t0: performance.now(), dur: dur * 1000, a, P: Q, la: Math.log(V.len(V.sub(a.pos, Q))), lb: Math.log(V.len(V.sub(endPos, Q))),
                    dir0: V.norm(V.sub(a.pos, Q)), dir1: V.norm(V.sub(endPos, Q)), yaw1: a.yaw + dy, pitch1, endPos };
     }
+    // Zurück zur Startansicht (Taste R, Knopf „Zurücksetzen“): weiche Fahrt um den Ursprung
+    function goHome() { B.inertia = null; animTo([0, 0, 0], HOME.pos, HOME.yaw, HOME.pitch, 0.9); }
+    // Tasten: Pfeile drehen um den Drehpunkt, Bild↑/↓ zoomen
+    function keyOrbit(dx, dy) { B.anim = null; orbit({ pos: B.pos, yaw: B.yaw, pitch: B.pitch, pivot: pivotNow() }, dx * 0.15, dy * 0.1); }
+    function keyZoom(f) { flyToPoint(pivotNow(), f, 0.42, false); }
     // ---------------- Zustand für Link und Orte: Position (x,y,z), Gieren, Nicken; Exponent; Julia-c
     const f10 = (v) => (+v).toPrecision(12).replace(/\.?0+(e|$)/, '$1');
     function stateString() {
-        return [B.pos[0], B.pos[1], B.pos[2], B.yaw, B.pitch].map(f10).join(',') + ';' + f10(B.power0) + (B.julia ? ';' + B.jc.map(f10).join(',') : '');
+        const prm = kindOf() === 1 ? B.boxS : B.power0;
+        return [B.pos[0], B.pos[1], B.pos[2], B.yaw, B.pitch].map(f10).join(',') + ';' + f10(prm) + (B.julia && kindOf() !== 2 ? ';' + B.jc.map(f10).join(',') : '');
     }
     function parseState(str) {
         if (!str) return null;
@@ -1050,13 +1179,16 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const v = a.split(',').map(Number);
         if (v.length < 5 || v.some(x => !isFinite(x))) return null;
         const j = jc ? jc.split(',').map(Number) : null;
-        return { pos: v.slice(0, 3), yaw: v[3], pitch: Math.max(-1.45, Math.min(1.45, v[4])), power: Math.max(2, Math.min(16, +pw || 8)),
+        const k = kindOf();
+        return { pos: v.slice(0, 3), yaw: v[3], pitch: Math.max(-1.45, Math.min(1.45, v[4])), power: k === 0 ? Math.max(2, Math.min(16, +pw || 8)) : B.power0,
+                 boxS: k === 1 && isFinite(+pw) && Math.abs(+pw) >= 1.05 ? Math.max(-3, Math.min(3, +pw)) : B.boxS,
                  julia: !!(j && j.length === 3 && j.every(isFinite)), jc: j && j.length === 3 ? j : B.jc };
     }
     function applyState(str) {
         const c = parseState(str);
         if (!c) return false;
-        B.pos = c.pos; B.yaw = c.yaw; B.pitch = c.pitch; B.power0 = B.power = c.power; B.julia = c.julia; B.jc = c.jc;
+        setHome();
+        B.pos = c.pos; B.yaw = c.yaw; B.pitch = c.pitch; B.power0 = B.power = c.power; B.boxS = c.boxS; B.julia = c.julia; B.jc = c.jc;
         B.anim = null; B.inertia = null; ctx.camDirty = true; invalidate(); updateZoom();
         return true;
     }
@@ -1115,11 +1247,14 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     function redraw() { lastPost = ''; present(performance.now(), false); }
     return {
         B, G, V, update, present, redraw, bench, startFly, flyUpdate, flySteer, flyStopped, canFly, stateString, applyState, applyLegacy, tourTo, capTile,
+        goHome, keyOrbit, keyZoom,
         capK: () => Math.max(8, tier().K),
         flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
         params, iterFor, minDist, zoomToward,
         info: () => Object.assign({ ok: B.ok, why: B.why, zoom: B.zoom, dSurf: B.dSurf, iter: iterFor(B.zoom), limit: B.limit, anchor: !!ANC && B.zoom >= 60 }, B.info),
-        link() { ({ R, S, HP, look, toast, t, emit, canvas } = ctx); Z0 = deJS(HOME.pos, { power: 8, julia: false, jc: [0, 0, 0], iter: 10 }); },
+        link() { ({ R, S, HP, look, toast, t, emit, canvas } = ctx); Z0 = deJS(HOME.pos, { kind: 0, power: 8, julia: false, jc: [0, 0, 0], iter: 10 }); },
+        setBoxS(v) { B.boxS = v; setHome(); invalidate(); },
+        kindOf,
     };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

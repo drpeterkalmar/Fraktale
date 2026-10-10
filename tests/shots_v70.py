@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Screenshots 7.0 Mandelbulb für die Sichtprüfung (Pixel 7, echte GPU, Ruhebild fertig gemittelt):
 Gesamtansicht, Nahzoom ~10² und ~10⁴ (wie ein Nutzer per Doppeltipp: Stelle antippen, dann Bildmitte ×3), vier Stile,
+Mandelbox (Skalierung 2/−1,5) und Menger-Schwamm (gesamt + Nahzoom),
 Außen Grenznah/Schwarz, Julia-Bulb, Exponent 4/12, hoch und quer; Vorher/Nachher (6.9: ?bulb=0) als Collage.
 Ablage tests/shots/v70/<hoch|quer>/, Blätter tests/shots/v70/blatt_<hoch|quer>.jpg, vergleich_<hoch|quer>.jpg
-Aufruf: python3 tests/shots_v70.py [--only=hoch|quer] [--set=basis,stile,param]"""
+Aufruf: python3 tests/shots_v70.py [--only=hoch|quer] [--set=basis,stile,param,welten]"""
 import sys, os, time, json
 sys.path.insert(0, os.path.dirname(__file__))
 from e2e_lib import App
@@ -54,7 +55,7 @@ def sheet(fns, cols, s, path):
 
 
 def main():
-    only = arg('only'); sets = (arg('set') or 'basis,stile,param').split(',')
+    only = arg('only'); sets = (arg('set') or 'basis,stile,param,welten').split(',')
     res = {}
     with sync_playwright() as p:
         for land in (False, True):
@@ -77,6 +78,13 @@ def main():
                 pg.evaluate("() => { const A = window.__fraktal; A.S.bulbStyle = 0; A.S.outMode = 'edge'; A.RC.dirty = true; }"); settle(pg); fns.append((shot('aussen_grenznah'), 'Außen grenznah'))
                 pg.evaluate("() => { const A = window.__fraktal; A.S.bulbStyle = 3; A.S.outMode = 'black'; A.RC.dirty = true; }"); settle(pg); fns.append((shot('aussen_schwarz_neon'), 'Außen schwarz + Neon'))
                 pg.evaluate("() => { const A = window.__fraktal; A.S.bulbStyle = 0; A.S.outMode = 'pal'; A.RC.dirty = true; }")
+            if 'welten' in sets:
+                # Etappe 7: Mandelbox (Skalierung 2 und −1,5) und Menger-Schwamm, Gesamt und Nahzoom
+                for m, nm, js in ((8, 'mandelbox', ''), (8, 'mandelbox_m15', 'BU.setBoxS(-1.5);'), (9, 'menger', '')):
+                    pg.evaluate(f"() => {{ const A = window.__fraktal, BU = A.BULB; A.setMode({m}); {js} BU.home(); }}"); time.sleep(1.0)
+                    inf = settle(pg); fns.append((shot(nm + '_gesamt'), nm)); res[tag + '_' + nm] = inf
+                    zoom_to(pg, 300 if m == 8 else 3000, 0.5, 0.4); inf = settle(pg); fns.append((shot(nm + '_zoom'), nm + ' %.3g' % inf['zoom']))
+                pg.evaluate("() => { const A = window.__fraktal; A.BULB.setBoxS(2); A.setMode(6); }"); time.sleep(1.0)
             if 'param' in sets:
                 pg.evaluate("() => window.__fraktal.BULB.home()")
                 for pw in (4, 12):
@@ -88,7 +96,7 @@ def main():
                 pg.evaluate("() => { const A = window.__fraktal; A.S.bulbDof = 0; A.S.bulbFog = 0.15; A.RC.dirty = true; }")
             res[tag + '_errors'] = a.errors
             a.close()
-            if fns: sheet(fns, 4, 0.32 if not land else 0.25, os.path.join(OUT, f'blatt_{tag}.jpg'))
+            if fns: sheet(fns, 5 if not land else 4, 0.3 if not land else 0.25, os.path.join(OUT, f'blatt_{tag}.jpg'))
             # Vorher (6.9, ?bulb=0 = einfacher Mandelbulb) / Nachher, gleiche Ansicht
             if 'basis' in sets:
                 b = App(p, landscape=land, query='nosw&noanim&bulb=0').open()

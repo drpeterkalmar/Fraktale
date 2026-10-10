@@ -1,0 +1,103 @@
+{
+ "tag": "v700a",
+ "ori": "quer",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "headed": true,
+ "runs": {
+  "balanced_slow1": {
+   "drehen_gesamt": {
+    "fps": 60.0,
+    "p95": 18.1,
+    "gt50": 0,
+    "n": 362,
+    "scale": 0.7,
+    "still": {
+     "first_s": 0.13,
+     "done_s": 0.58,
+     "K": 12
+    },
+    "gpu_mot_ms": 7.41,
+    "gpu_still_ms": 32.03,
+    "px": [
+     1175,
+     577
+    ]
+   },
+   "drehen_nah300": {
+    "fps": 49.8,
+    "p95": 33.5,
+    "gt50": 1,
+    "n": 304,
+    "scale": 0.7,
+    "still": {
+     "first_s": 0.31,
+     "done_s": 1.56,
+     "K": 12
+    },
+    "gpu_mot_ms": 49.38,
+    "gpu_still_ms": 140.67,
+    "px": [
+     1175,
+     577
+    ]
+   },
+   "flug": {
+    "fps": 50.2,
+    "p95": 33.6,
+    "gt50": 6,
+    "n": 603,
+    "zoom": 2848.0,
+    "scale": 0.28
+   },
+   "errors": []
+  },
+  "balanced_slow4": {
+   "drehen_gesamt": {
+    "fps": 56.5,
+    "p95": 33.2,
+    "gt50": 0,
+    "n": 341,
+    "scale": 0.7,
+    "still": {
+     "first_s": 1.16,
+     "done_s": 2.5,
+     "K": 12
+    },
+    "gpu_mot_ms": 11.39,
+    "gpu_still_ms": 35.18,
+    "px": [
+     1175,
+     577
+    ]
+   },
+   "drehen_nah300": {
+    "fps": 46.6,
+    "p95": 34,
+    "gt50": 5,
+    "n": 285,
+    "scale": 0.3631141071711501,
+    "still": {
+     "first_s": 0.89,
+     "done_s": 4.68,
+     "K": 6
+    },
+    "gpu_mot_ms": 17.37,
+    "gpu_still_ms": 170.87,
+    "px": [
+     609,
+     299
+    ]
+   },
+   "flug": {
+    "fps": 42.8,
+    "p95": 34.8,
+    "gt50": 9,
+    "n": 518,
+    "zoom": 1292.5,
+    "scale": 0.28
+   },
+   "errors": []
+  }
+ }
+}
