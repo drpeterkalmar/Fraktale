@@ -236,8 +236,14 @@ def main():
                     im.crop(((W - cw) // 2, (H - ch) // 2, (W + cw) // 2, (H + ch) // 2)).convert('RGB').save(os.path.join(SHOTS, tag + '_mitte.jpg'), quality=88)
                     tw = info['tile'][0]
                     if tw < W:
+                        import numpy as np
                         x0 = max(0, tw - cw // 2)
-                        seam = im.crop((x0, (H - ch) // 2, x0 + cw, (H + ch) // 2)).convert('RGB')
+                        # Ausschnitt an der Kachelkante dort, wo das Bild am meisten Struktur hat (sonst sieht man nur Fläche)
+                        col = np.asarray(im.crop((tw - 8, 0, tw + 8, H)).convert('L'), dtype=np.int16)
+                        act = np.abs(np.diff(col, axis=0)).mean(axis=1)
+                        win = np.convolve(act, np.ones(ch) / ch, mode='valid') if H > ch else np.array([0.0])
+                        y0 = int(np.argmax(win)) if H > ch else 0
+                        seam = im.crop((x0, y0, x0 + cw, y0 + ch)).convert('RGB')
                         seam.save(os.path.join(SHOTS, tag + '_kante.jpg'), quality=88)
                         # Nahtmaß: mittlerer Sprung über die Kante (Spalte tw−1 -> tw) gegen benachbarte Spaltenpaare
                         import numpy as np
@@ -249,6 +255,8 @@ def main():
                     os.remove(path)
                     mres.append(e)
                     print('   ', json.dumps(e, ensure_ascii=False), flush=True)
+                    if sname in ('4x', '8k', '16k'):
+                        need(plan['est']['ms'] / 4 <= info['ms'] <= plan['est']['ms'] * 4, f"{tag}: Schätzung {plan['est']['ms'] / 1000:.0f} s für tatsächlich {info['ms'] / 1000:.0f} s (Faktor ≤ 4)")
                     need(W == plan['W'] and H == plan['H'], f"{tag}: {W} × {H} in {info['ms'] / 1000:.1f} s, {e['bytes'] / 1e6:.1f} MB, {info['tiles']} Kacheln, Speicher (Browser) max. {peak} MB"
                          + (f", Naht {e['naht']['ueber_kante']} gegen {e['naht']['nachbarn']}" if 'naht' in e else ''))
                     if 'naht' in e:

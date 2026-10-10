@@ -1,0 +1,338 @@
+[
+ {
+  "mode": "mandelbrot_tief",
+  "size": "1x",
+  "W": 1280,
+  "H": 720,
+  "datei": "Fraktal_mandelbrot_3.0e9_1280x720_1791612942331.png",
+  "bytes": 1438130,
+  "ms": 759,
+  "wall_s": 0.8,
+  "tiles": 1,
+  "tile": [
+   1280,
+   720
+  ],
+  "stream": false,
+  "dev": "gpu",
+  "mode_rechnung": "perturb",
+  "est": {
+   "ms": 946,
+   "bytes": 1474560,
+   "mp": 0.9
+  },
+  "rss_peak_mb": 436,
+  "margin": 4
+ },
+ {
+  "mode": "mandelbrot_tief",
+  "size": "4x",
+  "W": 5120,
+  "H": 2880,
+  "datei": "Fraktal_mandelbrot_3.0e9_5120x2880_1791612956425.png",
+  "bytes": 19410898,
+  "ms": 13824,
+  "wall_s": 14.0,
+  "tiles": 6,
+  "tile": [
+   2040,
+   2040
+  ],
+  "stream": false,
+  "dev": "gpu",
+  "mode_rechnung": "perturb",
+  "est": {
+   "ms": 12631,
+   "bytes": 15565549,
+   "mp": 14.7
+  },
+  "rss_peak_mb": 1014,
+  "margin": 4,
+  "naht": {
+   "ueber_kante": 3.808,
+   "nachbarn": 4.847
+  }
+ },
+ {
+  "mode": "mandelbrot_tief",
+  "size": "8k",
+  "W": 7680,
+  "H": 4320,
+  "datei": "Fraktal_mandelbrot_3.0e9_7680x4320_1791612980134.png",
+  "bytes": 40982419,
+  "ms": 22832,
+  "wall_s": 23.4,
+  "tiles": 12,
+  "tile": [
+   2040,
+   2040
+  ],
+  "stream": false,
+  "dev": "gpu",
+  "mode_rechnung": "perturb",
+  "est": {
+   "ms": 24959,
+   "bytes": 38667179,
+   "mp": 33.2
+  },
+  "rss_peak_mb": 1481,
+  "margin": 4,
+  "naht": {
+   "ueber_kante": 3.848,
+   "nachbarn": 3.561
+  }
+ },
+ {
+  "mode": "mandelbrot_tief",
+  "size": "16k",
+  "W": 16384,
+  "H": 9216,
+  "datei": "Fraktal_mandelbrot_3.0e9_16384x9216_1791613063252.png",
+  "bytes": 117290982,
+  "ms": 81533,
+  "wall_s": 83.0,
+  "tiles": 81,
+  "tile": [
+   2040,
+   1024
+  ],
+  "stream": true,
+  "dev": "gpu",
+  "mode_rechnung": "perturb",
+  "est": {
+   "ms": 123519,
+   "bytes": 148560857,
+   "mp": 151
+  },
+  "rss_peak_mb": 1580,
+  "margin": 4,
+  "naht": {
+   "ueber_kante": 5.57,
+   "nachbarn": 5.571
+  }
+ },
+ {
+  "mode": "julia",
+  "size": "1x",
+  "W": 1280,
+  "H": 720,
+  "datei": "Fraktal_julia_3.0e0_1280x720_1791613069948.png",
+  "bytes": 902205,
+  "ms": 677,
+  "wall_s": 0.7,
+  "tiles": 1,
+  "tile": [
+   1280,
+   720
+  ],
+  "stream": false,
+  "dev": "gpu",
+  "mode_rechnung": "direct",
+  "est": {
+   "ms": 845,
+   "bytes": 1474560,
+   "mp": 0.9
+  },
+  "rss_peak_mb": 447,
+  "margin": 4
+ },
+ {
+  "mode": "julia",
+  "size": "4x",
+  "W": 5120,
+  "H": 2880,
+  "datei": "Fraktal_julia_3.0e0_5120x2880_1791613077165.png",
+  "bytes": 9990345,
+  "ms": 6787,
+  "wall_s": 6.9,
+  "tiles": 6,
+  "tile": [
+   2040,
+   2040
+  ],
+  "stream": false,
+  "dev": "gpu",
+  "mode_rechnung": "direct",
+  "est": {
+   "ms": 9950,
+   "bytes": 15565549,
+   "mp": 14.7
+  },
+  "rss_peak_mb": 970,
+  "margin": 4,
+  "naht": {
+   "ueber_kante": 4.544,
+   "nachbarn": 4.703
+  }
+ },
+ {
+  "mode": "julia",
+  "size": "8k",
+  "W": 7680,
+  "H": 4320,
+  "datei": "Fraktal_julia_3.0e0_7680x4320_1791613088655.png",
+  "bytes": 20115759,
+  "ms": 10816,
+  "wall_s": 11.0,
+  "tiles": 12,
+  "tile": [
+   2040,
+   2040
+  ],
+  "stream": false,
+  "dev": "gpu",
+  "mode_rechnung": "direct",
+  "est": {
+   "ms": 11095,
+   "bytes": 19905360,
+   "mp": 33.2
+  },
+  "rss_peak_mb": 1393,
+  "margin": 4,
+  "naht": {
+   "ueber_kante": 2.43,
+   "nachbarn": 2.79
+  }
+ },
+ {
+  "mode": "julia",
+  "size": "16k",
+  "W": 16384,
+  "H": 9216,
+  "datei": "Fraktal_julia_3.0e0_16384x9216_1791613116673.png",
+  "bytes": 52393320,
+  "ms": 27534,
+  "wall_s": 28.1,
+  "tiles": 81,
+  "tile": [
+   2040,
+   1024
+  ],
+  "stream": true,
+  "dev": "gpu",
+  "mode_rechnung": "direct",
+  "est": {
+   "ms": 77177,
+   "bytes": 72945208,
+   "mp": 151
+  },
+  "rss_peak_mb": 1305,
+  "margin": 4,
+  "naht": {
+   "ueber_kante": 1.492,
+   "nachbarn": 1.366
+  }
+ },
+ {
+  "mode": "3d",
+  "size": "1x",
+  "W": 1280,
+  "H": 720,
+  "datei": "Fraktal_mandelbrot_2.0e2_1280x720_1791613128691.png",
+  "bytes": 1435861,
+  "ms": 1529,
+  "wall_s": 1.6,
+  "tiles": 1,
+  "tile": [
+   1280,
+   720
+  ],
+  "stream": false,
+  "dev": null,
+  "mode_rechnung": null,
+  "est": {
+   "ms": 1337,
+   "bytes": 2027520,
+   "mp": 0.9
+  },
+  "rss_peak_mb": 475,
+  "margin": 18
+ },
+ {
+  "mode": "3d",
+  "size": "4x",
+  "W": 5120,
+  "H": 2880,
+  "datei": "Fraktal_mandelbrot_2.0e2_5120x2880_1791613140257.png",
+  "bytes": 16974680,
+  "ms": 10975,
+  "wall_s": 11.2,
+  "tiles": 6,
+  "tile": [
+   1920,
+   1920
+  ],
+  "stream": false,
+  "dev": null,
+  "mode_rechnung": null,
+  "est": {
+   "ms": 29371,
+   "bytes": 21402629,
+   "mp": 14.7
+  },
+  "rss_peak_mb": 861,
+  "margin": 64,
+  "naht": {
+   "ueber_kante": 1.988,
+   "nachbarn": 1.959
+  }
+ },
+ {
+  "mode": "3d",
+  "size": "8k",
+  "W": 7680,
+  "H": 4320,
+  "datei": "Fraktal_mandelbrot_2.0e2_7680x4320_1791613159296.png",
+  "bytes": 34236963,
+  "ms": 18352,
+  "wall_s": 18.7,
+  "tiles": 15,
+  "tile": [
+   1848,
+   1848
+  ],
+  "stream": false,
+  "dev": null,
+  "mode_rechnung": null,
+  "est": {
+   "ms": 49982,
+   "bytes": 33821668,
+   "mp": 33.2
+  },
+  "rss_peak_mb": 1328,
+  "margin": 96,
+  "naht": {
+   "ueber_kante": 1.254,
+   "nachbarn": 1.224
+  }
+ },
+ {
+  "mode": "3d",
+  "size": "16k",
+  "W": 16384,
+  "H": 9216,
+  "datei": "Fraktal_mandelbrot_2.0e2_16384x9216_1791613227996.png",
+  "bytes": 83172537,
+  "ms": 67505,
+  "wall_s": 68.4,
+  "tiles": 110,
+  "tile": [
+   1612,
+   1014
+  ],
+  "stream": true,
+  "dev": null,
+  "mode_rechnung": null,
+  "est": {
+   "ms": 184243,
+   "bytes": 124105239,
+   "mp": 151
+  },
+  "rss_peak_mb": 1178,
+  "margin": 208,
+  "naht": {
+   "ueber_kante": 0.528,
+   "nachbarn": 0.61
+  }
+ }
+]

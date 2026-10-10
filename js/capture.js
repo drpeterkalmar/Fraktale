@@ -60,7 +60,7 @@ root.FKCapture = { create(ctx) {
         const W = opts.W || W0, H = opts.H || H0;
         const kind = kindNow();
         const lim = Math.min(glLimit(), MOBILE ? 1024 : 2048);
-        const P = { W, H, kind, cam: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom }, formula: S.formula, label: opts.label === undefined ? S.shotLabel : !!opts.label, time: opts.time, reuse: !!opts.reuse };
+        const P = { W, H, kind, cam: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom }, formula: S.formula, label: opts.label === undefined ? S.shotLabel : !!opts.label, time: opts.time, reuse: !!opts.reuse, test: !!(opts.tile || opts.reuse || opts.time !== undefined) };
         let m = 0, al = 1;
         if (kind === '2d') {
             m = M2D;
@@ -102,25 +102,29 @@ root.FKCapture = { create(ctx) {
     function estimate(P) {
         const mp = P.W * P.H / 1e6, scr = canvas.width * canvas.height / 1e6, r = rates()[P.kind + (P.dev || '')] || {};
         let ms;
+        const frame = Math.max(8, RC.dtEMA || 16.7);       // ein Schritt je App-Bild
         if (P.kind === '2d') {
-            const base = Math.max(30, stats.lastFullMs || stats.gpuFullMs || 400);     // Bildschirmbild fertig (ms)
-            ms = (r.k || 1.3) * base * mp / scr + P.n * 30;
+            // Rechenzeit des letzten fertigen Bildschirmbilds (finale Stufe + exakte Nachrechnung), auf die Pixelzahl hochgerechnet
+            const fx = stats.lastFix && stats.lastFix.ms || 0;
+            const base = Math.max(30, (stats.gpuFullMs || 300) + fx);
+            ms = (r.k || 1.3) * base * mp / scr + P.n * 5 * frame;
         } else if (P.kind === '3d') {
             const tmp = (P.tw + 2 * P.m) * (P.th + 2 * P.m) / 1e6;
-            ms = P.n * P.N * ((r.k || 1) * (14 + 9 * tmp));
-        } else ms = mp * (r.k || 1) * 40;
-        ms += mp * (P.stream ? 70 : 25);                    // Kodieren
+            ms = P.n * (P.N + 2) * Math.max(frame, (r.k || 1) * (20 + 40 * tmp));      // je Mittelungsbild ~40 ms/MP (M1, gemessen)
+        } else ms = mp * (r.k || 1) * 40 + P.n * 3 * frame;
+        ms += mp * (P.stream ? 45 : 25);                    // Kodieren (gemessen M1: Canvas ~25, PNG-Worker ~45 ms/MP)
         const f = Math.max(1, P.H / canvas.height);
         const bpp = (r.bpp || { '2d': 1.6, '3d': 2.2, bulb: 1.0, buddha: 1.2 }[P.kind]) * Math.pow(f, -0.3);
         return { ms: Math.round(ms), bytes: Math.round(mp * 1e6 * bpp), mp: +mp.toFixed(1) };
     }
     function learn(P, ms, bytes) {
+        if (P.W * P.H < 4e6) return;                       // kleine Bilder: Zeit von festen Kosten beherrscht
         try {
             const all = rates(), key = P.kind + (P.dev || ''), e = estimate(P), r = all[key] || {};
             const k0 = r.k || (P.kind === '2d' ? 1.3 : 1);
-            const enc = P.W * P.H / 1e6 * (P.stream ? 70 : 25);
+            const enc = P.W * P.H / 1e6 * (P.stream ? 45 : 25);
             const k = k0 * Math.max(0.05, ms - enc) / Math.max(1, e.ms - enc);
-            all[key] = { k: +(Math.min(20, Math.max(0.05, k0 * 0.5 + k * 0.5))).toFixed(3), bpp: +(bytes / (P.W * P.H) / Math.pow(Math.max(1, P.H / canvas.height), -0.3)).toFixed(3) };
+            all[key] = { k: +(Math.min(4, Math.max(0.25, k0 * 0.5 + k * 0.5))).toFixed(3), bpp: +(bytes / (P.W * P.H) / Math.pow(Math.max(1, P.H / canvas.height), -0.3)).toFixed(3) };
             localStorage.setItem(LS_RATE, JSON.stringify(all));
         } catch (e) { /* egal */ }
     }
@@ -513,7 +517,7 @@ root.FKCapture = { create(ctx) {
         const P = C.P, ms = performance.now() - C.t0;
         const info = { blob, W: P.W, H: P.H, ms: Math.round(ms), tilesMs: Math.round(C.times.tiles || ms), bytes, tiles: P.n, tile: [P.tw, P.th], stream: P.stream, kind: P.kind, dev: P.dev || null, mode: P.mode || null,
                        est: P.est, peakMB: C.peak ? +(C.peak / 1048576).toFixed(1) : null, margin: P.m };
-        if (!C.noLearn) learn(P, ms, bytes);
+        if (!P.test) learn(P, ms, bytes);
         finish(C, null, info);
     }
     // Ende (Erfolg, Abbruch, Fehler): aufräumen, Ansicht wieder freigeben
