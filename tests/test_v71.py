@@ -11,6 +11,7 @@
   G  Exoten über der GPU-Grenze: CPU f64 (Magnet 10⁴), Bild fertig
   H  Lichtbilder: erstes ansehnliches Bild < 1 s, Link mit eigener Flamme, Mutieren, Screenshot in Kacheln, Nebulabrot/Anti,
      CPU-Rückfall (?dens=cpu)
+  I  3D-Welten (Quaternionen-Julia, Kaleidoskop-IFS, Apollonian): Ruhebild, Link mit Parametern, Tour, Flug
 Aufruf: python3 tests/test_v71.py [--only=A,B,…]   (Server: python3 tools/serve.py 8472)
 """
 import sys, os, time, json
@@ -275,8 +276,40 @@ def case_H(p):
     a.close()
 
 
+def case_I(p):
+    print('I  3D-Welten: Quaternionen-Julia, Kaleidoskop-IFS, Apollonian – Bild, Link, Tour, Flug')
+    a = App(p).open(); pg = a.page
+    res['I'] = {}
+    for f, nm in [(16, 'Quaternionen-Julia'), (17, 'Kaleidoskop-IFS'), (18, 'Apollonian')]:
+        pg.evaluate(f"() => window.__fraktal.setMode({f})")
+        t0 = time.time()
+        while time.time() - t0 < 60:
+            inf = pg.evaluate("() => window.__fraktal.BULB.info()")
+            if inf.get('still', 0) >= inf.get('K', 99): break
+            time.sleep(0.2)
+        sd = pg.evaluate(STD)
+        ok = pg.evaluate("() => window.__fraktal.BULB.ready()")
+        res['I'][nm] = dict(still_s=round(time.time() - t0, 1), std=round(sd, 1))
+        check(ok is True and sd > 8 and not a.errors, f'{nm}: Ruhebild nach {time.time() - t0:.1f} s, Streuung {sd:.0f} {a.errors[:2]}')
+    # Link mit Parametern (KIFS: Skalierung/Winkel) – neu laden, Zustand gleich
+    st = pg.evaluate("() => { const A = window.__fraktal, BU = A.BULB; A.setMode(17); BU.B.kp = [2.3, 0.5, -0.4, 0]; BU.invalidate(); return [A.stateURL(), BU.stateString()]; }")
+    pg.goto('about:blank'); a.query = 'nosw&noanim'; pg.goto(st[0].replace('#', '?nosw&noanim#')); pg.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000); time.sleep(1)
+    st2 = pg.evaluate("() => [window.__fraktal.S.formula, window.__fraktal.BULB.stateString(), window.__fraktal.BULB.B.kp]")
+    check(st2[0] == 17 and st2[1] == st[1], f'Link: Kaleidoskop-IFS mit Skalierung/Winkeln wieder da ({st2[2]})')
+    # Tour zu einer Sehenswürdigkeit (Quaternionen-Julia Spirale): Parameter übernommen
+    pg.evaluate("() => { const A = window.__fraktal; A.startTour(A.SIGHTS[16][1]); }"); time.sleep(9)
+    q = pg.evaluate("() => window.__fraktal.BULB.B.qc")
+    check(abs(q[0] + 0.291) < 1e-9 and abs(q[3] - 0.437) < 1e-9, f'Tour: c der Spirale übernommen {q}')
+    # Flug durch den Kugelschaum (Apollonian): Zoom steigt
+    pg.evaluate("() => { const A = window.__fraktal; A.setMode(18); A.S.flySpeed = 0.6; A.startFly(); }"); time.sleep(8)
+    z = pg.evaluate("() => { const A = window.__fraktal; const z = A.S.cam.zoom; A.stopFly(); return [z, A.BULB.info().zoom || z]; }")
+    check(max(z) > 3, f'Flug im Apollonian: Zoom {max(z):.1f}')
+    check(not a.errors, f'keine Fehler {a.errors[:2]}')
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H)]:
+    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H), ('I', case_I)]:
         if ONLY and k not in ONLY:
             continue
         try:

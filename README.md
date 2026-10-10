@@ -95,6 +95,8 @@ Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, 
 - **Link/„Ansicht merken“:** `wp=` mit den Parametern der Welt (z. B. `wp=v1` Celtic, `wp=e3.5_m1` Multibrot, `wp=sAABAB` Lyapunov); ein gemerkter Ort und eine Tour stellen sie wieder her. Alte Links unverändert.
 - Look-Stile (Seide …) gelten auch für Burning-Ship-Familie, Multibrot, Phoenix und Magnet; Außen (Grenznah/Schwarz) für alle Exoten.
 
+**🧊 Weitere 3D-Fraktale (seit 7.1):** mit derselben Technik wie der Mandelbulb (Licht, Schatten, AO, Stile, Ruhebild, ✈ Flug, Orte, Screenshot in Kacheln): **Quaternionen-Julia** (q² + c mit vierdimensionalen Zahlen, 3D-Schnitt; vier Regler für c und „c wandert“ – die Form fließt), **Kaleidoskop-IFS** (nach Knighty: falten, drehen, skalieren – Kristalle, Felsen, Tempel; Regler Skalierung und zwei Winkel) und **Apollonian** (Kugel-Inversionen in der wiederholten Zelle: ein unendlicher Schaum, die Kamera fliegt darin; Regler Stärke). Je Welt drei Sehenswürdigkeiten (Drache, Spirale, Wolke · Kristall, Fels, Tempel · Kugelhallen, Bögen, tiefe Gänge). Parameter im Link (`b=`).
+
 **🔥 Lichtbilder (seit 7.1):** Bilder, die aus Spuren entstehen – wie oft eine Bahn durch jedes Pixel läuft (Histogramm, füllt sich in Bruchteilen einer Sekunde und wird mit der Zeit feiner):
 - **Fraktal-Flammen** (Scott Draves, Apophysis/Electric Sheep): 2–6 Abbildungen mit 16 nichtlinearen Variationen (linear, sinusoidal, spherical, swirl, horseshoe, polar, handkerchief, heart, disc, spiral, hyperbolic, diamond, julia, bubble, fisheye, cylinder), Final-Transformation, Farbe je Transformation. Galerie mit 12 kuratierten Flammen (Sichel, Stern, Eisblume, Nebelwolke, Juwel, Blütenkranz, Yin und Yang, Farnspiralen, Ringe, Portal, Galaxie, Blütenwolke), **🎲 Zufällig** (neue Flamme, entartete werden verworfen, Ansicht passt sich an), **✨ Mutieren** (sanft ändern) und **Langsam verwandeln** (Bildschirmschoner: die erste Abbildung dreht, die Gewichte atmen, das Bild fließt). Die eigene Flamme steht im Link.
 - **Seltsame Attraktoren**: Clifford, Peter de Jong, Svensson, **Lorenz-Schmetterling** (Projektion x/z) mit Reglern a–d (Lorenz: σ, ρ, β, Zeitschritt); Farbe = Richtung der Bewegung, Ansicht aus einer Stichprobe der Ausdehnung.
@@ -109,7 +111,7 @@ Das HUD oben zeigt Modus und Tiefe (z. B. `1,23 × 10⁹`). Antippen öffnet Det
 
 ## ✨ Funktionen
 
-- **16 Welten:** Mandelbrot, Julia (mit c-Pad: Punkt ziehen, Julia-Menge folgt live; Feinsteller ±0.1…10⁻⁴), Burning Ship (+ Celtic, Senkrecht, Büffel), Tricorn, Multibrot zⁿ, Newton (6 Polynome), Lyapunov, Phoenix, Nova, Magnet I/II, Mandelbulb 3D, Mandelbox 3D, Menger-Schwamm 3D, Fraktal-Flammen, Seltsame Attraktoren, Buddhabrot (+ Nebulabrot, Anti-Buddhabrot).
+- **19 Welten:** Mandelbrot, Julia (mit c-Pad: Punkt ziehen, Julia-Menge folgt live; Feinsteller ±0.1…10⁻⁴), Burning Ship (+ Celtic, Senkrecht, Büffel), Tricorn, Multibrot zⁿ, Newton (6 Polynome), Lyapunov, Phoenix, Nova, Magnet I/II, Mandelbulb 3D, Mandelbox 3D, Menger-Schwamm 3D, Quaternionen-Julia 3D, Kaleidoskop-IFS 3D, Apollonian 3D, Fraktal-Flammen, Seltsame Attraktoren, Buddhabrot (+ Nebulabrot, Anti-Buddhabrot).
 - **Farben:** 11 Paletten als echte Farbverlaufs-Vorschau + eigene Palette mit 6 Farbwählern (wird gespeichert), **Farbe der Menge** (Schwarz, Weiß, dunkelste/hellste Palettenfarbe, eigene, **Bunt** mit Inseln/Ringen; 2D + 3D, im Link `sc=`), **Außen** (Palette, Grenznah mit Saumbreite, Schwarz; Link `ou=`), **Alpin-Look (3D)** mit Tal Wald/See/Wiese (Link `al=`), Farbdichte, Farbanimation (an/aus, Tempo von 1 Runde in 1,3 s bis 8,3 min), 3D-Relief, weiche Übergänge/Bänder, Funkeln im Inneren (nur bei dunkler Menge).
 - **Orte:** eigene Orte merken (in jeder Welt, mit Mini-Bild), **▶ Tour** = automatischer Zoom-Flug vom Gesamtbild zum Ziel. Fest eingebaute Sehenswürdigkeiten gibt es seit 5.0.1 nicht mehr – sie lagen alle auf Mandelbrot-Koordinaten und passten in den anderen Welten nicht.
 - **Teilen:** Bild in beliebiger Auflösung (Bildschirm bis 1 Gigapixel, Kachel-Rendern, Web Share API bzw. Download, Beschriftung abschaltbar) oder Link zur exakten Stelle (Deeplink `#m=…&x=…&y=…&z=…`).
@@ -157,6 +159,11 @@ Details, Methode und Grenzfälle: `V5_BERICHT.md`. Tests laufen lokal mit `pytho
 Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 -m http.server 8000` und http://localhost:8000 öffnen. Kein Build-Schritt nötig.
 
 ## 📜 Änderungen
+
+**Version 7.1.3** – Weitere 3D-Fraktale: Quaternionen-Julia, Kaleidoskop-IFS, Apollonian (Etappe 4 von 7.1)
+- Drei neue Welten in der Gruppe 3D mit Licht, Flug, Ruhebild, Orten (9 Sehenswürdigkeiten) und Screenshot in Kacheln (Naht Kaleidoskop-IFS bitgleich); Distanzschätzung je Art in GLSL und f64-JS (Antippen, Zoom, Kollision, Flug).
+- Mandelbox und Menger-Schwamm kamen schon mit 7.0.
+- Geprüft (`tests/test_v71.py` I): Ruhebild ≤ 2 s, Link mit Parametern, Tour übernimmt c, Flug durch den Kugelschaum (Zoom 32 in 8 s).
 
 **Version 7.1.2** – Lichtbilder: Fraktal-Flammen, seltsame Attraktoren, Nebulabrot und Anti-Buddhabrot (Etappe 3 von 7.1)
 - Neue Welten **Fraktal-Flammen** (Galerie mit 12 Flammen, Zufällig, Mutieren, Bildschirmschoner) und **Seltsame Attraktoren** (Clifford, De Jong, Svensson, Lorenz) in der Gruppe „Lichtbilder“, mit Sehenswürdigkeiten (Galerie bzw. 6 Vorlagen) und Rundgang; Buddhabrot-Varianten Nebulabrot und Anti-Buddhabrot.

@@ -113,6 +113,10 @@ def main():
         r = pg.evaluate(CMP, [dict(W=640, H=360, label=False, time=50), dict(W=640, H=360, tile=128, label=False, time=50), 128])
         res['naehte']['Mandelbulb'] = r
         need(r['tiled']['tiles'] > 4 and r['ndiff'] == 0, f"Naht Mandelbulb: {r['tiled']['tiles']} Kacheln, {r['ndiff']} abweichende Werte")
+        pg.evaluate("() => __fraktal.setMode(17)"); time.sleep(2)      # 7.1 Kaleidoskop-IFS (gleicher 3D-Renderer)
+        r = pg.evaluate(CMP, [dict(W=640, H=360, label=False, time=50), dict(W=640, H=360, tile=128, label=False, time=50), 128])
+        res['naehte']['Kaleidoskop-IFS'] = r
+        need(r['tiled']['tiles'] > 4 and r['ndiff'] == 0, f"Naht Kaleidoskop-IFS: {r['tiled']['tiles']} Kacheln, {r['ndiff']} abweichende Werte")
         pg.evaluate("() => __fraktal.setMode(0)"); a.set_view('-0.7453', '0.1127', 200); a.wait_done(60)
         pg.evaluate("() => __fraktal.set3d(true)"); a.wait_3d(30); time.sleep(6)
         pg.evaluate("() => __fraktal.freeze(true)")
@@ -157,6 +161,9 @@ def main():
         pg.evaluate("() => { const S = __fraktal.S; S.shotRes = '2x'; S.shotLabel = true; __fraktal.saveSettings(); }")
         a.set_view('-0.7453', '0.1127', 200); a.wait_done(60)
         pg.click('#btn-fly2d'); time.sleep(1.5)
+        # (ist der Screenshot schneller fertig, als die Nutzer-Geste gilt, öffnet die App das Teilen-Menü des Geräts statt eines
+        #  Downloads – das hat der Test-Browser nicht; hier abgeschaltet, damit immer der Download-Weg geprüft wird)
+        pg.evaluate("() => { navigator.canShare = () => false; }")
         pg.click('#btn-share'); time.sleep(0.3); pg.click('#share-image'); time.sleep(0.5)
         ask = [pg.inner_text('#shot-title'), pg.inner_text('#shot-sub'), pg.is_visible('#shot-go')]
         pg.click('#shot-go'); time.sleep(1.2)

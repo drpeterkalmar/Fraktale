@@ -22,7 +22,7 @@ with sync_playwright() as p:
     for i in range(pg.evaluate("() => window.__fraktal.MODE_KEYS.length")):
         if only and f'm{i}' not in only: continue
         pg.evaluate(f"() => window.__fraktal.setMode({i})")
-        if i in (6, 8, 9):
+        if pg.evaluate("() => window.__fraktal.isRay()"):
             # 7.0 Strahlen-Welten: warten, bis das Ruhebild fertig gemittelt ist
             for k in range(200):
                 inf = pg.evaluate("() => window.__fraktal.BULB.info()")

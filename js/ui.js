@@ -328,17 +328,42 @@ function syncBulb() {
     // 7.0 Etappe 7: Regler je Art – Mandelbulb Exponent 2–16, Mandelbox Skalierung −3…3, Menger ohne Parameter/Julia
     const k = BU.kindOf(), sp = $('s-bpow');
     $('bulb-panel').querySelector('h3').textContent = cap(MODE_NAMES()[S.formula] || 'Mandelbulb');
-    sp.closest('label').hidden = k === 2;
+    sp.closest('label').hidden = k >= 2;
+    syncBulbExtra(k);
     sp.closest('label').querySelector('span').textContent = t(k === 1 ? 'bulb_scale' : 'bulb_power');
     if (k === 1) { sp.min = -3; sp.max = 3; sp.value = BU.B.boxS; $('o-bpow').textContent = BU.B.boxS.toFixed(2); }
     else { sp.min = 2; sp.max = 16; sp.value = BU.B.power0; $('o-bpow').textContent = BU.B.power0.toFixed(2); }
     $('t-bbreathe').closest('label').hidden = k !== 0;
-    $('t-bjulia').closest('label').hidden = k === 2;
+    $('t-bjulia').closest('label').hidden = k >= 2;
     $('t-bbreathe').checked = S.bulbBreathe;
     $('t-bjulia').checked = BU.B.julia;
     document.querySelectorAll('#seg-bstyle button').forEach(b => b.classList.toggle('on', +b.dataset.v === S.bulbStyle));
     $('s-bfog').value = S.bulbFog; $('o-bfog').textContent = Math.round(S.bulbFog * 100) + ' %';
     $('s-bdof').value = S.bulbDof; $('o-bdof').textContent = S.bulbDof > 0 ? Math.round(S.bulbDof * 100) + ' %' : t('off');
+}
+// 7.1 Regler der neuen 3D-Arten: Quaternionen-Julia c (4D) + Animation, Kaleidoskop-IFS Skalierung/Winkel, Apollonian Stärke
+let bxBuilt = -1;
+function syncBulbExtra(k) {
+    const box = $('bulb-extra'), BU = A.BULB, B = BU.B;
+    if (k < 3) { box.innerHTML = ''; bxBuilt = -1; return; }
+    const sl = (id, lbl, min, max, step, val, dig) => `<label class="slider"><span>${lbl}</span><input type="range" data-bx="${id}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${(+val).toFixed(dig)}</output></label>`;
+    if (bxBuilt !== k) {
+        bxBuilt = k;
+        const q = B.qc0 || B.qc;
+        box.innerHTML = k === 3 ? ['1', 'i', 'j', 'k'].map((n, i) => sl('q' + i, 'c · ' + n, -1, 1, 0.001, q[i], 3)).join('') + `<label class="toggle"><span>${t('qj_anim')}</span><input type="checkbox" id="t-qa"${B.qa ? ' checked' : ''}><i></i></label>`
+            : k === 4 ? sl('k0', t('bulb_scale'), 1.4, 3.2, 0.01, B.kp[0], 2) + sl('k1', t('kifs_a1'), -3.1416, 3.1416, 0.001, B.kp[1], 2) + sl('k2', t('kifs_a2'), -3.1416, 3.1416, 0.001, B.kp[2], 2)
+            : sl('a0', t('apol_s'), 0.95, 1.5, 0.001, B.ap, 3);
+        box.querySelectorAll('input[data-bx]').forEach(r => r.addEventListener('input', () => {
+            const id = r.dataset.bx, v = +r.value;
+            if (id[0] === 'q') { const q2 = (B.qc0 || B.qc).slice(); q2[+id[1]] = v; if (B.qc0) B.qc0 = q2; else B.qc = q2; }
+            else if (id[0] === 'k') { B.kp = B.kp.slice(); B.kp[+id[1]] = v; }
+            else B.ap = v;
+            r.nextElementSibling.textContent = v.toFixed(+r.step < 0.01 ? 3 : 2);
+            BU.invalidate(); A.RC.dirty = true;
+        }));
+        const qa = $('t-qa');
+        if (qa) qa.addEventListener('change', () => { B.qa = qa.checked; BU.invalidate(); A.RC.dirty = true; });
+    }
 }
 $('s-bpow').addEventListener('input', (e) => {
     const BU = A.BULB, v = +e.target.value;

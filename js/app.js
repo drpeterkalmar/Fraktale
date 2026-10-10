@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.2';
+const APP_VERSION = '7.1.3';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -23,15 +23,15 @@ const GPU_MAX = 1e30;           // f32-Perturbation (Deltas bis ~1e-35 darstellb
 const DEEP_MAX = 1e290;         // CPU-f64-Perturbation
 const NEWTON_GPU_MAX = 3000;
 const EXO_GPU_MAX = 2000;       // 7.1 Exoten (direkt in f32)
-const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6, 1e7, 1e7, 1e12, 1e13, 1e13, 1e13, 2e4, 2e4];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
-const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot', 'mandelbox', 'menger', 'lyapunov', 'phoenix', 'nova', 'magnet', 'flame', 'attractor'];
+const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6, 1e7, 1e7, 1e12, 1e13, 1e13, 1e13, 2e4, 2e4, 1e7, 1e7, 1e7];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
+const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot', 'mandelbox', 'menger', 'lyapunov', 'phoenix', 'nova', 'magnet', 'flame', 'attractor', 'quatjulia', 'kifs', 'apollonian'];
 // 7.1: Welten-Gruppen im Modus-Wähler
-const MODE_GROUPS = [['grp_classic', [0, 1, 2, 3, 4, 5]], ['grp_exotic', [10, 11, 12, 13]], ['grp_3d', [6, 8, 9]], ['grp_light', [14, 15, 7]]];
+const MODE_GROUPS = [['grp_classic', [0, 1, 2, 3, 4, 5]], ['grp_exotic', [10, 11, 12, 13]], ['grp_3d', [6, 8, 9, 16, 17, 18]], ['grp_light', [14, 15, 7]]];
 // 7.1 Lichtbilder (Dichte-Renderer, js/density.js): Fraktal-Flammen, seltsame Attraktoren
 const DENS_W = [14, 15];
 const isDens = (f) => DENS_W.includes(f === undefined ? S.formula : f);
 // 7.0: Strahlen-Welten (3D-Fraktale per Raymarching, js/bulb.js): Mandelbulb, Mandelbox, Menger-Schwamm
-const RAY = [6, 8, 9];
+const RAY = [6, 8, 9, 16, 17, 18];       // 7.1: + Quaternionen-Julia, Kaleidoskop-IFS, Apollonian
 const isRay = (f) => RAY.includes(f === undefined ? S.formula : f);
 // 7.1: Rechen-Formel aus Welt + Parametern (Burning-Ship-Familie 20–22, Multibrot frei 23, Phoenix 24, Nova 25, Magnet 26/27,
 // Lyapunov 28 – siehe js/shaders.js exoticFS, js/fractal-core.js exoticPixel). Multibrot mit Exponent 3 bzw. 2 = z³ bzw.
@@ -53,7 +53,7 @@ const isExo = (cf) => cf >= 23;                                    // nur direkt
 const hasSetW = (f) => f < 5 || (f >= 10 && f <= 13);              // 2D-Welten mit „Menge“ (Außen, Menge glatt)
 const is2dW = (f) => !RAY.includes(f) && f !== 7 && f !== 14 && f !== 15;     // 2D-Welten mit Iterationspuffer
 const MODE_HOME = [['-0.5', '0', 1], ['0', '0', 1], ['-0.5', '-0.5', 1], ['-0.3', '0', 1], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1], ['-0.5', '0', 1], ['0', '0', 1], ['0', '0', 1],
-                   ['3', '3', 1.5], ['0', '0', 0.45, [4.6, 2.4]], ['-0.3', '0', 0.8], ['1.2', '0', 0.55], ['0', '0', 1], ['0', '0', 0.7]];
+                   ['3', '3', 1.5], ['0', '0', 0.45, [4.6, 2.4]], ['-0.3', '0', 0.8], ['1.2', '0', 0.55], ['0', '0', 1], ['0', '0', 0.7], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1]];
 // 7.1: Startzoom passend zum Seitenverhältnis, wenn die Welt eine Ausdehnung [Breite, Höhe] angibt (Phoenix: breit)
 function homeZoom(f) { const h = MODE_HOME[f]; if (!h[3]) return h[2]; return 3 / Math.max(h[3][1], h[3][0] * cssH / Math.max(1, cssW)); }
 // 7.1: Startansicht je Welt [cx, cy, zoom] – Lichtbilder aus der Flamme/dem Attraktor (passend zum Seitenverhältnis)
@@ -103,6 +103,15 @@ const SIGHTS = {
          { k: 'nova_kette', cx: '-0.3023438', cy: '0.2473958', zoom: 57.6 },
          { k: 'nova_tief', cx: '-0.3690755', cy: '0.0488281', zoom: 230.4 },
          { k: 'nova_julia', cx: '0', cy: '0', zoom: 1, wp: { v: 1 } }],
+    16: [{ k: 'qj_drache', cx: '0', cy: '0', zoom: 1, b: '1.64872352124,1.25446354877,-2.568663457,-0.570631929621,-0.389948162159;-0.08:0:-0.83:-0.025' },
+         { k: 'qj_spirale', cx: '0', cy: '0', zoom: 1, b: '1.64872352124,1.25446354877,-2.568663457,-0.570631929621,-0.389948162159;-0.291:-0.399:0.339:0.437' },
+         { k: 'qj_wolke', cx: '0', cy: '0', zoom: 1, b: '1.64872352124,1.25446354877,-2.568663457,-0.570631929621,-0.389948162159;-0.2:0.6:0.2:0.2' }],
+    17: [{ k: 'kifs_kristall', cx: '0', cy: '0', zoom: 1, b: '2.59798857892,1.97673044048,-4.04759090194,-0.570631929621,-0.389948162159;1.9:0.7:0.2' },
+         { k: 'kifs_fels', cx: '0', cy: '0', zoom: 1, b: '2.59798857892,1.97673044048,-4.04759090194,-0.570631929621,-0.389948162159;2.2:0.3:0.6' },
+         { k: 'kifs_tempel', cx: '0', cy: '0', zoom: 1, b: '2.59798857892,1.97673044048,-4.04759090194,-0.570631929621,-0.389948162159;2.4:0:0' }],
+    18: [{ k: 'apol_hallen', cx: '0', cy: '0', zoom: 1, b: '1.44887824594,1.10240736104,-2.2573103107,-0.570631929621,-0.389948162159;1.18' },
+         { k: 'apol_bogen', cx: '0', cy: '0', zoom: 1, b: '1.44887824594,1.10240736104,-2.2573103107,-0.320631929621,-0.439948162159;1.3' },
+         { k: 'apol_tief', cx: '0', cy: '0', zoom: 1, b: '1.44887824594,1.10240736104,-2.2573103107,-1.47063192962,-0.189948162159;1.1' }],
     13: [{ k: 'mag_riff', cx: '0.0947088068', cy: '-1.0600142045', zoom: 140.8, wp: { v: 0 } },
          { k: 'mag_seepferd', cx: '-0.1742897727', cy: '-0.7883522727', zoom: 35.2, wp: { v: 0 } },
          { k: 'mag_spiralen', cx: '1.3384943182', cy: '-0.5326704545', zoom: 35.2, wp: { v: 1 } },

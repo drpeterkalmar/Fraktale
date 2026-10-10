@@ -4,7 +4,7 @@
 //  * Neue Version -> neuer sw.js-Inhalt -> Browser installiert neu; aktiv (und alte Caches gelöscht) erst beim nächsten Start.
 //  * HTML (Navigation) immer zuerst frisch aus dem Netz (no-cache), offline aus dem Cache.
 //  * VERSION MUSS APP_VERSION in js/app.js entsprechen (tests/test_release.py prüft das).
-const VERSION = '7.1.2';
+const VERSION = '7.1.3';
 const CACHE = 'fraktale-' + VERSION;
 const Q = '?v=' + VERSION;
 const ASSETS = [
@@ -89,7 +89,19 @@ const ASSETS = [
     'assets/sights/flm_sichel.jpg',
     'assets/sights/flm_stern.jpg',
     'assets/sights/flm_wolke.jpg',
-    'assets/sights/flm_yinyang.jpg'
+    'assets/sights/flm_yinyang.jpg',
+    'assets/modes/16.jpg',
+    'assets/modes/17.jpg',
+    'assets/modes/18.jpg',
+    'assets/sights/apol_bogen.jpg',
+    'assets/sights/apol_hallen.jpg',
+    'assets/sights/apol_tief.jpg',
+    'assets/sights/kifs_fels.jpg',
+    'assets/sights/kifs_kristall.jpg',
+    'assets/sights/kifs_tempel.jpg',
+    'assets/sights/qj_drache.jpg',
+    'assets/sights/qj_spirale.jpg',
+    'assets/sights/qj_wolke.jpg'
 ].map(u => u + Q).concat(['./', 'index.html']);
 
 self.addEventListener('install', (e) => {

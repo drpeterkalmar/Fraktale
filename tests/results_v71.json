@@ -22,7 +22,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 69.1,
-   "sec": 0.5
+   "sec": 0.6
   },
   "Phoenix Julia": {
    "ok": 1,
@@ -34,7 +34,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 47.9,
-   "sec": 0.6
+   "sec": 1.5
   },
   "Phoenix Mandel": {
    "ok": 1,
@@ -46,7 +46,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 77.7,
-   "sec": 0.5
+   "sec": 1.3
   },
   "Nova Mandel": {
    "ok": 1,
@@ -58,7 +58,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 53.9,
-   "sec": 0.5
+   "sec": 0.6
   },
   "Nova Julia": {
    "ok": 1,
@@ -82,7 +82,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 72.8,
-   "sec": 0.5
+   "sec": 0.6
   },
   "Magnet II": {
    "ok": 0.9966666666666667,
@@ -94,7 +94,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 53.0,
-   "sec": 0.5
+   "sec": 1.5
   },
   "Multibrot 3,5": {
    "ok": 0.9933333333333333,
@@ -106,7 +106,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 40.4,
-   "sec": 0.5
+   "sec": 0.6
   },
   "Multibrot 5": {
    "ok": 1,
@@ -118,7 +118,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 40.7,
-   "sec": 1.5
+   "sec": 0.6
   },
   "Newton z³−1": {
    "ok": 1,
@@ -130,7 +130,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 56.1,
-   "sec": 1.4
+   "sec": 1.5
   },
   "Newton z³−2z+2": {
    "ok": 1,
@@ -142,7 +142,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 30.6,
-   "sec": 0.6
+   "sec": 0.5
   },
   "Newton z⁸+15z⁴−16": {
    "ok": 0.9933333333333333,
@@ -154,7 +154,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 51.9,
-   "sec": 0.6
+   "sec": 0.5
   },
   "Celtic": {
    "ok": 0.9933333333333333,
@@ -166,7 +166,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 50.6,
-   "sec": 0.6
+   "sec": 0.5
   },
   "Senkrecht": {
    "ok": 1,
@@ -178,7 +178,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 52.2,
-   "sec": 0.4
+   "sec": 1.5
   },
   "Büffel": {
    "ok": 0.9933333333333333,
@@ -190,7 +190,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 53.2,
-   "sec": 1.5
+   "sec": 0.7
   }
  },
  "B": {
@@ -208,7 +208,7 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 0.9
+   "sec": 1.1
   },
   "Büffel": {
    "good": 0.5375,
@@ -216,13 +216,13 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 0.9
+   "sec": 1.0
   }
  },
  "H": {
   "Flamme Sichel": {
-   "first_ms": 196,
-   "std": 38.0,
+   "first_ms": 448,
+   "std": 38.1,
    "info": {
     "ok": true,
     "why": "",
@@ -236,14 +236,14 @@
     "h": 1678,
     "N": 65536,
     "K": 24,
-    "total": 160235520,
-    "spp": 115.89,
-    "ageMs": 1800,
+    "total": 150994944,
+    "spp": 109.21,
+    "ageMs": 1949,
     "fblend": true
    }
   },
   "Flamme Galaxie": {
-   "first_ms": 454,
+   "first_ms": 200,
    "std": 36.6,
    "info": {
     "ok": true,
@@ -251,21 +251,21 @@
     "gpu": true,
     "E": {
      "B": 0.25,
-     "occ": 0.78,
-     "peak": 54.9
+     "occ": 0.79,
+     "peak": 55.6
     },
     "w": 824,
     "h": 1678,
     "N": 65536,
-    "K": 16,
-    "total": 138215424,
-    "spp": 99.96,
-    "ageMs": 2132,
+    "K": 23,
+    "total": 130351104,
+    "spp": 94.27,
+    "ageMs": 1882,
     "fblend": true
    }
   },
   "Clifford": {
-   "first_ms": 409,
+   "first_ms": 316,
    "std": 21.8,
    "info": {
     "ok": true,
@@ -280,31 +280,31 @@
     "h": 1678,
     "N": 65536,
     "K": 24,
-    "total": 175112192,
-    "spp": 126.65,
-    "ageMs": 2050,
+    "total": 165675008,
+    "spp": 119.82,
+    "ageMs": 1950,
     "fblend": true
    }
   },
   "Lorenz": {
-   "first_ms": 518,
-   "std": 34.0,
+   "first_ms": 477,
+   "std": 30.6,
    "info": {
     "ok": true,
     "why": "",
     "gpu": true,
     "E": {
-     "B": 0.39,
-     "occ": 0.365,
-     "peak": 11.9
+     "B": 0.45,
+     "occ": 0.234,
+     "peak": 8.2
     },
     "w": 824,
     "h": 1678,
     "N": 65536,
     "K": 24,
-    "total": 170262528,
-    "spp": 123.14,
-    "ageMs": 2149,
+    "total": 160759808,
+    "spp": 116.27,
+    "ageMs": 2050,
     "fblend": true
    }
   },
@@ -314,7 +314,21 @@
    "bytes": 20858,
    "tiles": 6,
    "kind": "dens",
-   "ms": 5798
+   "ms": 5407
+  }
+ },
+ "I": {
+  "Quaternionen-Julia": {
+   "still_s": 0.8,
+   "std": 29.3
+  },
+  "Kaleidoskop-IFS": {
+   "still_s": 0.6,
+   "std": 23.4
+  },
+  "Apollonian": {
+   "still_s": 0.0,
+   "std": 55.4
   }
  }
 }

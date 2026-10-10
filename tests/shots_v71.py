@@ -15,9 +15,17 @@ os.makedirs(OUT, exist_ok=True)
 def shot(app, name, hash_=None, wait=90, settle=0.4):
     if hash_ is not None:
         app.page.evaluate("(h) => { location.hash = h; }", hash_)
-    try:
+    if app.page.evaluate("() => window.__fraktal.isRay()"):
+        # 3D-Fraktale: bis das Ruhebild fertig gemittelt ist
+        t0 = time.time()
+        while time.time() - t0 < wait:
+            inf = app.page.evaluate("() => window.__fraktal.BULB.info()")
+            if inf.get('still', 0) >= inf.get('K', 99): break
+            time.sleep(0.2)
+    else:
+      try:
         app.wait_done(wait)
-    except Exception as e:
+      except Exception as e:
         print('  (nicht fertig:', str(e)[:120], ')')
     time.sleep(settle)
     app.page.evaluate("() => window.__fraktal.snapshot()")
