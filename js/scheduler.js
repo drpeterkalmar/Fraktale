@@ -39,6 +39,7 @@ root.FKScheduler = { create(ctx) {
         const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
                       view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
                       julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive(), inn: innActive() };
+        ctx.styleJob(job);                         // 7.1 Färbe-Stil (Rechen-Variante, Puffer mit Stil-Kanal)
         if (opts.prefetch) RC.pjob = job; else RC.job = job;
         if (p.kind === 'gpu') {
             job.err = div === 1 && !opts.prefetch && !opts.preview && S.precise && S.formula !== 5;     // finale Stufe mit Fehlerschätzung
@@ -89,7 +90,7 @@ root.FKScheduler = { create(ctx) {
             }
             RC.estFull = t * job.stage * job.stage / (job.w * job.h) * (canvas.width * canvas.height);
             // P2-7: die finale Variante (mit Fehlerschätzung) schon übersetzen lassen, solange die Vorschau steht
-            if (k === 'gpu') R.prewarmCompute({ formula: job.formula, mode: job.mode, err: S.precise && job.formula !== 5, de: job.de, inn: job.inn });
+            if (k === 'gpu') R.prewarmCompute({ formula: job.formula, mode: job.mode, err: S.precise && job.formula !== 5, de: job.de, inn: job.inn, st: job.st });
         } else {
             stats.lastJobMs = fr.ms;
             stats.gpuFullMs = fr.ms;

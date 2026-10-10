@@ -212,7 +212,7 @@ A.on((w) => {
         else if (hudless()) hudHide(true);         // 6.8: Vollbild/Kino-Modus – Tipp auf das Bild blendet die Bedienung wieder aus
         else setChrome(!S.chrome);
     } else if (w === 'frame') hudUpdate(false);
-    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); syncSet(); }
+    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); syncSet(); syncLook(); }
     else if (w === 'julia') { updateJuliaPanel(); }
     else if (w === 'bulb') syncBulb();
     else if (w === 'iter') hudUpdate(true);
@@ -432,6 +432,28 @@ document.querySelectorAll('#seg-out button').forEach(b => b.addEventListener('cl
     else if (v !== 'black' && outPrevSet && S.setCol === 'bunt') { S.setCol = outPrevSet; outPrevSet = null; }
     A.saveSettings(); A.invalidate(); syncSet();
 }));
+// 7.1 Look: Färbe-Stil (Standard, Seide = Streifen-Mittel, Dreieck-Mittel, Fallen Punkt/Kreis/Kreuz, Pickover-Stängel),
+// Stärke, Streifenzahl (nur Seide). Gilt in den 2D-Welten mit Fluchtzeit; sonst gesperrt mit Hinweis
+function syncLook() {
+    const ok = S.formula < 5;
+    document.querySelectorAll('#seg-style button').forEach(b => { b.classList.toggle('on', +b.dataset.v === (S.style | 0)); b.disabled = !ok; });
+    $('seg-style').classList.toggle('dim', !ok);
+    $('l-stmix').hidden = !ok || !S.style;
+    $('l-sts').hidden = !ok || S.style !== 1;
+    $('s-stmix').value = S.stMix; $('o-stmix').textContent = Math.round(S.stMix * 100) + ' %';
+    $('s-sts').value = S.stS; $('o-sts').textContent = String(S.stS);
+    $('st-hint').textContent = !ok ? t('st_hint_na') : t('st_hint_' + (S.style | 0));
+}
+document.querySelectorAll('#seg-style button').forEach(b => b.addEventListener('click', () => {
+    const v = +b.dataset.v;
+    if ((S.style | 0) === v) return;
+    crossfade(420);
+    S.style = v; A.saveSettings(); A.invalidate(); syncLook();
+}));
+$('s-stmix').addEventListener('input', (e) => { S.stMix = +e.target.value; A.RC.dirty = true; syncLook(); });     // nur Darstellung
+$('s-stmix').addEventListener('change', () => A.saveSettings());
+$('s-sts').addEventListener('input', (e) => { S.stS = +e.target.value; A.invalidate(); syncLook(); });
+$('s-sts').addEventListener('change', () => A.saveSettings());
 // Saumbreite 2–80 CSS-Pixel, logarithmisch (Regler 0..1)
 const edgeGet = () => S.edgeW; edgeGet.raw = () => Math.log(S.edgeW / 2) / Math.log(40);
 const syncEdge = bindRange('s-edgew', 'o-edgew', edgeGet, (v) => { S.edgeW = Math.round(2 * Math.pow(40, v) * 10) / 10; }, (v) => Math.round(v) + ' px');
@@ -492,7 +514,7 @@ const segs = [
     bindSeg('seg-renderer', () => S.renderer, (v) => { S.renderer = v; A.invalidate(); }),
 ];
 function syncControls() {
-    syncDensity(); syncSpeed(); syncRelief(); syncEdge(); syncSet(); syncBulb();
+    syncDensity(); syncSpeed(); syncRelief(); syncEdge(); syncSet(); syncBulb(); syncLook();
     toggles.forEach(f => f()); segs.forEach(f => f());
     $('s-speed').closest('label').classList.toggle('dim', !S.anim);
     $('s-relief').closest('label').classList.toggle('dim', !S.relief);

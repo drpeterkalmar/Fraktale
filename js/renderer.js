@@ -154,9 +154,10 @@ function create(canvas) {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         return t;
     }
-    function makeBuffer(w, h, plain) {
+    // 7.1: acc = Puffer für einen Färbe-Stil – das DE-Ziel ist dann RGBA8 (R = Distanz, G/B = Stil-Wert 16 bit), 8 Byte pro Pixel
+    function makeBuffer(w, h, plain, acc) {
         const tex = texture(gl.R32UI, w, h);
-        const de = plain ? null : texture(gl.R8, w, h);
+        const de = plain ? null : texture(acc ? gl.RGBA8 : gl.R8, w, h);
         const fbo = gl.createFramebuffer();
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
@@ -165,20 +166,20 @@ function create(canvas) {
             gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        return { tex, de, fbo, w, h, plain: !!plain, inUse: false, id: Math.random() };
+        return { tex, de, fbo, w, h, plain: !!plain, acc: !plain && !!acc, inUse: false, id: Math.random() };
     }
-    const bpp = (b) => b.plain ? 4 : 5;
-    // Puffer holen (wiederverwenden, wenn gleiche Größe frei); plain = ohne DE-Kanal (Hilfspuffer)
-    function acquire(w, h, plain) {
-        plain = !!plain;
-        for (const b of pool) if (!b.inUse && b.w === w && b.h === h && b.plain === plain) { b.inUse = true; return b; }
+    const bpp = (b) => b.plain ? 4 : b.acc ? 8 : 5;
+    // Puffer holen (wiederverwenden, wenn gleiche Größe frei); plain = ohne DE-Kanal (Hilfspuffer); acc = mit Stil-Kanal (7.1)
+    function acquire(w, h, plain, acc) {
+        plain = !!plain; acc = !plain && !!acc;
+        for (const b of pool) if (!b.inUse && b.w === w && b.h === h && b.plain === plain && b.acc === acc) { b.inUse = true; return b; }
         // unbenutzte Puffer verwerfen, wenn der Pool sein Speicherbudget überschreitet (älteste zuerst)
-        let bytes = w * h * (plain ? 4 : 5);
+        let bytes = w * h * (plain ? 4 : acc ? 8 : 5);
         for (const b of pool) bytes += b.w * b.h * bpp(b);
         for (let i = 0; i < pool.length && bytes > R.poolBudget; ) {
             if (!pool[i].inUse) { bytes -= pool[i].w * pool[i].h * bpp(pool[i]); freeBuffer(pool[i]); pool.splice(i, 1); } else i++;
         }
-        const b = makeBuffer(w, h, plain);
+        const b = makeBuffer(w, h, plain, acc);
         b.inUse = true;
         pool.push(b);
         return b;
@@ -222,7 +223,7 @@ function create(canvas) {
     // ------------------------------------------------ Compute-Jobs
     // job: { w, h, view:{cx,cy(BigInt),zoom}, scale, formula, maxIter, mode:'direct'|'perturb', julia:[x,y] }
     R.beginJob = function (job) {
-        job.buf = acquire(job.w, job.h);
+        job.buf = acquire(job.w, job.h, false, job.st > 0);
         job.row = 0;
         job.q = [];
         job.done = false;
@@ -276,7 +277,7 @@ function create(canvas) {
         try {
             // neue Rechen-Variante erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job (6.4 nur Bunt; P2-7 alle:
             // erster Wechsel auf eine Formel, erste finale Stufe, „Menge glatt“ – vorher stand das Bild so lange)
-            if (job.row < job.h && !programs[key] && !R.programReady(key, SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn))) return false;
+            if (job.row < job.h && !programs[key] && !R.programReady(key, SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn, job.st))) return false;
             while (job.row < job.h && job.q.length < R.maxInflight) {
                 const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
                 drawCompute(job, job.row, rows);
@@ -295,11 +296,13 @@ function create(canvas) {
     };
 
     // 6.4: Variante mit Innen-Information (Bunte Menge) = Suffix 'i'
-    const computeKey = (job) => 'c' + job.formula + job.mode + (job.err ? 'e' : '') + (job.de ? 'd' : '') + (job.inn ? 'i' : '');
+    // 7.1: Färbe-Stil = Suffix 's<n>'
+    const computeKey = (job) => 'c' + job.formula + job.mode + (job.err ? 'e' : '') + (job.de ? 'd' : '') + (job.inn ? 'i' : '') + (job.st ? 's' + job.st : '');
+    R.computeKey = computeKey;
     // P2-7: Rechen-Variante vorab übersetzen lassen (z. B. die finale Stufe, während die Vorschau läuft); wartet nie
-    R.prewarmCompute = (v) => { if (!R.broken[computeKey(v)]) R.prewarm(computeKey(v), SH.computeFS(v.formula, v.mode, v.err, v.de, v.inn)); };
+    R.prewarmCompute = (v) => { if (!R.broken[computeKey(v)]) R.prewarm(computeKey(v), SH.computeFS(v.formula, v.mode, v.err, v.de, v.inn, v.st)); };
     function drawCompute(job, y0, rows) {
-        const pr = program(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn));
+        const pr = program(computeKey(job), SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn, job.st));
         const L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, job.buf.fbo);
@@ -311,6 +314,8 @@ function create(canvas) {
         gl.uniform2f(L.u_pxoff, job.pxoff ? job.pxoff[0] : 0, job.pxoff ? job.pxoff[1] : 0);
         gl.uniform1f(L.u_scale, job.scale);
         gl.uniform1i(L.u_maxIter, job.maxIter);
+        if (L.u_stp) { const p = job.stp || [5, 1, 24, 0.32]; gl.uniform4f(L.u_stp, p[0], p[1], p[2], p[3]); }     // 7.1 Stil: Streifendichte, Kreisradius, Fenster, Vergessen
+        if (L.u_cabs) gl.uniform1f(L.u_cabs, job.formula === 1 ? Math.hypot(job.julia[0], job.julia[1]) : Math.hypot(HP.toNumber(job.view.cx), HP.toNumber(job.view.cy)));
         if (job.mode === 'direct') {
             gl.uniform2f(L.u_center, HP.toNumber(job.view.cx), HP.toNumber(job.view.cy));
             if (L.u_julia) gl.uniform2f(L.u_julia, job.julia[0], job.julia[1]);
@@ -342,6 +347,7 @@ function create(canvas) {
     }
 
     // CPU-Kachel in einen Job-Puffer hochladen (Float32 -> uint-Bits); de8: DE-Codes (Uint8) oder null
+    // (7.1 Stil-Puffer: de8 = RGBA8 je Pixel – Distanz, Stil-Wert hoch/niedrig, 0)
     R.uploadTile = function (job, x, y, w, h, f32, de8) {
         const u32 = new Uint32Array(f32.buffer, f32.byteOffset, w * h);
         gl.bindTexture(gl.TEXTURE_2D, job.buf.tex);
@@ -349,7 +355,8 @@ function create(canvas) {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, job.h - y - h, w, h, gl.RED_INTEGER, gl.UNSIGNED_INT, u32);
         if (job.buf.de) {
             gl.bindTexture(gl.TEXTURE_2D, job.buf.de);
-            gl.texSubImage2D(gl.TEXTURE_2D, 0, x, job.h - y - h, w, h, gl.RED, gl.UNSIGNED_BYTE, de8 || new Uint8Array(w * h));
+            if (job.buf.acc) gl.texSubImage2D(gl.TEXTURE_2D, 0, x, job.h - y - h, w, h, gl.RGBA, gl.UNSIGNED_BYTE, de8 && de8.length === 4 * w * h ? de8 : new Uint8Array(4 * w * h));
+            else gl.texSubImage2D(gl.TEXTURE_2D, 0, x, job.h - y - h, w, h, gl.RED, gl.UNSIGNED_BYTE, de8 && de8.length === w * h ? de8 : new Uint8Array(w * h));
         }
     };
 
@@ -387,7 +394,7 @@ function create(canvas) {
     };
     // Kopie eines Iterationspuffers (Ziel der Korrektur, damit das angezeigte Bild unverändert bleibt)
     R.copyBuffer = function (buf) {
-        const b = acquire(buf.w, buf.h);
+        const b = acquire(buf.w, buf.h, false, buf.acc);
         const pr = program('copy', SH.COPY_FS);
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, b.fbo);
@@ -458,7 +465,7 @@ function create(canvas) {
     }
     // layers: [{ buf, view, scale, alpha }] von oben (schärfste) nach unten, höchstens SH.NL.
     // opts: { feather, recon, de, vp } – vp (6.8.1): [x, y, W, H] Lage des Ziels im ganzen Bild (Kachel-Screenshot)
-    const xfBuf = new Float32Array(4 * SH.NL), sizeBuf = new Float32Array(2 * SH.NL), alphaBuf = new Float32Array(SH.NL);
+    const xfBuf = new Float32Array(4 * SH.NL), sizeBuf = new Float32Array(2 * SH.NL), alphaBuf = new Float32Array(SH.NL), accBuf = new Float32Array(SH.NL);
     R.present = function (layers, cam, look, target, opts) {
         opts = opts || {};
         const tw = target ? target.w : canvas.width, th = target ? target.h : canvas.height;
@@ -484,6 +491,7 @@ function create(canvas) {
                 sizeBuf[2 * i] = l.buf.w; sizeBuf[2 * i + 1] = l.buf.h;
                 alphaBuf[i] = l.alpha === undefined ? 1 : l.alpha;
             }
+            accBuf[i] = l && l.buf.acc ? 1 : 0;
         }
         gl.uniform4fv(L.u_xf, xfBuf); gl.uniform2fv(L.u_size, sizeBuf); gl.uniform1fv(L.u_alpha, alphaBuf);
         gl.uniform1i(L.u_n, list.length);
@@ -499,6 +507,11 @@ function create(canvas) {
         gl.uniform1f(L.u_relief, look.relief);
         gl.uniform1i(L.u_particles, look.particles ? 1 : 0);
         gl.uniform1i(L.u_banded, look.banded ? 1 : 0);
+        // 7.1 Färbe-Stil: je Ebene nur, wenn sie den Stil-Kanal hat (u_acc; sonst Standard – z. B. Ebenen von vor dem Umschalten)
+        gl.uniform1i(L.u_style, look.style || 0);
+        gl.uniform1fv(L.u_acc, accBuf);
+        gl.uniform1f(L.u_stMix, look.stMix === undefined ? 1 : look.stMix);
+        gl.uniform1f(L.u_stG, look.stG || 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (target) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
@@ -634,7 +647,7 @@ function create(canvas) {
     // Nur für Tests: DE-Codes eines Puffers (Uint8, Zeile 0 = unten)
     // (eigener Hilfs-Framebuffer: readBuffer(ATTACHMENT1) am Rechenpuffer selbst ließ unter ANGLE/Metal spätere
     // Schreibzugriffe auf dessen Iterationskanal ins Leere laufen)
-    R.readDESync = function (buf) {
+    R.readDESync = function (buf, full) {
         if (!buf.de) return null;
         const u = new Uint8Array(buf.w * buf.h * 4);
         const fb = gl.createFramebuffer();
@@ -645,6 +658,7 @@ function create(canvas) {
         gl.deleteFramebuffer(fb);
         const out = new Uint8Array(buf.w * buf.h);
         for (let i = 0; i < out.length; i++) out[i] = u[4 * i];
+        if (full) return u;
         return out;
     };
     // Nur für Tests: synchrones Auslesen

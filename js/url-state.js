@@ -20,6 +20,7 @@ root.FKUrlState = { create(ctx) {
         const sc = setColParam(); if (sc) p.set('sc', sc);
         if (S.alpine) p.set('al', S.valley[0]);
         const ou = outParam(); if (ou) p.set('ou', ou);
+        const st = styleParam(); if (st) p.set('st', st);
         // 7.0 Mandelbulb: Kamera (Position, Gieren, Nicken), Exponent, Julia-c; Stil/Nebel/Tiefenunschärfe, wenn nicht Standard
         if (ctx.isRay() && ctx.BULB) {
             p.set('b', ctx.BULB.stateString());
@@ -43,6 +44,7 @@ root.FKUrlState = { create(ctx) {
         S.alpine = p.has('al');
         if (S.alpine) S.valley = { f: 'forest', l: 'lake', m: 'meadow' }[p.get('al')] || 'forest';
         applyOutParam(p.get('ou') || '');
+        applyStyleParam(p.get('st') || '');
         // Iterationen wie beim Knopf (changeIter) auf 50 … 500 000 begrenzen: ein Link mit it=99999999 erzeugte GPU-Häppchen
         // von Minuten (Windows-Watchdog -> Kontextverlust)
         if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
@@ -77,6 +79,15 @@ root.FKUrlState = { create(ctx) {
         else if (v === 'k') S.outMode = 'black';
         else S.outMode = 'pal';
     }
+    // 7.1 Färbe-Stil im Link: st=<Stil>_<Stärke %>[_<Streifenzahl>] (Seide: Streifenzahl); fehlt = Standard (alte Links unverändert)
+    function styleParam() { return S.style > 0 ? S.style + '_' + Math.round(S.stMix * 100) + (S.style === 1 ? '_' + S.stS : '') : ''; }
+    function applyStyleParam(v) {
+        const m = /^([1-6])(?:_(\d{1,3}))?(?:_(\d{1,2}))?$/.exec(v);
+        if (!m) { S.style = 0; return; }
+        S.style = +m[1];
+        if (m[2] !== undefined) S.stMix = Math.max(0, Math.min(1, +m[2] / 100));
+        if (m[3] !== undefined) S.stS = Math.max(1, Math.min(12, +m[3]));
+    }
     let urlT = 0, urlKey = '';
     function syncURL(now) {
         if (now - urlT < 700 || isMoving(now)) return;
@@ -86,6 +97,6 @@ root.FKUrlState = { create(ctx) {
     }
 
     return { link() { ({ HP, PAL, S, isMoving, setCam } = ctx); },
-             readURL, setColParam, outParam, stateURL, syncURL };
+             readURL, setColParam, outParam, styleParam, stateURL, syncURL };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

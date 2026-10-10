@@ -6,16 +6,17 @@
 'use strict';
 
 root.FKLayers = { create(ctx) {
-    let FADE_MOVE_MS, FADE_MS, HP, MAXL, MAXL3, R, RC, S, V3, canvas, deActive, innActive, smooth01, viewKey;   // aus app.js, gesetzt in link()
+    let FADE_MOVE_MS, FADE_MS, HP, MAXL, MAXL3, R, RC, S, V3, canvas, deActive, innActive, smooth01, viewKey, stActive;   // aus app.js, gesetzt in link()
 
     // Inhalt eines Bildes: was es zeigt (unabhängig von Ansicht/Auflösung). Ebenen mit anderem Inhalt
     // (andere Welt, anderes Julia-c, manuelle Iterationen) liegen ganz unten und werden ausgeblendet.
-    function contentSig() { return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : '') + (innActive() ? '|in' : ''); }
+    // 7.1: Färbe-Stil (+ Streifendichte) gehört zum Inhalt – anderer Stil = neue Rechnung
+    function contentSig() { const st = stActive(); return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : '') + (innActive() ? '|in' : '') + (st ? '|st' + st + (st === 1 ? ':' + S.stS : '') : ''); }
     function makeFrame(job, now) {
         job.buf && (job.kept = true);
         return { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
                  kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs,
-                 sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de, inn: !!job.inn };
+                 sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de, inn: !!job.inn, st: job.st | 0 };
     }
     function addLayer(fr, now, moving) {
         fr.seq = ++RC.layerSeq;
@@ -140,7 +141,7 @@ root.FKLayers = { create(ctx) {
         if (RC.lastPreview && gone.has(RC.lastPreview)) RC.lastPreview = null;
     }
 
-    return { link() { ({ FADE_MOVE_MS, FADE_MS, HP, MAXL, MAXL3, R, RC, S, V3, canvas, deActive, innActive, smooth01, viewKey } = ctx); },
+    return { link() { ({ FADE_MOVE_MS, FADE_MS, HP, MAXL, MAXL3, R, RC, S, V3, canvas, deActive, innActive, smooth01, viewKey, stActive } = ctx); },
              addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

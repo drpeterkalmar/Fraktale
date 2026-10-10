@@ -6,3 +6,5 @@ tests/results_*.json.tmp
 tests/shots/smooth/**/*.png
 tests/shots/smooth/**/*.rgb
 tests/shots/smooth/**/job_*.json
+# 7.1: Rohbilder der Abstimmung lokal, eingecheckt nur die JPG-Blätter
+tests/shots/v71/*.png

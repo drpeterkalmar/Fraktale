@@ -81,6 +81,7 @@ def main():
         # ------------------------------------------------------------ Nähte
         a = App(p).open(); pg = a.page
         outm = lambda m: pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.outMode = '{m}'; A.S.edgeW = 16; A.invalidate(); }}")
+        sty = lambda v: pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.style = {v}; A.S.stMix = 0.85; A.S.stS = 5; A.invalidate(); }}")
         cases = [
             ('Mandelbrot tief (GPU-Perturbation)', lambda: a.set_view(DEEP[0], DEEP[1], 3e9), {}, 640, 360, 128, ('gpu', 'perturb')),
             ('Mandelbrot 10³⁴ (CPU-Perturbation)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
@@ -89,7 +90,11 @@ def main():
             ('Grenznah Mandelbrot tief (GPU)', lambda: (outm('edge'), a.set_view(DEEP[0], DEEP[1], 3e9, formula=0)), {}, 640, 360, 128, ('gpu', 'perturb')),
             ('Grenznah 10³⁴ (CPU)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
             ('Grenznah Julia', lambda: a.set_view('0', '0', 1.5, formula=1), {}, 640, 360, 128, ('gpu', 'direct')),
-            ('Newton', lambda: (outm('pal'), a.set_view('0', '0', 1.2, formula=5)), {}, 640, 360, 128, ('gpu', 'direct')),
+            # 7.1 Färbe-Stile: Stil-Wert im G/B-Kanal, Kacheln mit derselben Rechnung wie das Bild aus einem Stück
+            ('Seide Mandelbrot tief (GPU)', lambda: (outm('pal'), sty(1), a.set_view(DEEP[0], DEEP[1], 3e9, formula=0)), {}, 640, 360, 128, ('gpu', 'perturb')),
+            ('Seide 10³⁴ (CPU)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
+            ('Kreuz-Falle Julia', lambda: (sty(5), a.set_view('0', '0', 1.5, formula=1)), {}, 640, 360, 128, ('gpu', 'direct')),
+            ('Newton', lambda: (outm('pal'), sty(0), a.set_view('0', '0', 1.2, formula=5)), {}, 640, 360, 128, ('gpu', 'direct')),
         ]
         res['naehte'] = {}
         for name, setup, extra, W, H, tl, devmode in cases:

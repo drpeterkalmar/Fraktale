@@ -54,7 +54,7 @@ root.FKCpuPool = { create(ctx) {
                 const tl = job.tiles.shift();
                 w.busy++;
                 w.postMessage(Object.assign({ type: 'tile', jobId: job.id, refId: job.refId, bufW: job.w, bufH: job.h, scale: job.scale,
-                    mode: job.mode, formula: job.formula, maxIter: job.maxIter, useBLA: job.useBLA, de: job.de, inn: job.inn,
+                    mode: job.mode, formula: job.formula, maxIter: job.maxIter, useBLA: job.useBLA, de: job.de, inn: job.inn, st: job.st, stp: job.stp, cabs: job.cabs,
                     offX: job.cpuOff[0], offY: job.cpuOff[1], jx: job.julia[0], jy: job.julia[1] }, tl));
             }
         }

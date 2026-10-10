@@ -28,7 +28,11 @@ class Server(ThreadingHTTPServer):
     def server_bind(self):
         with contextlib.suppress(Exception):
             self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-        return super().server_bind()
+        # (HTTPServer.server_bind fragt socket.getfqdn() – das hing auf dem Mac mini bis 35 s an der Namensauflösung)
+        import socketserver
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = host, port
 
 
 if __name__ == '__main__':

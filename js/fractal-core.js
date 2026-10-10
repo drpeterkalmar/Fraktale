@@ -31,7 +31,7 @@ function smoothIter(n, zx, zy, formula) {
 // 6.1 Distanzschätzung: Code wie im GPU-Shader (encDE): (log2(DE in Pixeln) + 8)·16, 1..255, 0 = keine.
 // Die Pixel-Funktionen legen ihn in OUT.de ab, wenn sie mit deS > 0 (Welt pro Pixel) aufgerufen werden.
 // Ableitung Dp = dz/dPixel; dex = log2-Versatz gegen Überlauf.
-const OUT = { de: 0 };
+const OUT = { de: 0, acc: 0 };
 function encDE(zx, zy, dx, dy, dex) {
     const m = Math.max(Math.abs(dx), Math.abs(dy));
     if (!(m < Infinity)) return 1;
@@ -41,6 +41,58 @@ function encDE(zx, zy, dx, dy, dex) {
     return Math.max(1, Math.min(255, Math.floor(e + 0.5)));
 }
 const TWO_M512 = Math.pow(2, -512), TWO_512 = Math.pow(2, 512);
+
+// ------------------------------------------------------------------
+//  7.1 Färbe-Stile (wie STYLE_CORE in shaders.js): Wert der Bahn neben der glatten Iteration, Ausgabe 16 bit in OUT.acc.
+//  stSetup() einmal je Kachel (st = 0: aus – Nachrechnung, Referenzsuche), die Pixel-Funktionen starten je Pixel neu.
+//  Stile: 1 Streifen, 2 Dreieck-Mittel, 3 Punkt-, 4 Kreis-, 5 Kreuz-Falle, 6 Pickover-Stängel. Gleitendes Mittel über
+//  die letzten K Schritte bzw. vergessendes Minimum (tiefenfest); BLA-Sprünge als Näherung (siehe shaders.js).
+// ------------------------------------------------------------------
+const STA = { st: 0, s: 5, r: 1, K: 24, F: 0.32, FF: Math.pow(2, 0.32), cabsRef: 0, cabs: 0, P: 2, a: 0, ap: 0, n: 0 };
+// stp = [Streifendichte, Kreisradius, Fenster K, Vergessen F] (wie u_stp im Shader)
+function stSetup(st, stp, cabsRef) { STA.st = st | 0; STA.s = stp ? +stp[0] : 5; STA.r = stp ? +stp[1] : 1; STA.K = stp && stp[2] ? +stp[2] : 24; STA.F = stp && stp[3] ? +stp[3] : 0.32; STA.FF = Math.pow(2, STA.F); STA.cabsRef = +cabsRef || 0; }
+// (Fallen hier linear: a = min(a·2^(F·L), d) – dasselbe wie im Shader in log2, ohne log2 je Schritt; erst stEnc logarithmiert)
+function stStart(formula, cabs) { STA.P = formula === 4 ? 3 : 2; STA.cabs = cabs; STA.a = STA.ap = STA.st >= 3 ? 1024 : 0; STA.n = 0; }
+// z = neuer Wert, p = Wert davor, L = Schritte (BLA-Sprung)
+function stAdd(zx, zy, px, py, L) {
+    const A = STA;
+    A.ap = A.a;
+    if (A.st >= 3) {
+        const d = A.st === 3 ? Math.sqrt(zx * zx + zy * zy) : A.st === 4 ? Math.abs(Math.sqrt(zx * zx + zy * zy) - A.r) : Math.min(Math.abs(zx), Math.abs(zy));
+        A.a = Math.min(L === 1 ? A.a * A.FF : A.a * Math.pow(2, A.F * L), Math.max(d, 1e-30));
+        A.n += L;
+        return;
+    }
+    let x;
+    if (A.st === 1) {
+        // sin(s·arg z) = Im((z/|z|)^s) für ganzzahliges s – Potenz durch Quadrieren statt atan2 + sin (CPU ~5× schneller)
+        const r = Math.sqrt(zx * zx + zy * zy);
+        let ux = r > 0 ? zx / r : 1, uy = r > 0 ? zy / r : 0, wx = 1, wy = 0, k = A.s;
+        while (k > 0) {
+            if (k & 1) { const t = wx * ux - wy * uy; wy = wx * uy + wy * ux; wx = t; }
+            k >>= 1;
+            if (k) { const t = ux * ux - uy * uy; uy = 2 * ux * uy; ux = t; }
+        }
+        x = 0.5 + 0.5 * wy;
+    }
+    else {
+        if (L > 1.5) { A.n += L; return; }
+        const r = Math.pow(Math.max(Math.sqrt(px * px + py * py), 1e-30), A.P);
+        const lo = Math.abs(r - A.cabs), hi = r + A.cabs;
+        x = hi - lo > 1e-30 ? Math.min(1, Math.max(0, (Math.sqrt(zx * zx + zy * zy) - lo) / (hi - lo))) : 0.5;
+    }
+    A.n += L;
+    const w = 1 / Math.min(A.n, A.K);
+    A.a += (x - A.a) * (L > 1.5 ? 1 - Math.pow(1 - w, L) : w);
+}
+function stEnc(zx, zy) {
+    const l2 = 0.5 * Math.log2(zx * zx + zy * zy);
+    const t = Math.min(1, Math.max(0, 1 - Math.log(Math.max(l2, 4) * 0.25) / Math.log(STA.P)));
+    let v;
+    if (STA.st >= 3) { const la = Math.log2(STA.a), lp = Math.log2(STA.ap); v = (lp + (la - lp) * t + 24) / 32; }
+    else v = STA.ap + (STA.a - STA.ap) * t;
+    return Math.round(Math.min(1, Math.max(0, v)) * 65535);
+}
 
 // |a| < |b| ohne Unterlauf bei winzigen Werten (Deep Zoom bis 1e290)
 function lessMag(ax, ay, bx, by) {
@@ -149,7 +201,7 @@ function innerPerturb(ref, f, dzx, dzy, cx, cy, m, o, n, trap) {
 //  Direkte f64-Iteration (flache Zooms, Newton, Tricorn/Burning Ship bis 1e12)
 // ------------------------------------------------------------------
 function directPixel(px, py, formula, maxIter, jx, jy, deS, inn) {
-    OUT.de = 0;
+    OUT.de = 0; OUT.acc = 0;
     if (formula === 5) return newtonPixel(px, py);
     let zx, zy, cx, cy;
     let dx = formula === 1 ? (deS || 0) : 0, dy = 0, dex = 0;
@@ -158,7 +210,10 @@ function directPixel(px, py, formula, maxIter, jx, jy, deS, inn) {
     } else { zx = 0; zy = 0; cx = px; cy = py; }
     let trap = zx * zx + zy * zy;
     const jt = inn && formula === 1;
+    const st = STA.st;
+    if (st) stStart(formula, Math.sqrt(cx * cx + cy * cy));
     for (let n = 1; n <= maxIter; n++) {
+        const qx = zx, qy = zy;
         if (deS) {   // Dp' = f'(z)·Dp (+ Pixelschritt); Burning Ship/Tricorn: Betrag wie holomorph (wie GPU)
             let ax, ay;
             if (formula === 4) { ax = 3 * (zx * zx - zy * zy); ay = 6 * zx * zy; } else { ax = 2 * zx; ay = 2 * zy; }
@@ -172,7 +227,8 @@ function directPixel(px, py, formula, maxIter, jx, jy, deS, inn) {
         else if (formula === 4) { const x2 = zx * zx, y2 = zy * zy; nx = zx * (x2 - 3 * y2) + cx; ny = zy * (3 * x2 - y2) + cy; }
         else { nx = zx * zx - zy * zy + cx; ny = 2 * zx * zy + cy; }
         zx = nx; zy = ny;
-        if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, dx, dy, dex); return smoothIter(n, zx, zy, formula); }
+        if (st) stAdd(zx, zy, qx, qy, 1);
+        if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, dx, dy, dex); if (st) OUT.acc = stEnc(zx, zy); return smoothIter(n, zx, zy, formula); }
         if (jt) trap = Math.min(trap, zx * zx + zy * zy);
     }
     return inn ? innerDirect(zx, zy, cx, cy, formula, maxIter, trap) : -1;
@@ -201,8 +257,10 @@ function newtonPixel(x, y) {
 //  ref = { formula, orbit(Float64Array x,y), baseA, lenA, baseB, lenB, bla|null }
 // ------------------------------------------------------------------
 function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS, inn) {
-    OUT.de = 0;
+    OUT.de = 0; OUT.acc = 0;
     if (ref.formula <= 1) return perturbZ2(dcx, dcy, ref, maxIter, useBLA ? ref.bla : null, deS || 0, inn);
+    const st = STA.st;
+    if (st) stStart(ref.formula, STA.cabsRef);
     const O = ref.orbit, f = ref.formula;
     let Dx = f === 1 ? (deS || 0) : 0, Dy = 0, dex = 0;
     const bla = useBLA ? ref.bla : null;
@@ -235,9 +293,11 @@ function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS, inn) {
                 back = 1;
                 const e4 = 4 * bestE, step = 1 << bestL;
                 const ax = bla.A[e4], ay = bla.A[e4 + 1], bx = bla.A[e4 + 2], by = bla.A[e4 + 3];
+                const qx = O[2 * (base + m)] + dzx, qy = O[2 * (base + m) + 1] + dzy;
                 const nx = ax * dzx - ay * dzy + bx * cx - by * cy;
                 const ny = ax * dzy + ay * dzx + bx * cy + by * cx;
                 dzx = nx; dzy = ny; m += step; n += step;
+                if (st) stAdd(O[2 * (base + m)] + dzx, O[2 * (base + m) + 1] + dzy, qx, qy, step);
                 if (deS) {
                     const ndx = ax * Dx - ay * Dy + bx * deS, ndy = ax * Dy + ay * Dx + by * deS;
                     Dx = ndx; Dy = ndy;
@@ -247,7 +307,7 @@ function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS, inn) {
             }
             if (applied) {
                 const zx = O[2 * (base + m)] + dzx, zy = O[2 * (base + m) + 1] + dzy;
-                if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); return smoothIter(n, zx, zy, f); }
+                if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); if (st) OUT.acc = stEnc(zx, zy); return smoothIter(n, zx, zy, f); }
                 if (m >= len - 1 || lessMag(zx, zy, dzx, dzy)) {
                     o = 1; base = ref.baseB; len = ref.lenB; dzx = zx; dzy = zy; m = 0; wait = 0; back = 1;
                 }
@@ -280,11 +340,13 @@ function perturbPixel(dcx, dcy, ref, maxIter, useBLA, deS, inn) {
             nx = 2 * (X * dzx - Y * dzy) + dzx * dzx - dzy * dzy + cx;
             ny = 2 * (X * dzy + Y * dzx) + 2 * dzx * dzy + cy;
         }
+        const qx = X + dzx, qy = Y + dzy;
         dzx = nx; dzy = ny;
         m++; n++;
         const j2 = 2 * (base + m);
         const zx = O[j2] + dzx, zy = O[j2 + 1] + dzy;
-        if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); return smoothIter(n, zx, zy, f); }
+        if (st) stAdd(zx, zy, qx, qy, 1);
+        if (zx * zx + zy * zy > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); if (st) OUT.acc = stEnc(zx, zy); return smoothIter(n, zx, zy, f); }
         if (m >= len - 1 || lessMag(zx, zy, dzx, dzy)) {
             o = 1; base = ref.baseB; len = ref.lenB; dzx = zx; dzy = zy; m = 0;
         }
@@ -309,6 +371,8 @@ function perturbZ2(dcx, dcy, ref, maxIter, bla, deS, inn) {
     let X = O[2 * base], Y = O[2 * base + 1];
     let wait = 0, back = 1;          // BLA-Backoff: nach Fehlversuch 1,2,4..64 Schritte nicht probieren
     const jt = inn && julia;
+    const st = STA.st;
+    if (st) stStart(0, STA.cabsRef);
     let trap = jt ? (X + dzx) * (X + dzx) + (Y + dzy) * (Y + dzy) : Infinity;
     while (n < maxIter) {
         if (bla !== null && m > 0 && --wait <= 0) {
@@ -328,6 +392,7 @@ function perturbZ2(dcx, dcy, ref, maxIter, bla, deS, inn) {
                 back = 1;
                 const e4 = 4 * bestE;
                 const ax = bla.A[e4], ay = bla.A[e4 + 1], bx = bla.A[e4 + 2], by = bla.A[e4 + 3];
+                const qx = X + dzx, qy = Y + dzy;
                 const nx = ax * dzx - ay * dzy + bx * cx - by * cy;
                 dzy = ax * dzy + ay * dzx + bx * cy + by * cx; dzx = nx;
                 if (deS) {
@@ -339,7 +404,8 @@ function perturbZ2(dcx, dcy, ref, maxIter, bla, deS, inn) {
                 X = O[2 * (base + m)]; Y = O[2 * (base + m) + 1];
                 const zx = X + dzx, zy = Y + dzy;
                 const z2 = zx * zx + zy * zy;
-                if (z2 > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); return smoothIter(n, zx, zy, 0); }
+                if (st) stAdd(zx, zy, qx, qy, 1 << bestL);
+                if (z2 > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); if (st) OUT.acc = stEnc(zx, zy); return smoothIter(n, zx, zy, 0); }
                 const d2 = dzx * dzx + dzy * dzy;
                 if (m >= len - 1 || (d2 > 1e-280 ? z2 < d2 : lessMag(zx, zy, dzx, dzy))) {
                     o = 1; base = ref.baseB; len = ref.lenB; dzx = zx; dzy = zy; m = 0; X = 0; Y = 0; wait = 0; back = 1;
@@ -353,13 +419,15 @@ function perturbZ2(dcx, dcy, ref, maxIter, bla, deS, inn) {
             Dy = 2 * (fx * Dy + fy * Dx); Dx = ndx;
             if (Math.abs(Dx) > TWO_512 || Math.abs(Dy) > TWO_512) { Dx *= TWO_M512; Dy *= TWO_M512; dex += 512; }
         }
+        const qx = X + dzx, qy = Y + dzy;
         const nx = 2 * (X * dzx - Y * dzy) + dzx * dzx - dzy * dzy + cx;
         dzy = 2 * (X * dzy + Y * dzx) + 2 * dzx * dzy + cy; dzx = nx;
         m++; n++;
         X = O[2 * (base + m)]; Y = O[2 * (base + m) + 1];
         const zx = X + dzx, zy = Y + dzy;
         const z2 = zx * zx + zy * zy;
-        if (z2 > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); return smoothIter(n, zx, zy, 0); }
+        if (st) stAdd(zx, zy, qx, qy, 1);
+        if (z2 > BAIL) { if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex); if (st) OUT.acc = stEnc(zx, zy); return smoothIter(n, zx, zy, 0); }
         if (jt && z2 < trap) trap = z2;
         const d2 = dzx * dzx + dzy * dzy;
         if (m >= len - 1 || (d2 > 1e-280 ? z2 < d2 : lessMag(zx, zy, dzx, dzy))) {
@@ -648,7 +716,7 @@ function blaFor(ref, eps, cmax, asF32) {
     return packBLA(tA, tB, !julia, asF32);
 }
 
-root.FKCore = { BAIL, MAXL, OUT, encDE, ctz, smoothIter, lessMag, directPixel, newtonPixel, perturbPixel, diffabs, innerVal, cycleInfo,
+root.FKCore = { BAIL, MAXL, OUT, encDE, stSetup, STA, ctz, smoothIter, lessMag, directPixel, newtonPixel, perturbPixel, diffabs, innerVal, cycleInfo,
                 buildBLA, packBLA, blaFor, hpOrbit, ballPeriod, newtonNucleusPerturb, gridProbe,
                 computeReference, precisionFor, makeToF };
 })(typeof self !== 'undefined' ? self : globalThis);

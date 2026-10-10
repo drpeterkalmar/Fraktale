@@ -386,12 +386,13 @@ root.FKCapture = { create(ctx) {
             const pxoff = [tile.gx - m + bw / 2 - P.W / 2, tile.gy - m + bh / 2 - P.H / 2];
             const job = { key: 'shot', stage: 1, kind: P.dev, mode: P.mode, formula: P.formula, maxIter: P.maxIter, view: P.cam, w: bw, h: bh, scale: P.s,
                           julia: P.julia, de: P.de, inn: P.inn, err: P.err, pxoff, id: C.id };
+            ctx.styleJob(job);              // 7.1 Färbe-Stil wie am Bildschirm
             T.job = job; T.bw = bw; T.bh = bh;
             if (P.dev === 'gpu') {
                 R.beginJob(job);
                 if (P.mode === 'perturb') job.useBLA = P.useBLA;   // fürs ganze Bild entschieden (sonst Nähte zwischen Kacheln mit/ohne BLA)
             } else {
-                job.buf = R.acquireBuffer(bw, bh);
+                job.buf = R.acquireBuffer(bw, bh, false, job.st > 0);
                 job.cpuOff = P.mode === 'perturb' ? P.off : [HP.toNumber(P.cam.cx), HP.toNumber(P.cam.cy)];
                 job.useBLA = !!P.useBLA; job.refId = P.refId;
                 const TS = 64, tl = [];
@@ -474,7 +475,7 @@ root.FKCapture = { create(ctx) {
                     const tl = job.tiles.shift();
                     w.busy++;
                     w.postMessage({ type: 'tile', jobId: C.id, refId: job.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.formula, maxIter: P.maxIter, useBLA: job.useBLA,
-                                    de: P.de, inn: P.inn, offX: job.cpuOff[0], offY: job.cpuOff[1], jx: P.julia[0], jy: P.julia[1], x: tl.x + job.ox, y: tl.y + job.oy, w: tl.w, h: tl.h });
+                                    de: P.de, inn: P.inn, st: job.st, stp: job.stp, cabs: job.cabs, offX: job.cpuOff[0], offY: job.cpuOff[1], jx: P.julia[0], jy: P.julia[1], x: tl.x + job.ox, y: tl.y + job.oy, w: tl.w, h: tl.h });
                 } else break;
             }
         }

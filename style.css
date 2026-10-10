@@ -171,6 +171,9 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 .seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
 .seg button { flex: 1; height: 48px; border-radius: 10px; color: var(--dim); font-size: 13px; }
 .seg button.on { background: rgba(167, 139, 250, 0.28); color: #fff; }
+/* 7.1 Look: Stil-Wahl als Raster (7 Stile, 4 je Zeile) */
+.seg-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+.seg-grid button { height: 48px; min-width: 0; padding: 0 2px; }
 
 /* Farben */
 .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

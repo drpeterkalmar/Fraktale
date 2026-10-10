@@ -29,8 +29,10 @@ function tile(q) {
         return;
     }
     const useBLA = perturb && q.useBLA && ref.bla;
-    // 6.1: Distanzschätzung (Code wie GPU) als zweiter Kanal
-    const deS = q.de ? scale : 0, de = q.de ? new Uint8Array(w * h) : null;
+    // 6.1: Distanzschätzung (Code wie GPU) als zweiter Kanal; 7.1 Färbe-Stil: RGBA je Pixel (Distanz, Stil-Wert 16 bit, 0)
+    const st = q.st | 0, c4 = st ? 4 : 1;
+    C.stSetup(st, q.stp, q.cabs);
+    const deS = q.de ? scale : 0, de = q.de || st ? new Uint8Array(w * h * c4) : null;
     for (let j = 0; j < h; j++) {
         const py = -((y + j) + 0.5 - bufH / 2) * scale;
         for (let i = 0; i < w; i++) {
@@ -39,9 +41,11 @@ function tile(q) {
             out[k] = perturb
                 ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, deS, q.inn)
                 : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy, deS, q.inn);
-            if (de) de[k] = C.OUT.de;
+            if (st) { const a = C.OUT.acc; de[4 * k] = C.OUT.de; de[4 * k + 1] = a >> 8; de[4 * k + 2] = a & 255; }
+            else if (de) de[k] = C.OUT.de;
         }
     }
+    C.stSetup(0);
     self.postMessage({ type: 'tile', jobId: q.jobId, x, y, w, h, data: out, de }, de ? [out.buffer, de.buffer] : [out.buffer]);
 }
 
@@ -53,6 +57,7 @@ function pixels(q) {
     const perturb = q.mode === 'perturb';
     if (perturb && (!ref || ref.id !== q.refId)) { self.postMessage({ type: 'pixels', jobId: q.jobId, chunk: q.chunk, missingRef: true, list }); return; }
     const useBLA = perturb && q.useBLA && ref.bla;
+    C.stSetup(0);
     for (let k = 0; k < n; k++) {
         const px = (list[2 * k] + 0.5 - bufW / 2) * scale, py = -(list[2 * k + 1] + 0.5 - bufH / 2) * scale;
         out[k] = perturb ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, 0, q.inn)

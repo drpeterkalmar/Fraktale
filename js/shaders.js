@@ -91,15 +91,89 @@ int inStep(inout InSt s, float dl, vec2 z, int n, out uint o) {
 uint inFinal(InSt s, int n) { return s.cand > 0 && n - s.candN <= 2 * s.cand + 2 ? inResult(s.cand, s.candL, s.candN, s.trap) : 0xBF800000u; }
 `;
 
+// ---------------------------------------------------------------- 7.1 FÄRBE-STILE (Rechen-Variante ST > 0)
+// Neben der glatten Iteration wird ein Wert der Bahn mitgeführt und als 16 bit in den G/B-Kanal des DE-Ziels geschrieben
+// (Puffer mit RGBA8-DE-Ziel, js/renderer.js). Stile: 1 Streifen (Stripe Average, Härkönen: ½ + ½·sin(s·arg z)),
+// 2 Dreieck (Triangle Inequality Average), 3 Punkt-Falle (|z|), 4 Kreis-Falle (||z| − r|), 5 Kreuz-Falle und
+// 6 Pickover-Stängel (beide min(|Re z|, |Im z|); der Unterschied liegt nur in der Darstellung).
+// Tiefenfest: Mittelwerte als gleitendes Mittel über die letzten K Schritte (bis dahin echter Mittelwert, flach wie
+// Härkönen), Fallen als „vergessendes Minimum“ (log2-Abstand wächst je Schritt um F; K, F: u_stp.zw) – im Deep Zoom teilen alle Pixel
+// den Anfang der Bahn, nur das Ende unterscheidet sie; ein Mittel über alles wäre dort einfarbig.
+// BLA-Sprünge über L Schritte: Näherung, als hätten alle übersprungenen Werte den Wert am Sprungende (gleitendes Mittel:
+// Gewicht 1 − (1 − w)^L, Fallen: Vergessen um L·F); das Dreieck-Mittel braucht z_{n−1} und ruht über Sprüngen. Die
+// letzten Schritte vor der Flucht rechnet die Perturbation fast immer einzeln (BLA-Radius ~ |Z|, |dz| wächst).
+// Glatt über die Iterationsgrenzen: Wert = mix(Mittel bis z_{n−1}, Mittel bis z_n, t), t aus der glatten Iteration.
+const STYLE_CORE = `
+uniform vec4 u_stp;        // x: Streifendichte s (ganzzahlig, damit sin(s·arg z) über die negative Achse stetig ist), y: Kreisradius,
+                           // z: Fenster des gleitenden Mittels (Schritte), w: Vergessen der Fallen (log2-Abstand je Schritt)
+// Zustand als lokaler vec3 (a = Wert, p = Wert vor dem letzten Schritt, n = Zahl der Schritte), per inout weitergereicht –
+// globale Variablen, die in einer Funktion geändert werden, behielt ANGLE/Metal nicht zuverlässig (gemessen: nur der
+// erste Aufruf wirkte)
+#if F == 4
+const float ST_P = 3.0;
+#else
+const float ST_P = 2.0;
+#endif
+vec3 stInit() {
+#if ST >= 3
+    return vec3(10.0, 10.0, 0.0);
+#else
+    return vec3(0.0);
+#endif
+}
+float stDist(vec2 z) {
+#if ST == 3
+    return length(z);
+#elif ST == 4
+    return abs(length(z) - u_stp.y);
+#else
+    return min(abs(z.x), abs(z.y));
+#endif
+}
+// ein Schritt (L = 1) bzw. ein BLA-Sprung über L Schritte; z = neuer Wert, zp = Wert davor, cabs = |c| (Dreieck-Mittel)
+void stAdd(inout vec3 A, vec2 z, vec2 zp, float L, float cabs) {
+    A.y = A.x;
+#if ST >= 3
+    A.x = min(A.x + u_stp.w * L, log2(max(stDist(z), 1e-30)));
+    A.z += L;
+#else
+#if ST == 1
+    float x = 0.5 + 0.5 * sin(u_stp.x * atan(z.y, z.x));
+#else
+    if (L > 1.5) { A.z += L; return; }
+    float r = pow(max(length(zp), 1e-30), ST_P);
+    float lo = abs(r - cabs), hi = r + cabs;
+    float x = hi - lo > 1e-30 ? clamp((length(z) - lo) / (hi - lo), 0.0, 1.0) : 0.5;
+#endif
+    A.z += L;
+    float w = 1.0 / min(A.z, u_stp.z);
+    A.x += (x - A.x) * (L > 1.5 ? 1.0 - pow(1.0 - w, L) : w);
+#endif
+}
+// Ausgabe beim Entkommen (z = erster Wert mit |z|² > 256): 16 bit für den G/B-Kanal
+vec2 stEnc(vec3 A, vec2 z) {
+    float l2 = 0.5 * log2(dot(z, z));
+    float t = clamp(1.0 - log(max(l2, 4.0) * 0.25) / log(ST_P), 0.0, 1.0);
+    float v = mix(A.y, A.x, t);
+#if ST >= 3
+    v = (v + 24.0) / 32.0;       // log2-Abstand −24 … 8
+#endif
+    uint q = uint(clamp(v, 0.0, 1.0) * 65535.0 + 0.5);
+    return vec2(float(q >> 8u), float(q & 255u)) / 255.0;
+}
+`;
+
 // ---------------------------------------------------------------- COMPUTE
-function computeFS(formula, mode, err, de, inn) {
+function computeFS(formula, mode, err, de, inn, st) {
     const F = formula | 0;
     const IN = inn && F !== 5 ? 1 : 0;
+    const ST = F !== 5 ? (st | 0) : 0;
     const common = `#version 300 es
 #define F ${F}
 #define ERR ${err && F !== 5 ? 1 : 0}
 #define DE ${de && F !== 5 ? 1 : 0}
 #define DT (ERR == 1 || DE == 1)
+#define ST ${ST}
 ${IN ? '#define IN 1' : ''}
 ${COMMON}
 uniform vec2 u_res;        // Puffergröße
@@ -149,6 +223,7 @@ float smoothI(int n, vec2 z) {
 #endif
 }
 ${IN ? INNER_CORE : ''}
+${ST ? STYLE_CORE : ''}
 `;
     if (mode === 'direct') return common + `
 uniform vec2 u_center;     // Ansichtsmitte (f32 reicht bis Zoom ~1e3)
@@ -185,7 +260,7 @@ void main() {
     if (dot(z, z) > 256.0) {
         result = smoothI(0, z);
 #if DE
-        o_de = vec4(encDE(z, Dt, 0.0));
+        o_de.r = encDE(z, Dt, 0.0);
 #endif
     }
 #else
@@ -206,7 +281,18 @@ void main() {
 #ifdef IN
     float trap = dot(z, z);
 #endif
+#if ST
+    vec3 sA = stInit();
+#if F == 1
+    float cabs = length(c);
+#else
+    float cabs = length(pos);
+#endif
+#endif
     if (result < 0.0 && !skip) for (int n = 1; n <= u_maxIter; n++) {
+#if ST
+        vec2 zq = z;
+#endif
 #if DT
 #if F == 4
         Dt = 3.0 * cmul(cmul(z, z), Dt);
@@ -231,13 +317,19 @@ void main() {
 #else
         z = cmul(z, z) + c;
 #endif
+#if ST
+        stAdd(sA, z, zq, 1.0, cabs);
+#endif
         if (dot(z, z) > 256.0) {
             result = smoothI(n, z);
 #if ERR
             unsure = unsureEsc(E2, Dt, z);
 #endif
 #if DE
-            o_de = vec4(encDE(z, Dt, dex));
+            o_de.r = encDE(z, Dt, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, z);
 #endif
             break;
         }
@@ -305,6 +397,9 @@ uniform int u_blaL[2];
 uniform int u_blaOff[48];              // [Orbit*24 + Stufe]` : ''}
 
 vec2 orb(int i) { return texelFetch(u_orbit, ivec2(i & 2047, i >> 11), 0).xy; }
+#if ST
+uniform float u_cabs;                  // 7.1: |c| für das Dreieck-Mittel (Mandelbrot-artig: Ansichtsmitte, Julia: Parameter)
+#endif
 
 // |a| < |b| — gegen Unterlauf skaliert (tiefe Zooms: Werte ~1e-30)
 bool lessMag(vec2 a, vec2 b) {
@@ -332,7 +427,7 @@ void main() {
     vec2 dz = dc, c = vec2(0.0);
     { vec2 z0 = Zc + dz; if (dot(z0, z0) > 256.0) { o_it = floatBitsToUint(smoothI(0, z0));
 #if DE
-      o_de = vec4(encDE(z0, vec2(u_scale, 0.0), 0.0));
+      o_de.r = encDE(z0, vec2(u_scale, 0.0), 0.0);
 #endif
       return; } }
 #else
@@ -352,6 +447,9 @@ void main() {
     float E2 = 0.0;
     bool unsure = false;
     float mc = magn(c);
+#endif
+#if ST
+    vec3 sA = stInit();
 #endif
 #ifdef IN
     int ph = 0, nEnd = u_maxIter;     // 6.4: ph 1 = Zyklussuche nach maxIter (ohne BLA, jeder Schritt einzeln)
@@ -412,9 +510,16 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
 #endif
                 }
 #endif
+#if ST
+                vec2 zq = Zc + dz;
+#endif
                 dz = cmul(ab.xy, dz) + cmul(ab.zw, c);
                 m += 1 << bestL; n += 1 << bestL;
                 applied = true;
+#if ST
+                Zc = orb(base + m);
+                stAdd(sA, Zc + dz, zq, float(1 << bestL), u_cabs);
+#endif
             }
             if (applied) {
                 Zc = orb(base + m);
@@ -428,7 +533,10 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
                     unsure = unsureEsc(E2, Dt, z);
 #endif
 #if DE
-                    o_de = vec4(encDE(z, Dt, dex));
+                    o_de.r = encDE(z, Dt, dex);
+#endif
+#if ST
+                    o_de.gb = stEnc(sA, z);
 #endif
                     break;
                 }
@@ -444,6 +552,9 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
         vec2 Z = Zc;
 #ifdef IN
         vec2 zp = Z + dz;
+#endif
+#if ST
+        vec2 zq = Z + dz;
 #endif
 #if DT
         {
@@ -483,6 +594,9 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
         m++; n++;
         Zc = orb(base + m);
         vec2 z = Zc + dz;
+#if ST
+        stAdd(sA, z, zq, 1.0, u_cabs);
+#endif
 #ifdef IN
 #if F == 1
         trap = min(trap, dot(z, z));
@@ -501,7 +615,10 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
             unsure = unsureEsc(E2, Dt, z);
 #endif
 #if DE
-            o_de = vec4(encDE(z, Dt, dex));
+            o_de.r = encDE(z, Dt, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, z);
 #endif
             break;
         }
@@ -626,6 +743,44 @@ float deMask(float d00, float d10, float d01, float d11, vec2 f, float pxPerTexe
 }
 
 `;
+// 7.1 Färbe-Stile im Anzeige-Pass (Werte siehe STYLE_CORE): Farbe eines Außenpunkts aus glatter Iteration v und Stil-Wert a
+const STYLE_GLSL = `
+float fetchA(sampler2D t, ivec2 c) { vec4 d = texelFetch(t, c, 0); return d.g * (65280.0 / 65535.0) + d.b * (255.0 / 65535.0); }
+vec3 styleColor(float v, float a) {
+    if (u_banded == 1) v = floor(v);
+    float k = u_stMix, base = v * 0.08 * u_density + u_cycle;
+    if (g_st <= 2) a = clamp(0.5 + (a - 0.5) * u_stG, 0.0, 1.0);   // Mittelwerte streuen eng um 0,5 – Kontrast
+    if (g_st == 1) {               // Streifen: seidige Bänder entlang der Filamente
+        vec3 c = palette(base * (1.0 - 0.55 * k) + 0.5 * k * a);
+        return c * mix(1.0, 0.42 + 0.78 * a, k);
+    }
+    if (g_st == 2) {               // Dreieck-Mittel: weich gewölbte, lockige Flächen
+        float sa = smoothstep(0.0, 1.0, a);
+        vec3 c = palette(base * (1.0 - 0.5 * k) + 0.4 * k * sa);
+        return c * mix(1.0, 0.42 + 0.72 * sa, k);
+    }
+    float l = a * 32.0 - 24.0;     // log2 des Abstands zur Falle
+    if (g_st == 6) {               // Pickover-Stängel: dünne leuchtende Fäden über der normalen Färbung
+        float g = exp2(-max(l + 5.0, 0.0) * 1.4);
+        return mix(palette(base), palette(base + 0.5) * 1.25 + 0.2, k * g);
+    }
+    if (g_st == 3) {               // Punkt-Falle: Lichtpunkte, wo die Bahn dem Nullpunkt nahe kommt
+        float g = pow(smoothstep(2.5, -6.0, l), 0.8);
+        vec3 c = palette(base * (1.0 - 0.6 * k) - 0.09 * k * l);
+        return c * mix(1.0, 0.18 + 1.1 * g, k);
+    }
+    // Kreis/Kreuz: Palette nach dem Abstand, Leuchten nahe der Falle
+    vec3 c = palette(base * (1.0 - 0.7 * k) - 0.05 * k * l);
+    float glow = exp2(-max(l + 5.0, 0.0) * 0.3);
+    return c * mix(1.0, 0.3 + 0.95 * glow, k);
+}
+vec3 extC(float v, float a) { return g_st == 0 ? exteriorColor(v) : styleColor(v, a); }
+// Relief: der Stil-Wert als zusätzliche Höhe (Streifen/Falten werden zu Rillen, Fallen zu Kuppen)
+vec4 styleHeight(vec4 a) {
+    if (g_st <= 2) return clamp(0.5 + (a - 0.5) * u_stG, 0.0, 1.0) * (1.6 * u_stMix);
+    return -max(a * 32.0 - 24.0 + 5.0, vec4(0.0)) * (0.12 * u_stMix);
+}
+`;
 const DISPLAY_FS = `#version 300 es
 ${COMMON}
 ${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
@@ -649,6 +804,11 @@ uniform int u_particles, u_banded;
 uniform vec3 u_setCol;          // 6.2: Farbe der Menge (Schwarz = vec3(0, 0, 0.015) wie bis 6.1)
 uniform int u_outM;             // 6.9 Außen: 0 = Palette (wie bisher), 1 = Grenznah, 2 = Schwarz („Unendlichkeit schwarz“)
 uniform float u_outW;           // 6.9 Grenznah: Saumbreite in Zielpixeln (bei diesem Abstand zur Menge noch 1/4 Helligkeit)
+uniform int u_style;            // 7.1 Färbe-Stil (0 = Standard wie bis 7.0; Werte im G/B-Kanal des DE-Ziels, siehe STYLE_CORE)
+uniform float u_stMix;          // 7.1 Stärke des Stils 0..1
+uniform float u_stG;            // 7.1 Kontrast der Mittelwert-Stile (Abweichung vom Mittel 0,5 × u_stG)
+uniform float u_acc[${NL}];     // 7.1 je Ebene: 1 = hat den Stil-Kanal (sonst Standard-Färbung, z. B. Ebenen von vor dem Umschalten)
+int g_st = 0;                   // Stil der gerade gefärbten Ebene
 out vec4 fragColor;
 // 6.9: Helligkeit der Außenfarbe dieses Bildpunkts (1 = Palette; je Pixel in sampleLayerN gesetzt). Grenznah: aus der
 // Distanzschätzung in Zielpixeln – dieselbe Saumbreite bei jedem Zoom, glatt (bilinear interpolierte Distanz, exp-Abfall)
@@ -661,8 +821,11 @@ float rimShade(float d00, float d10, float d01, float d11, vec2 f, float pxPerTe
     return 1.0 - 0.5 * smoothstep(0.35, 0.8, sl) * (1.0 - smoothstep(1.25, 4.0, d));
 }
 
-${PAL_GLSL}vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
+${PAL_GLSL}${STYLE_GLSL}
+vec4 g_relA = vec4(0.0);        // 7.1: Stil-Werte der vier Texel (Relief: Streifen/Falten als Höhe)
+vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
     float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
+    if (g_st > 0) { vec4 hs = styleHeight(g_relA); h00 += hs.x; h10 += hs.y; h01 += hs.z; h11 += hs.w; }
     vec2 g = vec2(mix(h10 - h00, h11 - h01, f.y), mix(h01 - h00, h11 - h10, f.x));
     g /= max(kx, 1e-6);                   // Gradient pro Texel -> pro Zielpixel normieren
     // gesättigte Hangneigung: glatte Zonen bekommen sichtbare Wölbung, Rauschzonen laufen nicht aus
@@ -680,10 +843,10 @@ ${PAL_GLSL}vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec
 
 // bilinear eingefärbte Probe aus 4 Texeln (Verhalten 5.0.1; bei Ausrichtung 1:1 exakt der Texel)
 vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 voidCol) {
-    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : exteriorColor(v00) * g_outK;
-    vec3 c10 = v10 < 0.0 ? inCol(v10, voidCol) : exteriorColor(v10) * g_outK;
-    vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : exteriorColor(v01) * g_outK;
-    vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : exteriorColor(v11) * g_outK;
+    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : extC(v00, g_relA.x) * g_outK;
+    vec3 c10 = v10 < 0.0 ? inCol(v10, voidCol) : extC(v10, g_relA.y) * g_outK;
+    vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : extC(v01, g_relA.z) * g_outK;
+    vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : extC(v11, g_relA.w) * g_outK;
     vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
     if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
         col = relief(col, v00, v10, v01, v11, f, kx);
@@ -713,7 +876,7 @@ vec4 cubicW(float t) {
 
 // Probe einer Ebene (neu): gefedert; vergrößerte Ebenen (Vorschau) auf dem Iterationswert rekonstruiert;
 // 6.1: Mengen-Saum aus der Distanzschätzung (dtex) pro Zielpixel
-vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidCol, out float w) {
+vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidCol, float acc, out float w) {
     vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
     w = coverage(tc, size, xf);
     if (w <= 0.0) return vec3(0.0);
@@ -725,6 +888,8 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
     ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
     float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
     float dm = 0.0, rim = 1.0;
+    g_st = acc > 0.5 ? u_style : 0;
+    if (g_st > 0) g_relA = vec4(fetchA(dtex, i0), fetchA(dtex, ivec2(i1.x, i0.y)), fetchA(dtex, ivec2(i0.x, i1.y)), fetchA(dtex, i1));
     // 6.4: Mengenfarbe dieses Pixels = Innenfarben der Innentexel (bilinear); keine Innentexel -> Mengenfarbe (Saum)
     if (u_inMode > 0) {
         vec4 wq = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y) * (1.0 - step(0.0, vec4(v00, v10, v01, v11)));
@@ -776,10 +941,10 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
             }
             if (ok && mxv - mn < 3.0 * thr) mu = clamp(s, lo, hi);
         }
-        col = exteriorColor(mu) * g_outK;
+        col = (g_st > 0 ? extC(mu, dot(wb * ext, g_relA) / wo) : exteriorColor(mu)) * g_outK;
     } else {
         vec3 c = vec3(0.0);
-        for (int i = 0; i < 4; i++) if (v[i] >= 0.0) c += wb[i] * exteriorColor(v[i]);
+        for (int i = 0; i < 4; i++) if (v[i] >= 0.0) c += wb[i] * extC(v[i], g_relA[i]);
         col = c / wo * g_outK;
     }
     if (u_relief > 0.0 && u_formula != 5 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
@@ -817,7 +982,7 @@ void main() {
     // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
     vec3 acc = vec3(0.0);
     float T = 1.0;
-${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
+${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, u_acc[${i}], w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
     col = acc + T * col;
     // Sättigung, Vignette, Gamma wie v4
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -967,5 +1132,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, DISPLAY_FS, NL, PAL_GLSL, COMMON, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, DISPLAY_FS, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.0.0';
+const APP_VERSION = '7.1.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -44,6 +44,7 @@ const S = {
     setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
     outMode: 'pal', edgeW: 16,                                              // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
+    style: 0, stMix: 0.85, stS: 5,                                          // 7.1: Färbe-Stil (0 Standard … 6 Stängel), Stärke, Streifendichte
     bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false,             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
@@ -63,6 +64,21 @@ function deMaskOn() { return S.deOn && S.formula !== 5; }
 // Leuchten nahe der Oberfläche / schwarz); nicht Newton, Buddhabrot
 function outActive() { return S.formula < 5 || isRay() ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
 function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
+// 7.1 Färbe-Stil: wirkt in den 2D-Welten mit Fluchtzeit (Mandelbrot, Julia, Burning Ship, Tricorn, z³) – nicht Newton,
+// 3D-Fraktale, Buddhabrot. Rechen-Variante + Puffer mit Stil-Kanal (js/renderer.js), Parameter: Streifendichte, Kreisradius
+// Abstimmung (Bildvergleich 7.1): Fenster des gleitenden Mittels je Stil, Vergessen der Fallen, Kontrast im Anzeige-Pass
+// (Mess-Regler ?stk=, ?stf=, ?stg=)
+// gewählt: Seide K = 10, Kontrast 3 (K = 24 wirkte im Deep Zoom flau, K = 4 unruhig); Dreieck K = 6, Kontrast 2,5
+const ST_TUNE = { K: [0, +Q.get('stk') || 10, +Q.get('stk') || 6, 0, 0, 0, 0], F: +Q.get('stf') || 0.32, G: [1, +Q.get('stg') || 3, +Q.get('stg') || 2.5, 1, 1, 1, 1] };
+function stActive() { return S.style > 0 && S.style <= 6 && S.formula < 5 ? S.style | 0 : 0; }
+function styleJob(job) {
+    job.st = stActive();
+    if (job.st) {
+        job.stp = [Math.max(1, Math.min(12, Math.round(S.stS) || 5)), 1, ST_TUNE.K[job.st], ST_TUNE.F];
+        job.cabs = job.formula === 1 ? Math.hypot(job.julia[0], job.julia[1]) : Math.hypot(HP.toNumber(job.view.cx), HP.toNumber(job.view.cy));
+    }
+    return job;
+}
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
 
@@ -70,7 +86,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -79,7 +95,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
@@ -522,7 +538,8 @@ function look() {
              setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0,
              inner: innActive() ? (S.inMode === 2 ? 2 : 1) : 0,
              // 6.9 Außen; Saumbreite in Zielpixeln (Screenshot skaliert mit, js/capture.js; 3D: in Pufferpixeln, ≈ Zielpixel)
-             outM: outActive(), outW: S.edgeW * canvas.width / cssW };
+             outM: outActive(), outW: S.edgeW * canvas.width / cssW,
+             style: stActive(), stMix: S.stMix, stG: ST_TUNE.G[stActive()] };    // 7.1 Färbe-Stil
 }
 
 // Ebenenliste + Optionen für den Display-Pass (auch für Screenshot/Thumbnail)
@@ -1116,6 +1133,8 @@ const CTX = {
     get canvas() { return canvas; },
     get deActive() { return deActive; },
     get deMaskOn() { return deMaskOn; },
+    get stActive() { return stActive; },
+    get styleJob() { return styleJob; },
     get smooth01() { return smooth01; },
     get viewKey() { return viewKey; },
     get GOV() { return GOV; },
@@ -1177,7 +1196,7 @@ const CTX = {
     get RM() { return RM; },
 };
 const M_UrlState = self.FKUrlState.create(CTX);
-const { readURL, setColParam, outParam, stateURL, syncURL } = M_UrlState;
+const { readURL, setColParam, outParam, styleParam, stateURL, syncURL } = M_UrlState;
 const M_CpuPool = self.FKCpuPool.create(CTX);
 const { cancelFix, cpuBroadcast, cpuFeed, cpuPool, cpuSendRef, cpuWorkers, recompute, startFix } = M_CpuPool;
 const M_Refs = self.FKRefs.create(CTX);
@@ -1207,7 +1226,7 @@ BULB.link();
 function isDone() { const f = RC.front, now = performance.now(); return !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(now); }
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
-    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames,
+    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, stActive,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, captureShot, fileName, zoomAt, presentNow,
@@ -1266,7 +1285,7 @@ const API = {
         const d = HP.digitsForZoom(S.cam.zoom);
         return { cx: HP.toString(S.cam.cx, d), cy: HP.toString(S.cam.cy, d), zoom: S.cam.zoom, formula: S.formula,
                  jx: S.formula === 1 ? HP.toString(S.julia.x, 12) : undefined, jy: S.formula === 1 ? HP.toString(S.julia.y, 12) : undefined,
-                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined, out: outParam() || undefined,
+                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined, out: outParam() || undefined, style: styleParam() || undefined,
                  b: isBulb() ? BULB.stateString() : undefined };
     },
     isMoving: () => isMoving(performance.now()),
@@ -1310,6 +1329,7 @@ const API = {
             const w = Math.ceil(canvas.width * 1.2 / d), h = Math.ceil(canvas.height * 1.2 / d);
             const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
                           w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: deActive() };
+            styleJob(job);
             if (d === 1) { job.w = canvas.width; job.h = canvas.height; }
             R.beginJob(job);
             qs.push(['div' + d + '_' + job.w + 'x' + job.h, timeIt(() => { R.maxInflight = 1e9; while (job.row < job.h) R.pump(job, 0); })]);
@@ -1335,6 +1355,7 @@ const API = {
             const w = d === 1 ? canvas.width : Math.ceil(canvas.width * 1.2 / d), h = d === 1 ? canvas.height : Math.ceil(canvas.height * 1.2 / d);
             const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
                           w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: de === undefined ? deActive() : !!de };
+            styleJob(job);
             const sync = (b) => { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, b ? b.fbo : null); gl.readPixels(0, 0, 1, 1, b ? gl.RGBA_INTEGER : gl.RGBA, b ? gl.UNSIGNED_INT : gl.UNSIGNED_BYTE, b ? new Uint32Array(4) : new Uint8Array(4)); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); };
             sync(null);                                   // gl.finish blockiert in Chrome nicht – readPixels schon
             const t0 = performance.now();
@@ -1372,6 +1393,8 @@ const API = {
     readFront() { const f = RC.front; if (!f) return null; return { w: f.buf.w, h: f.buf.h, data: Array.from(R.readIterSync(f.buf)), scale: f.scale, cx: HP.toString(f.view.cx, 60), cy: HP.toString(f.view.cy, 60), zoom: f.view.zoom }; },
     // Test: DE-Codes des fertigen Bildes (Uint8, Zeile 0 = unten) als Array
     readFrontDE() { const f = RC.front; if (!f) return null; const d = R.readDESync(f.buf); return d ? { w: f.buf.w, h: f.buf.h, data: Array.from(d) } : null; },
+    // Test (7.1): Stil-Werte (16 bit, G/B des DE-Ziels) des fertigen Bildes, Zeile 0 = unten; null ohne Stil-Kanal
+    readFrontAcc() { const f = RC.front; if (!f || !f.buf.acc) return null; const u = R.readDESync(f.buf, true); const out = new Array(f.buf.w * f.buf.h); for (let i = 0; i < out.length; i++) out[i] = u[4 * i + 1] * 256 + u[4 * i + 2]; return { w: f.buf.w, h: f.buf.h, data: out, kind: f.kind }; },
 };
 self.__fraktal = API;
 init();

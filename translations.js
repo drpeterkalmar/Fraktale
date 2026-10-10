@@ -560,6 +560,30 @@ const TRANSLATIONS_V70B = {
     ko: { mandelbox: "만델박스 3D", menger: "멩거 스펀지 3D", f_mandelbox: "접기 + 확대", f_menger: "단계마다 구멍 난 정육면체", help_mandelbox: "만델박스: 공간을 정육면체와 구에서 반복해서 접고 확대하면 탑, 홀, 격자가 나타납니다. „배율“ 슬라이더로 구조가 바뀝니다.", help_menger: "멩거 스펀지: 단계마다 정육면체의 가운데 십자를 잘라냅니다 – 무한한 구멍, 확대해도 같은 무늬가 반복됩니다.", bulb_scale: "배율" }
 };
 for (const l of Object.keys(TRANSLATIONS_V70B)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_V70B[l]);
+// 7.1 Neue Welten + Färbe-Stile (DE/EN; die übrigen Sprachen zeigen Englisch, bis Übersetzungen kommen)
+const TRANSLATIONS_V71 = {
+    de: { look_title: "Look", st_std: "Standard", st_stripe: "Seide", st_tia: "Dreieck", st_point: "Punkt", st_circle: "Kreis", st_cross: "Kreuz", st_stalk: "Stängel",
+          st_mix: "Stärke", st_s: "Streifenzahl",
+          st_hint_0: "Färbung nach der Fluchtgeschwindigkeit (wie bisher).",
+          st_hint_1: "Seide (Stripe Average): seidige Streifen, die den Filamenten folgen. Mit 3D-Relief werden sie zu Rillen.",
+          st_hint_2: "Dreieck-Mittel (Triangle Inequality Average): weich gewölbte, lockige Flächen – schön mit Relief.",
+          st_hint_3: "Orbit-Falle Punkt: leuchtet dort, wo die Bahn dem Nullpunkt nahe kommt – Lichtpunkte und Augen.",
+          st_hint_4: "Orbit-Falle Kreis: leuchtet, wo die Bahn den Einheitskreis streift – Ringe und Schleifen.",
+          st_hint_5: "Orbit-Falle Kreuz: Abstand der Bahn zu den Achsen – Kreuzmuster, Blüten und Gitter.",
+          st_hint_6: "Pickover-Stängel: dünne leuchtende Fäden über der normalen Färbung.",
+          st_hint_na: "Gilt für Mandelbrot, Julia, Burning Ship, Tricorn, Multibrot und die Exoten mit Fluchtzeit (hier ohne Wirkung)." },
+    en: { look_title: "Look", st_std: "Standard", st_stripe: "Silk", st_tia: "Triangle", st_point: "Point", st_circle: "Circle", st_cross: "Cross", st_stalk: "Stalks",
+          st_mix: "Strength", st_s: "Stripes",
+          st_hint_0: "Colouring by escape speed (as before).",
+          st_hint_1: "Silk (stripe average): silky stripes that follow the filaments. With 3D relief they become grooves.",
+          st_hint_2: "Triangle inequality average: softly curved, curly surfaces – lovely with relief.",
+          st_hint_3: "Orbit trap point: glows where the orbit comes close to zero – points of light and eyes.",
+          st_hint_4: "Orbit trap circle: glows where the orbit grazes the unit circle – rings and loops.",
+          st_hint_5: "Orbit trap cross: distance of the orbit to the axes – crosses, blossoms and lattices.",
+          st_hint_6: "Pickover stalks: thin glowing threads over the normal colouring.",
+          st_hint_na: "Applies to Mandelbrot, Julia, Burning Ship, Tricorn, Multibrot and the escape-time exotics (no effect here)." }
+};
+for (const l of Object.keys(TRANSLATIONS_V71)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_V71[l]);
 (function () {
     for (const lang of Object.keys(TRANSLATIONS)) {
         TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS_UI.en, TRANSLATIONS[lang], TRANSLATIONS_UI[lang] || {});
