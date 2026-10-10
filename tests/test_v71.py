@@ -9,6 +9,8 @@
   E  Sehenswürdigkeiten: Orte-Tab listet sie, ▶ Tour landet am Ziel mit Parametern; Rundgang fliegt zum nächsten Ort
   F  Multibrot-Morph: der Exponent wandert, Bilder kommen nach
   G  Exoten über der GPU-Grenze: CPU f64 (Magnet 10⁴), Bild fertig
+  H  Lichtbilder: erstes ansehnliches Bild < 1 s, Link mit eigener Flamme, Mutieren, Screenshot in Kacheln, Nebulabrot/Anti,
+     CPU-Rückfall (?dens=cpu)
 Aufruf: python3 tests/test_v71.py [--only=A,B,…]   (Server: python3 tools/serve.py 8472)
 """
 import sys, os, time, json
@@ -219,8 +221,62 @@ def case_G(p):
     a.close()
 
 
+def case_H(p):
+    print('H  Lichtbilder: Flammen, Attraktoren, Nebulabrot – erstes Bild, Link, Zufall/Mutieren, Screenshot, Rückfall')
+    a = App(p).open(); pg = a.page
+    res['H'] = {}
+    # erstes ansehnliches Bild: Zeit bis ≥ 5 Punkte je Pixel (volle Auflösung) und die Belichtung gemessen ist
+    for name, js in [('Flamme Sichel', "A.setMode(14); A.setWP(14, { g: 0, d: '' }); A.goHome();"),
+                     ('Flamme Galaxie', "A.setMode(14); A.setWP(14, { g: 10, d: '' }); A.goHome();"),
+                     ('Clifford', "A.setMode(15); A.setWP(15, { t: 0, a: -1.4, b: 1.6, c: 1.0, d: 0.7 }); A.goHome();"),
+                     ('Lorenz', "A.setMode(15); A.setWP(15, { t: 3, a: 10, b: 28, c: 2.6667, d: 0.004 }); A.goHome();")]:
+        pg.goto('about:blank'); a.open('')
+        # wie in der App: das Öffnen des Welten-Menüs übersetzt die Lichtbilder-Shader im Hintergrund (prewarm), dann die Wahl
+        pg.evaluate("() => window.__fraktal.DENS.prewarm()"); time.sleep(0.8)
+        pg.evaluate("() => { const A = window.__fraktal; A.stopAnims(); " + js + " A.stopAnims(); const h = A.homeOf(A.S.formula); A.setView(String(h[0]), String(h[1]), h[2]); window.__t0 = performance.now(); }")
+        t_first = None
+        for _ in range(100):
+            i = pg.evaluate("() => { const d = window.__fraktal.DENS.info(); return { spp: d.spp, E: !!d.E, gpu: d.gpu, w: d.w, cw: window.__fraktal.R.canvas.width, t: performance.now() - window.__t0 }; }")
+            if (i['spp'] or 0) >= 5 and i['E'] and i['w'] == i['cw']:
+                t_first = i['t']; break
+            time.sleep(0.05)
+        time.sleep(1.5)
+        sd = pg.evaluate(STD)
+        info = pg.evaluate("() => window.__fraktal.DENS.info()")
+        res['H'][name] = dict(first_ms=round(t_first or -1), std=round(sd, 1), info=info)
+        check(t_first is not None and t_first < 1000 and info['gpu'] and sd > 10 and not a.errors,
+              f"{name}: erstes ansehnliches Bild (≥ 5 Punkte/Pixel, belichtet) nach {t_first or -1:.0f} ms, Streuung {sd:.0f}, {info.get('spp')} Punkte/Pixel {a.errors[:2]}")
+        a.errors.clear()
+    # Link: eigene (zufällige) Flamme und Attraktor-Parameter überleben den Link
+    r = pg.evaluate("() => { const A = window.__fraktal; A.setMode(14); A.flameRandom(4242); return A.stateURL(); }")
+    check('wp=d' in r or '&wp=' in r, 'Zufallsflamme steht im Link (%s…)' % r[r.find('wp='):r.find('wp=') + 30])
+    pg.goto('about:blank'); pg.goto(r.replace('#', '?nosw&noanim#') if '?' not in r else r); pg.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
+    time.sleep(1.0)
+    r2 = pg.evaluate("() => { const A = window.__fraktal; const d = A.DENS.curDef(); return [A.S.formula, d.kind, d.F.x.length, !!A.S.wp[14].d]; }")
+    check(r2[0] == 14 and r2[1] == 'flame' and r2[3], f'Link öffnet die eigene Flamme wieder ({r2})')
+    m = pg.evaluate("() => { const A = window.__fraktal; const d0 = A.S.wp[14].d; A.flameMutate(); return [d0 !== A.S.wp[14].d, A.DENS.curDef().F.x.length]; }")
+    check(m[0], f'Mutieren ändert die Flamme ({m})')
+    # Screenshot 2× in Kacheln (Flamme): fertig, richtige Größe, nicht leer
+    pg.evaluate("() => { const A = window.__fraktal; A.setWP(14, { g: 3, d: '' }); A.goHome(); }"); time.sleep(3)
+    shot = pg.evaluate("() => window.__fraktal.captureShot({ W: 1280, H: 720, tile: 512, label: false }).then(r => ({ W: r.W, H: r.H, bytes: r.bytes, tiles: r.tiles, kind: r.kind, ms: r.ms }))")
+    res['H']['shot'] = shot
+    check(shot and shot['W'] == 1280 and shot['tiles'] >= 4 and shot['kind'] == 'dens' and shot['bytes'] > 20000, f'Screenshot Flamme 1280 × 720 in {shot and shot["tiles"]} Kacheln, {shot and shot["bytes"]} Byte, {shot and shot["ms"]} ms')
+    # Nebulabrot und Anti-Buddhabrot rechnen
+    for v, nm in [(1, 'Nebulabrot'), (2, 'Anti-Buddhabrot')]:
+        pg.goto('about:blank'); a.open(f'm=7&x=-0.5&y=0&z=1&wp=v{v}'); time.sleep(5)
+        sd = pg.evaluate(STD)
+        check(sd > 8 and not a.errors, f'{nm}: Bild nach 5 s, Streuung {sd:.0f} {a.errors[:2]}')
+    a.close()
+    # CPU-Rückfall (?dens=cpu)
+    a = App(p, query='nosw&noanim&dens=cpu').open(); pg = a.page
+    pg.evaluate("() => { const A = window.__fraktal; A.setMode(14); A.setWP(14, { g: 0, d: '' }); A.goHome(); }"); time.sleep(4)
+    info = pg.evaluate("() => window.__fraktal.DENS.info()"); sd = pg.evaluate(STD)
+    check(info['gpu'] is False and info['total'] > 1e5 and sd > 8 and not a.errors, f"CPU-Rückfall: {info['total']} Punkte in 4 s, Streuung {sd:.0f} {a.errors[:2]}")
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G)]:
+    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H)]:
         if ONLY and k not in ONLY:
             continue
         try:

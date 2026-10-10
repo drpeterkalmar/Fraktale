@@ -1407,6 +1407,21 @@ void main() {
     fragColor = vec4(pow(max(col, vec3(0.0)), vec3(0.92)), 1.0);
 }`;
 
+// 7.1 Nebulabrot: R/G/B aus drei Iterationsgrenzen, je Kanal log-normiert (Spitze -> 1), leichtes Gamma
+const BUDDHA_RGB_FS = `#version 300 es
+${COMMON}
+uniform usampler2D u_hist;
+uniform vec2 u_size, u_target;
+uniform vec3 u_max;
+out vec4 fragColor;
+void main() {
+    vec2 tc = gl_FragCoord.xy / u_target * u_size;
+    ivec2 ic = clamp(ivec2(tc), ivec2(0), ivec2(u_size) - 1);
+    vec3 v = vec3(texelFetch(u_hist, ivec2(ic.x, int(u_size.y) - 1 - ic.y), 0).rgb);
+    vec3 c = pow(clamp(v / u_max, 0.0, 1.0), vec3(0.7));       // u_max = 99,8-%-Quantil je Kanal (js/app.js): helle Kerne, dunkler Grund
+    fragColor = vec4(pow(c, vec3(0.92)), 1.0);
+}`;
+
 // 32 horizontale Pixel -> ein uint mit Markierungsbits (für schnelles asynchrones Auslesen)
 const FLAGPACK_FS = `#version 300 es
 ${COMMON}
@@ -1451,5 +1466,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

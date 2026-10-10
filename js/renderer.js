@@ -138,6 +138,7 @@ function create(canvas) {
         _dummy = _dummyD = null;
         scatterProg = scatterVAO = scatterVBO = null;
         histTex = null; histW = histH = 0;
+        rgbTex = null; rgbW = rgbH = 0;      // 7.1 Nebulabrot
         if (PSC) gl.getExtension('KHR_parallel_shader_compile');   // Erweiterungen gelten je Kontext: neu aktivieren
     }
 
@@ -602,6 +603,28 @@ function create(canvas) {
         gl.uniform2f(L.u_size, w, h); gl.uniform2f(L.u_target, canvas.width, canvas.height);
         gl.uniform1f(L.u_max, Math.max(1, max));
         setPalette(L, look);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+
+    // 7.1 Nebulabrot: Histogramm mit 4 Werten je Pixel (R/G/B = Iterationsgrenzen 2000/200/20), je Kanal log-normiert
+    let rgbTex = null, rgbW = 0, rgbH = 0;
+    R.presentBuddhaRGB = function (hist, w, h, max, look) {
+        if (!rgbTex || rgbW !== w || rgbH !== h) {
+            if (rgbTex) gl.deleteTexture(rgbTex);
+            rgbTex = gl.createTexture(); rgbW = w; rgbH = h;
+            gl.bindTexture(gl.TEXTURE_2D, rgbTex);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32UI, w, h);
+            nearest();
+        }
+        gl.bindTexture(gl.TEXTURE_2D, rgbTex);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA_INTEGER, gl.UNSIGNED_INT, hist);
+        const pr = program('buddhaRGB', SH.BUDDHA_RGB_FS), L = pr.loc;
+        gl.useProgram(pr.p);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, rgbTex); gl.uniform1i(L.u_hist, 0);
+        gl.uniform2f(L.u_size, w, h); gl.uniform2f(L.u_target, canvas.width, canvas.height);
+        gl.uniform3f(L.u_max, Math.max(1, max[0]), Math.max(1, max[1]), Math.max(1, max[2]));
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 

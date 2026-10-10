@@ -4,7 +4,7 @@
 //  * Neue Version -> neuer sw.js-Inhalt -> Browser installiert neu; aktiv (und alte Caches gelöscht) erst beim nächsten Start.
 //  * HTML (Navigation) immer zuerst frisch aus dem Netz (no-cache), offline aus dem Cache.
 //  * VERSION MUSS APP_VERSION in js/app.js entsprechen (tests/test_release.py prüft das).
-const VERSION = '7.1.1';
+const VERSION = '7.1.2';
 const CACHE = 'fraktale-' + VERSION;
 const Q = '?v=' + VERSION;
 const ASSETS = [
@@ -15,6 +15,8 @@ const ASSETS = [
     'js/bulb.js',
     'js/capture.js',
     'js/cpu-pool.js',
+    'js/density.js',
+    'js/flames.js',
     'js/flight.js',
     'js/fractal-core.js',
     'js/gestures.js',
@@ -50,6 +52,8 @@ const ASSETS = [
     'assets/modes/11.jpg',
     'assets/modes/12.jpg',
     'assets/modes/13.jpg',
+    'assets/modes/15.jpg',
+    'assets/modes/14.jpg',
     'assets/sights/lya_aabab.jpg',
     'assets/sights/lya_ab.jpg',
     'assets/sights/lya_abbab.jpg',
@@ -67,6 +71,25 @@ const ASSETS = [
     'assets/sights/phx_fluegel.jpg',
     'assets/sights/phx_locken.jpg',
     'assets/sights/phx_spirale.jpg'
+,
+    'assets/sights/att_clifford.jpg',
+    'assets/sights/att_clifford2.jpg',
+    'assets/sights/att_dejong.jpg',
+    'assets/sights/att_dejong2.jpg',
+    'assets/sights/att_lorenz.jpg',
+    'assets/sights/att_svensson.jpg',
+    'assets/sights/flm_eisblume.jpg',
+    'assets/sights/flm_farn.jpg',
+    'assets/sights/flm_galaxie.jpg',
+    'assets/sights/flm_juwel.jpg',
+    'assets/sights/flm_kranz.jpg',
+    'assets/sights/flm_nebel.jpg',
+    'assets/sights/flm_portal.jpg',
+    'assets/sights/flm_ringe.jpg',
+    'assets/sights/flm_sichel.jpg',
+    'assets/sights/flm_stern.jpg',
+    'assets/sights/flm_wolke.jpg',
+    'assets/sights/flm_yinyang.jpg'
 ].map(u => u + Q).concat(['./', 'index.html']);
 
 self.addEventListener('install', (e) => {

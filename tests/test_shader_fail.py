@@ -13,7 +13,8 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
   (f) 6.7 TAA- und Bloom-Programm defekt (?taa=1) -> beide aus, 3D läuft ohne Toast
   (g) 7.0 Mandelbulb-Marsch-Shader defekt -> Toast, einfacher Mandelbulb wie bis 6.9 (Bild nicht leer), Drehen geht, Screenshot geht
   (h) 7.1 Exoten-Shader (Lyapunov) defekt -> Toast, CPU-Rechenweg (f64), Bild fertig und nicht leer
-Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g,h]
+  (i) 7.1 Lichtbilder-Wander-Shader defekt -> Toast, Flamme auf dem Prozessor, Bild nicht leer
+Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g,h,i]
 """
 import sys, os, time, json
 sys.path.insert(0, os.path.dirname(__file__))
@@ -229,8 +230,27 @@ def case_h(p):
     a.close()
 
 
+def case_i(p):
+    print('(i) 7.1 Lichtbilder: Wander-Shader defekt -> Rechnung auf dem Prozessor')
+    a = open_app(p, [['in vec4 a_t;']])
+    pg = a.page
+    a.wait_done(60)
+    pg.evaluate("() => window.__fraktal.setMode(14)")
+    tx = wait_toast(pg, 30)
+    check('Grafikfehler' in tx, 'Toast: %r' % tx)
+    time.sleep(4)
+    info = pg.evaluate("() => window.__fraktal.DENS.info()")
+    spread = pg.evaluate("""() => { const A = window.__fraktal; A.snapshot(); const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+        const g = c.getContext('2d'); g.drawImage(A.R.canvas, 0, 0, 64, 128); const d = g.getImageData(0, 0, 64, 128).data;
+        let mn = 765, mx = 0; for (let i = 0; i < d.length; i += 4) { const l = d[i] + d[i + 1] + d[i + 2]; mn = Math.min(mn, l); mx = Math.max(mx, l); } return mx - mn; }""")
+    check(info.get('gpu') is False and (info.get('total') or 0) > 1e5, 'CPU-Rückfall rechnet (%s Punkte)' % info.get('total'))
+    check(spread > 30, 'Bild nicht leer (Spanne %d)' % spread)
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i)]:
         if ONLY and k not in ONLY:
             continue
         try:

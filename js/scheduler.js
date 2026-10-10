@@ -186,7 +186,7 @@ root.FKScheduler = { create(ctx) {
     }
     function schedule(now) {
         const p = plan();
-        if (p.kind === 'bulb' || p.kind === 'buddha') return;
+        if (p.kind === 'bulb' || p.kind === 'buddha' || p.kind === 'density') return;
         const moving = isMoving(now);
         // Bewegung: nur 1 GPU-Häppchen in der Warteschlange (60 fps), Stillstand: 2 (doppelter Durchsatz)
         R.maxInflight = moving ? 1 : 2;

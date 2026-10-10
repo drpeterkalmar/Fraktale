@@ -150,7 +150,7 @@ function openSheet(tab) {
     requestAnimationFrame(moveInk);
     $('share-pop').hidden = true;
     document.body.classList.add('sheet-open');
-    if (tab === 'worlds') { buildModes(); drawCpad(); }
+    if (tab === 'worlds') { buildModes(); drawCpad(); if (A.DENS) A.DENS.prewarm(); }     // 7.1: Lichtbilder-Shader im Hintergrund übersetzen
     if (tab === 'more') syncShot();
     if (tab === 'more') hudUpdate(true);
 }
@@ -274,15 +274,33 @@ function syncWP(force) {
     else if (f === 11) h = wpSeg('v', [[0, 'Julia'], [1, 'Mandel']], 'c2') + wpSlider('cr', 'c (Re)', -1, 1, 0.0001) + wpSlider('ci', 'c (Im)', -1, 1, 0.0001) + wpSlider('pr', 'p (Re)', -1, 1, 0.0001) + wpSlider('pi', 'p (Im)', -1, 1, 0.0001);
     else if (f === 12) h = wpSeg('v', [[0, 'Mandel'], [1, 'Julia']], 'c2') + wpSlider('r', t('nova_r'), 0.2, 2, 0.01) + (w.v ? wpSlider('cr', 'c (Re)', -1.5, 1.5, 0.0001) + wpSlider('ci', 'c (Im)', -1.5, 1.5, 0.0001) : '');
     else if (f === 13) h = wpSeg('v', [[0, 'Magnet I'], [1, 'Magnet II']], 'c2');
+    else if (f === 7) h = wpSeg('v', [[0, 'Buddhabrot'], [1, 'Nebulabrot'], [2, 'Anti']], 'c3');
+    else if (f === 14) {
+        const G = self.FKDensity.GALLERY;
+        h = `<div class="seg seg-grid c3" data-wp="g">${G.map((F, i) => `<button data-v="${i}" class="${!w.d && (w.g | 0) === i ? 'on' : ''}">${t(F.n || 'flm') || 'Nr. ' + (i + 1)}</button>`).join('')}</div>`
+          + `<div class="seg seg-grid c2"><button id="fl-rand">🎲 ${t('fl_random')}</button><button id="fl-mut">✨ ${t('fl_mutate')}</button></div>`
+          + wpToggle('a', t('fl_anim'));
+    }
+    else if (f === 15) {
+        const D = self.FKDensity, T = w.t | 0;
+        const R = [[[-3, 3], [-3, 3], [-3, 3], [-3, 3]], [[-3, 3], [-3, 3], [-3, 3], [-3, 3]], [[-3, 3], [-3, 3], [-3, 3], [-8, 8]], [[4, 16], [10, 40], [1, 4], [0.001, 0.01]]][T];
+        h = wpSeg('t', [[0, 'Clifford'], [1, 'De Jong'], [2, 'Svensson'], [3, 'Lorenz']], '') + ['a', 'b', 'c', 'd'].map((n, i) => wpSlider(n, T === 3 ? ['σ', 'ρ', 'β', 'dt'][i] : n, R[i][0], R[i][1], T === 3 && i === 3 ? 0.0001 : 0.001)).join('');
+    }
     $('wp-body').innerHTML = h;
     $('wp-hint').textContent = t('wp_hint_' + f);
     $('wp-body').querySelectorAll('[data-wp] button').forEach(b => b.addEventListener('click', () => {
         const key = b.parentNode.dataset.wp, v = key === 's' ? b.dataset.v : +b.dataset.v;
-        if (String((S.wp[f] || {})[key]) === String(v)) return;
+        if (String((S.wp[f] || {})[key]) === String(v) && !(f === 14 && (S.wp[14] || {}).d)) return;
         crossfade(420);
-        A.setWP(f, { [key]: v });
+        // Attraktor-Art: Parameter auf die Vorgabe der Art; Flammen-Galerie: eigene Flamme verwerfen, Ansicht der Flamme
+        if (f === 15 && key === 't') { const P = self.FKDensity.ATT[v].p; A.setWP(f, { t: v, a: P[0], b: P[1], c: P[2], d: P[3] }); A.goHome(); }
+        else if (f === 14 && key === 'g') { A.setWP(f, { g: v, d: '' }); A.goHome(); }
+        else A.setWP(f, { [key]: v });
         syncWP(true);
     }));
+    const fr = $('fl-rand'), fm = $('fl-mut');
+    if (fr) fr.addEventListener('click', () => { crossfade(420); A.flameRandom(); syncWP(true); });
+    if (fm) fm.addEventListener('click', () => { crossfade(300); A.flameMutate(); syncWP(true); });
     $('wp-body').querySelectorAll('input[data-wps]').forEach(r => {
         r.addEventListener('input', () => {
             let v = +r.value;

@@ -10,7 +10,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 57.1,
-   "sec": 1.0
+   "sec": 0.6
   },
   "Lyapunov Zirkon": {
    "ok": 0.9833333333333333,
@@ -22,7 +22,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 69.1,
-   "sec": 1.0
+   "sec": 0.5
   },
   "Phoenix Julia": {
    "ok": 1,
@@ -34,7 +34,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 47.9,
-   "sec": 1.2
+   "sec": 0.6
   },
   "Phoenix Mandel": {
    "ok": 1,
@@ -46,7 +46,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 77.7,
-   "sec": 1.2
+   "sec": 0.5
   },
   "Nova Mandel": {
    "ok": 1,
@@ -58,7 +58,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 53.9,
-   "sec": 1.5
+   "sec": 0.5
   },
   "Nova Julia": {
    "ok": 1,
@@ -70,7 +70,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 58.9,
-   "sec": 1.3
+   "sec": 0.6
   },
   "Magnet I": {
    "ok": 0.98,
@@ -82,7 +82,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 72.8,
-   "sec": 1.0
+   "sec": 0.5
   },
   "Magnet II": {
    "ok": 0.9966666666666667,
@@ -94,7 +94,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 53.0,
-   "sec": 1.2
+   "sec": 0.5
   },
   "Multibrot 3,5": {
    "ok": 0.9933333333333333,
@@ -106,7 +106,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 40.4,
-   "sec": 1.4
+   "sec": 0.5
   },
   "Multibrot 5": {
    "ok": 1,
@@ -118,7 +118,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 40.7,
-   "sec": 1.3
+   "sec": 1.5
   },
   "Newton z³−1": {
    "ok": 1,
@@ -129,8 +129,8 @@
    "formula": 5,
    "kind": "gpu",
    "mode": "direct",
-   "std": 35.7,
-   "sec": 1.3
+   "std": 56.1,
+   "sec": 1.4
   },
   "Newton z³−2z+2": {
    "ok": 1,
@@ -141,8 +141,8 @@
    "formula": 5,
    "kind": "gpu",
    "mode": "direct",
-   "std": 29.4,
-   "sec": 1.3
+   "std": 30.6,
+   "sec": 0.6
   },
   "Newton z⁸+15z⁴−16": {
    "ok": 0.9933333333333333,
@@ -153,8 +153,8 @@
    "formula": 5,
    "kind": "gpu",
    "mode": "direct",
-   "std": 45.5,
-   "sec": 1.2
+   "std": 51.9,
+   "sec": 0.6
   },
   "Celtic": {
    "ok": 0.9933333333333333,
@@ -166,7 +166,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 50.6,
-   "sec": 1.6
+   "sec": 0.6
   },
   "Senkrecht": {
    "ok": 1,
@@ -178,7 +178,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 52.2,
-   "sec": 1.4
+   "sec": 0.4
   },
   "Büffel": {
    "ok": 0.9933333333333333,
@@ -200,7 +200,7 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 1.7
+   "sec": 1.2
   },
   "Senkrecht": {
    "good": 0.69,
@@ -208,7 +208,7 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 1.7
+   "sec": 0.9
   },
   "Büffel": {
    "good": 0.5375,
@@ -216,7 +216,105 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 1.7
+   "sec": 0.9
+  }
+ },
+ "H": {
+  "Flamme Sichel": {
+   "first_ms": 196,
+   "std": 38.0,
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": {
+     "B": 0.55,
+     "occ": 0.193,
+     "peak": 5.2
+    },
+    "w": 824,
+    "h": 1678,
+    "N": 65536,
+    "K": 24,
+    "total": 160235520,
+    "spp": 115.89,
+    "ageMs": 1800,
+    "fblend": true
+   }
+  },
+  "Flamme Galaxie": {
+   "first_ms": 454,
+   "std": 36.6,
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": {
+     "B": 0.25,
+     "occ": 0.78,
+     "peak": 54.9
+    },
+    "w": 824,
+    "h": 1678,
+    "N": 65536,
+    "K": 16,
+    "total": 138215424,
+    "spp": 99.96,
+    "ageMs": 2132,
+    "fblend": true
+   }
+  },
+  "Clifford": {
+   "first_ms": 409,
+   "std": 21.8,
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": {
+     "B": 0.29,
+     "occ": 0.186,
+     "peak": 31.3
+    },
+    "w": 824,
+    "h": 1678,
+    "N": 65536,
+    "K": 24,
+    "total": 175112192,
+    "spp": 126.65,
+    "ageMs": 2050,
+    "fblend": true
+   }
+  },
+  "Lorenz": {
+   "first_ms": 518,
+   "std": 34.0,
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": {
+     "B": 0.39,
+     "occ": 0.365,
+     "peak": 11.9
+    },
+    "w": 824,
+    "h": 1678,
+    "N": 65536,
+    "K": 24,
+    "total": 170262528,
+    "spp": 123.14,
+    "ageMs": 2149,
+    "fblend": true
+   }
+  },
+  "shot": {
+   "W": 1280,
+   "H": 720,
+   "bytes": 20858,
+   "tiles": 6,
+   "kind": "dens",
+   "ms": 5798
   }
  }
 }

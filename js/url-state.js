@@ -93,11 +93,14 @@ root.FKUrlState = { create(ctx) {
         const d = ctx.WP_DEF[f];
         if (!d) return;
         const o = Object.assign({}, d);
+        // Schlüssel = längster passender Schlüssel der Welt am Anfang (Werte dürfen mit Buchstaben beginnen, z. B. d<Base64>)
+        const keys = Object.keys(d).sort((x, y) => y.length - x.length);
         for (const part of String(v).split('_')) {
-            const m = /^([a-z]+)(.+)$/.exec(part);
-            if (!m || !(m[1] in d)) continue;
-            if (typeof d[m[1]] === 'number') { const x = parseFloat(m[2].replace(',', '.')); if (isFinite(x)) o[m[1]] = x; }
-            else o[m[1]] = m[2];
+            const k = keys.find(q => part.startsWith(q) && part.length > q.length);
+            if (!k) continue;
+            const val = part.slice(k.length);
+            if (typeof d[k] === 'number') { const x = parseFloat(val.replace(',', '.')); if (isFinite(x)) o[k] = x; }
+            else o[k] = val;
         }
         S.wp[f] = o;
     }

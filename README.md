@@ -95,6 +95,13 @@ Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, 
 - **Link/„Ansicht merken“:** `wp=` mit den Parametern der Welt (z. B. `wp=v1` Celtic, `wp=e3.5_m1` Multibrot, `wp=sAABAB` Lyapunov); ein gemerkter Ort und eine Tour stellen sie wieder her. Alte Links unverändert.
 - Look-Stile (Seide …) gelten auch für Burning-Ship-Familie, Multibrot, Phoenix und Magnet; Außen (Grenznah/Schwarz) für alle Exoten.
 
+**🔥 Lichtbilder (seit 7.1):** Bilder, die aus Spuren entstehen – wie oft eine Bahn durch jedes Pixel läuft (Histogramm, füllt sich in Bruchteilen einer Sekunde und wird mit der Zeit feiner):
+- **Fraktal-Flammen** (Scott Draves, Apophysis/Electric Sheep): 2–6 Abbildungen mit 16 nichtlinearen Variationen (linear, sinusoidal, spherical, swirl, horseshoe, polar, handkerchief, heart, disc, spiral, hyperbolic, diamond, julia, bubble, fisheye, cylinder), Final-Transformation, Farbe je Transformation. Galerie mit 12 kuratierten Flammen (Sichel, Stern, Eisblume, Nebelwolke, Juwel, Blütenkranz, Yin und Yang, Farnspiralen, Ringe, Portal, Galaxie, Blütenwolke), **🎲 Zufällig** (neue Flamme, entartete werden verworfen, Ansicht passt sich an), **✨ Mutieren** (sanft ändern) und **Langsam verwandeln** (Bildschirmschoner: die erste Abbildung dreht, die Gewichte atmen, das Bild fließt). Die eigene Flamme steht im Link.
+- **Seltsame Attraktoren**: Clifford, Peter de Jong, Svensson, **Lorenz-Schmetterling** (Projektion x/z) mit Reglern a–d (Lorenz: σ, ρ, β, Zeitschritt); Farbe = Richtung der Bewegung, Ansicht aus einer Stichprobe der Ausdehnung.
+- **Buddhabrot** mit Varianten **Nebulabrot** (Grenzen 2000/200/40 als Rot/Grün/Blau, je Kanal auf das 99,8-%-Quantil normiert) und **Anti-Buddhabrot** (Bahnen, die nie fliehen).
+- Färbung: Log-Dichte normiert auf die hellen Stellen (Belichtung automatisch aus einer kleinen GPU-Messung alle 0,4 s), Gamma, Vibrancy; die **App-Palette** färbt (der Farbindex wird als Zeiger auf dem Farbkreis gesammelt) – Palettenwechsel und Farbanimation ohne neues Histogramm. Gesten wie in 2D (Ziehen, Zoomen); in Bewegung halbe Auflösung.
+- Technik (`js/density.js`): 64 000–262 000 Punkte wandern per Transform-Feedback auf der GPU (je Bild 1–48 Schritte, nach der Bildzeit geregelt), additiv in ein Float-Ziel; Rückfall ohne Float-Ziel/Shader auf den Prozessor (gleiche Formeln). **Screenshot** in beliebiger Auflösung: je Kachel ein eigenes Histogramm mit derselben Punktdichte und Belichtung wie am Bildschirm.
+
 **Desktop:** Mausrad = Zoom um den Mauszeiger, Ziehen = verschieben, Shift+Ziehen = Rechteck-Zoom.
 Tasten: `M J B T 3 N` Modi · `P` Palette · `R` Reset (im Flug: Richtung wechseln) · `S` Bild (in der eingestellten Screenshot-Auflösung) · `Leertaste` Flug an/aus · `F` Vollbild · `I` Oberfläche · `H` Hilfe · `L` Sprache · `+/−` Iterationen · Pfeile verschieben (im Flug ↑/↓ = Tempo) · `U` Umdrehen (3D-Flug) · `Bild↑/↓` Zoom · `Z` Rechteck-Zoom.
 
@@ -102,7 +109,7 @@ Das HUD oben zeigt Modus und Tiefe (z. B. `1,23 × 10⁹`). Antippen öffnet Det
 
 ## ✨ Funktionen
 
-- **14 Welten:** Mandelbrot, Julia (mit c-Pad: Punkt ziehen, Julia-Menge folgt live; Feinsteller ±0.1…10⁻⁴), Burning Ship (+ Celtic, Senkrecht, Büffel), Tricorn, Multibrot zⁿ, Newton (6 Polynome), Lyapunov, Phoenix, Nova, Magnet I/II, Mandelbulb 3D, Mandelbox 3D, Menger-Schwamm 3D, Buddhabrot.
+- **16 Welten:** Mandelbrot, Julia (mit c-Pad: Punkt ziehen, Julia-Menge folgt live; Feinsteller ±0.1…10⁻⁴), Burning Ship (+ Celtic, Senkrecht, Büffel), Tricorn, Multibrot zⁿ, Newton (6 Polynome), Lyapunov, Phoenix, Nova, Magnet I/II, Mandelbulb 3D, Mandelbox 3D, Menger-Schwamm 3D, Fraktal-Flammen, Seltsame Attraktoren, Buddhabrot (+ Nebulabrot, Anti-Buddhabrot).
 - **Farben:** 11 Paletten als echte Farbverlaufs-Vorschau + eigene Palette mit 6 Farbwählern (wird gespeichert), **Farbe der Menge** (Schwarz, Weiß, dunkelste/hellste Palettenfarbe, eigene, **Bunt** mit Inseln/Ringen; 2D + 3D, im Link `sc=`), **Außen** (Palette, Grenznah mit Saumbreite, Schwarz; Link `ou=`), **Alpin-Look (3D)** mit Tal Wald/See/Wiese (Link `al=`), Farbdichte, Farbanimation (an/aus, Tempo von 1 Runde in 1,3 s bis 8,3 min), 3D-Relief, weiche Übergänge/Bänder, Funkeln im Inneren (nur bei dunkler Menge).
 - **Orte:** eigene Orte merken (in jeder Welt, mit Mini-Bild), **▶ Tour** = automatischer Zoom-Flug vom Gesamtbild zum Ziel. Fest eingebaute Sehenswürdigkeiten gibt es seit 5.0.1 nicht mehr – sie lagen alle auf Mandelbrot-Koordinaten und passten in den anderen Welten nicht.
 - **Teilen:** Bild in beliebiger Auflösung (Bildschirm bis 1 Gigapixel, Kachel-Rendern, Web Share API bzw. Download, Beschriftung abschaltbar) oder Link zur exakten Stelle (Deeplink `#m=…&x=…&y=…&z=…`).
@@ -150,6 +157,12 @@ Details, Methode und Grenzfälle: `V5_BERICHT.md`. Tests laufen lokal mit `pytho
 Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 -m http.server 8000` und http://localhost:8000 öffnen. Kein Build-Schritt nötig.
 
 ## 📜 Änderungen
+
+**Version 7.1.2** – Lichtbilder: Fraktal-Flammen, seltsame Attraktoren, Nebulabrot und Anti-Buddhabrot (Etappe 3 von 7.1)
+- Neue Welten **Fraktal-Flammen** (Galerie mit 12 Flammen, Zufällig, Mutieren, Bildschirmschoner) und **Seltsame Attraktoren** (Clifford, De Jong, Svensson, Lorenz) in der Gruppe „Lichtbilder“, mit Sehenswürdigkeiten (Galerie bzw. 6 Vorlagen) und Rundgang; Buddhabrot-Varianten Nebulabrot und Anti-Buddhabrot.
+- GPU-Dichte-Renderer mit Transform-Feedback, automatische Belichtung (Log-Dichte relativ zu den hellsten 2 %), Palette und Farbanimation live; CPU-Rückfall; Screenshot in Kacheln; Shader nicht blockierend vorab übersetzt, sobald das Welten-Menü aufgeht.
+- Gemessen (M1, Pixel 7, Mittelklasse-Profil CPU ×4, DPR 2,6, sichtbares Fenster): Ziehen in allen neuen Welten 58,8–60 Bilder/s (p95 ≤ 18,6 ms, hoch und quer), erstes ansehnliches Lichtbild (≥ 5 Punkte je Pixel, belichtet) nach 84–197 ms, Bildschirmschoner 60 Bilder/s. Ergebnisse `tests/results_v71_v712_{hoch,quer}.json`.
+- Fehler behoben: Buddhabrot-Screenshot und Überblendungen zeichneten das 2D-Bild statt des Buddhabrots neu; Werte in `wp=`, die mit Buchstaben beginnen, wurden falsch zerlegt.
 
 **Version 7.1.1** – Neue Welten: Lyapunov, Phoenix, Nova, Magnet I/II; Multibrot zⁿ, Burning-Ship-Familie, Newton mit Polynomwahl (Etappe 2 von 7.1)
 - Welten-Tab in Gruppen (Klassiker, Exoten, 3D, Lichtbilder), Parameter je Welt, Sehenswürdigkeiten je neuer Welt (17, mit Vorschaubild) mit Tour, Flug und Rundgang; Startpalette je Welt.

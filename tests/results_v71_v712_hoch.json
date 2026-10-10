@@ -1,0 +1,159 @@
+{
+ "tag": "v712",
+ "ori": "hoch",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "headed": true,
+ "runs": {
+  "Mandelbrot Seide": {
+   "fps": 59.7,
+   "p95": 18.4,
+   "gt50": 0,
+   "n": 367,
+   "info": {
+    "plan": {
+     "kind": "gpu",
+     "mode": "direct"
+    }
+   }
+  },
+  "Lyapunov Zirkon": {
+   "fps": 59.3,
+   "p95": 18.4,
+   "gt50": 0,
+   "n": 361,
+   "info": {
+    "plan": {
+     "kind": "gpu",
+     "mode": "direct"
+    }
+   }
+  },
+  "Phoenix": {
+   "fps": 60.0,
+   "p95": 18,
+   "gt50": 0,
+   "n": 366,
+   "info": {
+    "plan": {
+     "kind": "gpu",
+     "mode": "direct"
+    }
+   }
+  },
+  "Nova": {
+   "fps": 59.8,
+   "p95": 18.3,
+   "gt50": 0,
+   "n": 362,
+   "info": {
+    "plan": {
+     "kind": "gpu",
+     "mode": "direct"
+    }
+   }
+  },
+  "Magnet II": {
+   "fps": 60.0,
+   "p95": 18.1,
+   "gt50": 0,
+   "n": 361,
+   "info": {
+    "plan": {
+     "kind": "gpu",
+     "mode": "direct"
+    }
+   }
+  },
+  "Celtic 10^5": {
+   "fps": 59.8,
+   "p95": 18.2,
+   "gt50": 0,
+   "n": 365,
+   "info": {
+    "plan": {
+     "kind": "gpu",
+     "mode": "perturb"
+    }
+   }
+  },
+  "Flamme Juwel": {
+   "fps": 60.0,
+   "p95": 18,
+   "gt50": 0,
+   "n": 369,
+   "erstes_bild_ms": 197,
+   "animation": {
+    "fps": 60.0,
+    "p95": 17.9,
+    "gt50": 0,
+    "n": 362
+   },
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": null,
+    "w": 412,
+    "h": 839,
+    "N": 65536,
+    "K": 24,
+    "total": 1572864,
+    "spp": 4.55,
+    "ageMs": 0,
+    "fblend": true
+   }
+  },
+  "Attraktor De Jong": {
+   "fps": 60.0,
+   "p95": 18.1,
+   "gt50": 0,
+   "n": 363,
+   "erstes_bild_ms": 185,
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": {
+     "B": 0.28,
+     "occ": 0.302,
+     "peak": 33.7
+    },
+    "w": 824,
+    "h": 1678,
+    "N": 65536,
+    "K": 24,
+    "total": 18874368,
+    "spp": 13.65,
+    "ageMs": 183,
+    "fblend": true
+   }
+  },
+  "Lorenz": {
+   "fps": 60.0,
+   "p95": 18.3,
+   "gt50": 0,
+   "n": 364,
+   "erstes_bild_ms": 179,
+   "info": {
+    "ok": true,
+    "why": "",
+    "gpu": true,
+    "E": {
+     "B": 0.49,
+     "occ": 0.276,
+     "peak": 6.6
+    },
+    "w": 824,
+    "h": 1678,
+    "N": 65536,
+    "K": 24,
+    "total": 17301504,
+    "spp": 12.51,
+    "ageMs": 167,
+    "fblend": true
+   }
+  }
+ },
+ "errors": []
+}

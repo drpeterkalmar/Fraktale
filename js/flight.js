@@ -54,7 +54,7 @@ root.FKFlight = { create(ctx) {
     function canFly2d(f) {
         const m = f === undefined ? S.formula : f;
         if (ctx.isRay(m)) return !!ctx.BULB && ctx.BULB.canFly();       // 7.0: Flug durch Mandelbulb & Co. (js/bulb.js)
-        return FLY2D && !!T3 && m !== 7;
+        return FLY2D && !!T3 && m !== 7 && !ctx.isDens(m);
     }
     function canFly(f) { return can3d(f) || canFly2d(f); }
     const in3d = () => V3.on && V3.dir >= 0;
@@ -81,8 +81,8 @@ root.FKFlight = { create(ctx) {
             setMode(place.formula || 0, true);
             ctx.applyPlaceWP(place);          // 7.1 Welt-Parameter des Orts
             if (place.jx) setJulia(HP.fromString(place.jx), HP.fromString(place.jy));
-            const home = MODE_HOME[S.formula];
-            setCam(HP.fromString(home[0]), HP.fromString(home[1]), ctx.homeZoom(S.formula));
+            const home = ctx.homeOf(S.formula);
+            setCam(HP.fromString(home[0]), HP.fromString(home[1]), home[2]);
             S.iterManual = false;
             const T = { cx: HP.fromString(place.cx), cy: HP.fromString(place.cy), zoom: +place.zoom };
             const u = 1.5 / S.cam.zoom;

@@ -42,7 +42,7 @@ root.FKCapture = { create(ctx) {
         if (W * H > MAX_PX) { const k = Math.sqrt(MAX_PX / (W * H)); W = Math.floor(W * k); H = Math.floor(H * k); }
         return [Math.min(MAX_SIDE, W), Math.min(MAX_SIDE, H)];
     }
-    function kindNow() { return S.formula === 7 ? 'buddha' : ctx.isRay() ? 'bulb' : V3.on ? '3d' : '2d'; }
+    function kindNow() { return S.formula === 7 ? 'buddha' : ctx.isRay() ? 'bulb' : ctx.isDens() ? 'dens' : V3.on ? '3d' : '2d'; }
     // Buddhabrot: nur Bildschirmauflösung (siehe oben)
     function supports(res) { return kindNow() !== 'buddha' || res === 'screen'; }
 
@@ -78,6 +78,9 @@ root.FKCapture = { create(ctx) {
             P.maxIter = maxIterFor(S.cam.zoom);
             P.de = deActive(); P.deMask = deMaskOn(); P.inn = innActive(); P.err = P.dev === 'gpu' && S.precise && f !== 5 && !ctx.isExo(P.cf);
             P.julia = [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)];
+        } else if (kind === 'dens') {
+            // 7.1 Lichtbilder: je Kachel ein eigenes Histogramm in Kachelgröße, so viele Punkte je Pixel wie das Bildschirmbild
+            P.spp = Math.max(40, Math.min(400, ctx.DENS.spp() || 40));
         } else if (kind === '3d') {
             const f = H / canvas.height;
             P.bloomDiv = 2 * Math.max(1, Math.round(f));
@@ -116,10 +119,13 @@ root.FKCapture = { create(ctx) {
         } else if (P.kind === 'bulb') {
             // 7.0: je Kachel ~12 gemittelte Durchgänge in voller Qualität (M1: ~60 ms je Megapixel und Durchgang), Streifen je App-Bild
             ms = mp * (r.k || 1) * 12 * 60 + P.n * 12 * frame;
+        } else if (P.kind === 'dens') {
+            // je Kachel alle Punkte des ganzen Bilds (nur ein Teil trifft die Kachel): Punkte = spp · Pixel · Kacheln; GPU ~10⁸/s (Handy ~2·10⁷)
+            ms = (r.k || 1) * P.spp * P.W * P.H * P.n / (MOBILE ? 2e7 : 1e8) * 1000 + P.n * 4 * frame;
         } else ms = mp * (r.k || 1) * 40 + P.n * 3 * frame;
         ms += mp * (P.stream ? 45 : 25);                    // Kodieren (gemessen M1: Canvas ~25, PNG-Worker ~45 ms/MP)
         const f = Math.max(1, P.H / canvas.height);
-        const bpp = (r.bpp || { '2d': 1.6, '3d': 2.2, bulb: 1.8, buddha: 1.2 }[P.kind]) * Math.pow(f, -0.3);
+        const bpp = (r.bpp || { '2d': 1.6, '3d': 2.2, bulb: 1.8, buddha: 1.2, dens: 0.9 }[P.kind]) * Math.pow(f, -0.3);
         return { ms: Math.round(ms), bytes: Math.round(mp * 1e6 * bpp), mp: +mp.toFixed(1) };
     }
     function learn(P, ms, bytes) {
@@ -259,6 +265,7 @@ root.FKCapture = { create(ctx) {
         }
         if (P.kind === '3d') { C.phase = 'settle'; RC.capHold = true; return false; }     // RC.capHold: Planer darf noch fertig rechnen
         if (P.kind === 'bulb') { C.look = look(); if (P.time !== undefined) C.look.time = P.time; P.bulbK = ctx.BULB.capK(); }
+        if (P.kind === 'dens') { C.look = look(); if (P.time !== undefined) C.look.time = P.time; }
         if (P.kind === '2d' && P.mode === 'perturb') { C.phase = 'ref'; return true; }
         C.phase = 'tiles';
         return true;
@@ -344,6 +351,7 @@ root.FKCapture = { create(ctx) {
         if (P.kind === '2d') return tile2d(C, tile, T, now);
         if (P.kind === '3d') return tile3d(C, tile, T);
         if (P.kind === 'bulb') return tileBulb(C, tile, T);
+        if (P.kind === 'dens') return tileDens(C, tile, T);
         return false;
     }
     // 7.0 Mandelbulb: Mittelung je Kachel wie im Ruhebild (js/bulb.js capTile), dann POST ins Farbziel und auslesen.
@@ -357,6 +365,15 @@ root.FKCapture = { create(ctx) {
         }
         if (!BU.capTile(C, T, tile, ct)) return false;
         readTile(C, ct.fbo, tile.w, tile.h, 0, 0, tile);
+        return false;
+    }
+    // 7.1 Lichtbilder: Histogramm der Kachel (js/density.js capTile), dann Anzeige ins Farbziel und auslesen
+    function tileDens(C, tile, T) {
+        const ct = colorTarget(C, tile.w, tile.h);
+        if (!C.look) C.look = look();
+        if (!ctx.DENS.capTile(C, T, tile, ct)) return false;
+        readTile(C, ct.fbo, tile.w, tile.h, 0, 0, tile);
+        T.st = 'read';
         return false;
     }
     function tile3d(C, tile, T) {
@@ -512,6 +529,7 @@ root.FKCapture = { create(ctx) {
         C.phase = 'encode';
         progress(C);
         if (P.kind === '3d') freeSnap(C);
+        if (P.kind === 'dens') ctx.DENS.capEnd();
         freeColor(C);
         if (P.stream) {
             C.wait = true;
