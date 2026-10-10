@@ -14,6 +14,7 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
   (g) 7.0 Mandelbulb-Marsch-Shader defekt -> Toast, einfacher Mandelbulb wie bis 6.9 (Bild nicht leer), Drehen geht, Screenshot geht
   (h) 7.1 Exoten-Shader (Lyapunov) defekt -> Toast, CPU-Rechenweg (f64), Bild fertig und nicht leer
   (i) 7.1 Lichtbilder-Wander-Shader defekt -> Toast, Flamme auf dem Prozessor, Bild nicht leer
+  (k) 7.1 Anzeige mit Staub-Korrektur (Burning Ship) defekt -> stiller Rückfall auf die Anzeige wie bisher, Bild fertig
   (j) 7.1 Julia-Lupe defekt -> Toast, Loslassen öffnet trotzdem die Julia-Menge, nächster Langdruck öffnet sie sofort (wie bis 7.1.3)
 Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g,h,i]
 """
@@ -271,8 +272,23 @@ def case_j(p):
     a.close()
 
 
+def case_k(p):
+    print('(k) 7.1 Staub-Korrektur defekt -> Anzeige wie bisher')
+    a = open_app(p, [['#define DUST 1']])
+    pg = a.page
+    a.wait_done(60)
+    pg.evaluate("() => { const A = window.__fraktal; A.setMode(2); A.setView('-1.4144531250', '-0.1679687500', 192); }")
+    a.wait_done(60); time.sleep(1)
+    spread = pg.evaluate("""() => { const A = window.__fraktal; A.snapshot(); const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+        const g = c.getContext('2d'); g.drawImage(A.R.canvas, 0, 0, 64, 128); const d = g.getImageData(0, 0, 64, 128).data;
+        let mn = 765, mx = 0; for (let i = 0; i < d.length; i += 4) { const l = d[i] + d[i + 1] + d[i + 2]; mn = Math.min(mn, l); mx = Math.max(mx, l); } return mx - mn; }""")
+    check(spread > 30, 'Bild nicht leer (Spanne %d)' % spread)
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i), ('j', case_j)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i), ('j', case_j), ('k', case_k)]:
         if ONLY and k not in ONLY:
             continue
         try:

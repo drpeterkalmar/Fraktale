@@ -95,6 +95,10 @@ Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, 
 - **Link/„Ansicht merken“:** `wp=` mit den Parametern der Welt (z. B. `wp=v1` Celtic, `wp=e3.5_m1` Multibrot, `wp=sAABAB` Lyapunov); ein gemerkter Ort und eine Tour stellen sie wieder her. Alte Links unverändert.
 - Look-Stile (Seide …) gelten auch für Burning-Ship-Familie, Multibrot, Phoenix und Magnet; Außen (Grenznah/Schwarz) für alle Exoten.
 
+**📍 Sehenswürdigkeiten in allen Welten (seit 7.1.5):** Auch die Klassiker haben jetzt kuratierte Orte unter **Orte** (▶ Tour, ✈ Flug, ▶ Rundgang): Mandelbrot (Seepferdchental, Elefantental, Mini-Mandelbrot, Zepter-Tal, Antennen-Kreuz, tiefe Spirale bei 3·10⁹), Julia (Spiralgarten, Galaxien, Douadys Kaninchen, Blitz-Wirbel, Dendrit, Siegel-Scheibe), Burning Ship (Armada, Kathedrale, Laternen, Fackel), Tricorn, Multibrot, Newton, Buddhabrot (klassisch, Nebulabrot, Anti), Mandelbulb, Mandelbox und Menger-Schwamm – zusammen 84 Orte in allen 19 Welten, jeder mit Vorschaubild.
+
+**✨ Burning Ship und Tricorn ohne „Sternenhimmel“ (seit 7.1.5):** Beide hatten Distanzschätzung schon seit 6.1, doch die Formeln (Betrag bzw. Spiegelung) sind nicht holomorph – in den Staubzonen der Menge überschätzt die Schätzung den Abstand, und einzelne entkommene Pixel leuchteten wie Sterne. Im Stillstand gilt jetzt ein Außenpixel mit 3 von 4 Nachbarn in der Menge als Rand (2 von 4: halber Saum); die Körnung in Staubzonen sinkt auf ein Drittel (Streuung der Helligkeit 37 → 12), Strukturen bleiben unverändert. Beim Ziehen bleibt es aus (kostet ~1 ms je Bild). Echtes Supersampling (offline 3×3 verglichen) gäbe dort nur grauen Schleier bei 9-facher Rechenzeit.
+
 **🔍 Julia-Lupe und Julia-Morph (seit 7.1):** Im Mandelbrot lange drücken und dann ziehen – über dem Finger erscheint eine runde Lupe mit der Julia-Menge für genau den Punkt unter dem Finger, live bei jeder Bewegung (das Bild verschiebt sich dabei nicht); Loslassen öffnet diese Julia-Menge. In der Julia-Welt fährt **Julia-Morph** (Schalter im Parameter-Feld) c knapp außerhalb der Hauptkardioide am Mandelbrot-Rand entlang: die Julia-Menge verwandelt sich fließend von Seepferdchen über Spiralen zu Dendriten. Das Tempo ist derselbe Regler wie beim Flug, negativ = rückwärts. Im Link als `wp=m1`.
 
 **🧊 Weitere 3D-Fraktale (seit 7.1):** mit derselben Technik wie der Mandelbulb (Licht, Schatten, AO, Stile, Ruhebild, ✈ Flug, Orte, Screenshot in Kacheln): **Quaternionen-Julia** (q² + c mit vierdimensionalen Zahlen, 3D-Schnitt; vier Regler für c und „c wandert“ – die Form fließt), **Kaleidoskop-IFS** (nach Knighty: falten, drehen, skalieren – Kristalle, Felsen, Tempel; Regler Skalierung und zwei Winkel) und **Apollonian** (Kugel-Inversionen in der wiederholten Zelle: ein unendlicher Schaum, die Kamera fliegt darin; Regler Stärke). Je Welt drei Sehenswürdigkeiten (Drache, Spirale, Wolke · Kristall, Fels, Tempel · Kugelhallen, Bögen, tiefe Gänge). Parameter im Link (`b=`).
@@ -161,6 +165,12 @@ Details, Methode und Grenzfälle: `V5_BERICHT.md`. Tests laufen lokal mit `pytho
 Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 -m http.server 8000` und http://localhost:8000 öffnen. Kein Build-Schritt nötig.
 
 ## 📜 Änderungen
+
+**Version 7.1.5** – Feinschliff: Sehenswürdigkeiten für alle Welten, Burning Ship/Tricorn ohne Staub-Sterne (Etappe 6 von 7.1)
+- 40 neue kuratierte Orte für Mandelbrot, Julia, Burning Ship, Tricorn, Multibrot, Newton, Buddhabrot, Mandelbulb, Mandelbox und Menger (Kundschafter `tools/scout.js` + Sichtprüfung), Vorschaubilder, DE/EN.
+- Burning Ship und Tricorn: Staub-Korrektur der Distanzschätzung im Anzeige-Pass (eigene Shader-Variante, nur diese Welten, nur im Stillstand; defekt -> Anzeige wie bisher).
+- Fehler behoben: Ortswechsel in eine andere Welt aus tiefem Zoom (z. B. Mandelbrot 10⁹ -> Menger-Ort) meldete fälschlich „Maximale Tiefe für diesen Modus erreicht“.
+- Geprüft (`tests/test_v71.py` K, `tests/test_shader_fail.py` k): Körnung in der Staubzone 12,5 statt ~37, Orte je Welt 3–6 mit Bild, Tour zum Julia-Ort übernimmt c, keine falsche Meldung.
 
 **Version 7.1.4** – Julia-Lupe und Julia-Morph (Etappe 5 von 7.1)
 - Langdruck im Mandelbrot öffnet die **Julia-Lupe**: Vorschau der Julia-Menge über dem Finger (eigener kleiner Shader, 300 Schritte je Pixel, App-Palette), folgt dem Finger live, das Bild bleibt stehen; Loslassen öffnet die Julia-Welt an diesem c (bis 7.1.3: sofort beim Langdruck).

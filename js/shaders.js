@@ -1092,8 +1092,9 @@ vec3 extC(float v, float a) { return exteriorColor(v); }
 vec4 styleHeight(vec4 a) { return vec4(0.0); }
 `;
 // 7.1: zwei Varianten – ohne Stil (STY 0: Code wie bis 7.0, gleich schnell) und mit Stil (STY 1); die App wählt je Bild
-function displayFS(sty) { return `#version 300 es
+function displayFS(sty, dust) { return `#version 300 es
 #define STY ${sty ? 1 : 0}
+#define DUST ${dust ? 1 : 0}
 ${COMMON}
 ${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
 ${Array.from({ length: NL }, (_, i) => `uniform sampler2D u_d${i};`).join('\n')}
@@ -1185,6 +1186,20 @@ float coverage(vec2 tc, vec2 size, vec4 xf) {
     return smoothstep(0.0, 1.0, clamp(c, 0.0, 1.0));
 }
 
+#if DUST
+// 7.1 Burning-Ship-Familie und Tricorn: Die Distanzschätzung ist dort nur eine Näherung (Faltungen |x|, |y| bzw. Spiegelung
+// sind nicht holomorph) und überschätzt den Abstand in den Staubzonen der Menge – einzelne entkommene Pixel mitten in der
+// Menge leuchteten als „Sternenhimmel“. Ein Außenpixel mit mindestens 3 von 4 Nachbarn in der Menge liegt aber sicher
+// unter einem Pixel vor ihr: dann zählt es für den Saum als Rand (wie bei einer richtigen Distanzschätzung im Mandelbrot),
+// bei 2 von 4 als halber Saum.
+float dustDE(usampler2D t, ivec2 c, ivec2 mx, float v, float e) {
+    if (v < 0.0 || e < 0.3) return e;
+    float n = step(0.0, fetchV(t, clamp(c + ivec2(1, 0), ivec2(0), mx))) + step(0.0, fetchV(t, clamp(c - ivec2(1, 0), ivec2(0), mx)))
+            + step(0.0, fetchV(t, clamp(c + ivec2(0, 1), ivec2(0), mx))) + step(0.0, fetchV(t, clamp(c - ivec2(0, 1), ivec2(0), mx)));
+    return n <= 1.0 ? 0.0 : n <= 2.0 ? min(e, 0.6) : e;      // 2 von 4 in der Menge: höchstens ein halbes Pixel
+}
+#endif
+
 vec4 cubicW(float t) {
     float t2 = t * t, t3 = t2 * t;
     return 0.5 * vec4(-t3 + 2.0 * t2 - t, 3.0 * t3 - 5.0 * t2 + 2.0, -3.0 * t3 + 4.0 * t2 + t, t3 - t2);
@@ -1217,6 +1232,12 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
     g_outK = u_outM == 2 ? 0.0 : 1.0;
     if (u_deOn == 1 || u_outM == 1) {
         float e00 = fetchDE(dtex, i0, v00), e10 = fetchDE(dtex, ivec2(i1.x, i0.y), v10), e01 = fetchDE(dtex, ivec2(i0.x, i1.y), v01), e11 = fetchDE(dtex, i1, v11);
+#if DUST
+        if (u_deOn == 1) {
+            e00 = dustDE(tex, i0, mx, v00, e00); e10 = dustDE(tex, ivec2(i1.x, i0.y), mx, v10, e10);
+            e01 = dustDE(tex, ivec2(i0.x, i1.y), mx, v01, e01); e11 = dustDE(tex, i1, mx, v11, e11);
+        }
+#endif
         if (u_deOn == 1) {
             dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);
             rim = rimShade(e00, e10, e01, e11, f, 1.0 / xf.x);
@@ -1311,6 +1332,7 @@ ${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float
     fragColor = vec4(col, 1.0);
 }`; }
 const DISPLAY_FS = displayFS(false), DISPLAY_FS_ST = displayFS(true);
+const DISPLAY_FS_D = displayFS(false, true), DISPLAY_FS_STD = displayFS(true, true);    // 7.1 Staub-Korrektur (BS-Familie, Tricorn)
 
 // ---------------------------------------------------------------- MANDELBULB (3D, direkt Farbe)
 const BULB_FS = `#version 300 es
@@ -1515,5 +1537,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, DISPLAY_FS_D, DISPLAY_FS_STD, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

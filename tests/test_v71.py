@@ -14,6 +14,7 @@
   I  3D-Welten (Quaternionen-Julia, Kaleidoskop-IFS, Apollonian): Ruhebild, Link mit Parametern, Tour, Flug
   J  Julia-Lupe (Langdruck + Ziehen im Mandelbrot: Vorschau folgt, Bild verschiebt sich nicht, Loslassen öffnet Julia an c) und
      Julia-Morph (c wandert am Kardioidenrand, rückwärts mit negativem Tempo, Link wp=m1)
+  K  Burning Ship: Staub-Korrektur im Stillstand (Körnung in der Staubzone klein), beim Ziehen aus; Orte der Klassiker
 Aufruf: python3 tests/test_v71.py [--only=A,B,…]   (Server: python3 tools/serve.py 8472)
 """
 import sys, os, time, json
@@ -364,8 +365,41 @@ def case_J(p):
     a.close()
 
 
+def case_K(p):
+    print('K  Burning Ship/Tricorn: Staub-Korrektur; Sehenswürdigkeiten der Klassiker')
+    from PIL import Image
+    import numpy as np, io
+    a = App(p).open(); pg = a.page
+    pg.goto('about:blank'); a.open('m=2&x=-1.41445312500&y=-0.167968750000&z=192')
+    a.wait_done(60); time.sleep(0.8)
+    def grain():
+        g = np.asarray(Image.open(io.BytesIO(pg.screenshot())).convert('L')).astype(float)
+        h, w = g.shape
+        return g[int(h * 0.25):int(h * 0.45), 0:int(w * 0.4)].std()
+    g1 = grain()
+    used = pg.evaluate("() => { const A = window.__fraktal; return [A.look().dust, A.deActive()]; }")
+    res['K'] = {'koernung_still': round(g1, 1)}
+    check(used == [True, True] and g1 < 20, f'Staubzone im Stillstand ruhig (Streuung {g1:.1f}, ohne Korrektur ~37)')
+    # Sehenswürdigkeiten: jede klassische Welt hat 3–6 Orte mit Vorschaubild, Tour landet
+    n = pg.evaluate("() => { const S = window.__fraktal.SIGHTS; return [0, 1, 2, 3, 4, 5].map(f => (S[f] || []).length); }")
+    check(all(3 <= k <= 6 for k in n), f'Orte je Klassiker {n}')
+    miss = [k for k in pg.evaluate("() => [0, 1, 2, 3, 4, 5].flatMap(f => window.__fraktal.SIGHTS[f].map(s => s.k))") if not os.path.exists(os.path.join(os.path.dirname(__file__), '..', 'assets', 'sights', k + '.jpg'))]
+    check(not miss, f'Vorschaubilder vorhanden {miss}')
+    pg.evaluate("() => { const A = window.__fraktal; A.startTour(A.SIGHTS[1][0]); }"); time.sleep(10)
+    st = pg.evaluate("() => { const A = window.__fraktal, s = A.SIGHTS[1][0]; return [A.S.formula, A.HP.toNumber(A.S.julia.x) - +s.jx, A.HP.toNumber(A.S.julia.y) - +s.jy, A.S.cam.zoom / s.zoom]; }")
+    check(st[0] == 1 and abs(st[1]) < 1e-9 and abs(st[2]) < 1e-9 and abs(st[3] - 1) < 0.02, f'Tour zur Julia-Sehenswürdigkeit: c und Zoom übernommen {st}')
+    # Ort einer 3D-Welt aus tiefem 2D-Zoom: keine Meldung „Maximale Tiefe“ (bis 7.1.4 fälschlich)
+    pg.goto('about:blank'); a.open('m=0&x=-0.7453&y=0.1127&z=1e9'); time.sleep(1)
+    pg.evaluate("() => { const A = window.__fraktal; A.goTo(A.SIGHTS[9][0]); }"); time.sleep(0.5)
+    tx = pg.evaluate("() => document.getElementById('toast').className.includes('show') ? document.getElementById('toast').textContent : ''")
+    n7 = pg.evaluate("() => [6, 7, 8, 9].map(f => window.__fraktal.SIGHTS[f].length)")
+    check(tx == '' and all(3 <= k <= 6 for k in n7), f'Ort im Menger-Schwamm aus Zoom 10⁹: keine Meldung {tx!r}; Orte 3D/Buddhabrot {n7}')
+    check(not a.errors, f'keine Fehler {a.errors[:2]}')
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H), ('I', case_I), ('J', case_J)]:
+    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H), ('I', case_I), ('J', case_J), ('K', case_K)]:
         if ONLY and k not in ONLY:
             continue
         try:

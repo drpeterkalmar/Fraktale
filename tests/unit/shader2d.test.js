@@ -26,4 +26,10 @@ test('Rechen-Shader Exoten (Multibrot, Phoenix, Nova, Magnet I/II, Lyapunov): fe
 test('Anzeige-Pass fehlerfrei (ohne und mit Stil)', () => {
     assert.deepEqual(L.lintProgram(SH.VS, SH.DISPLAY_FS, 'display'), []);
     assert.deepEqual(L.lintProgram(SH.VS, SH.DISPLAY_FS_ST, 'displayS'), []);
+    assert.deepEqual(L.lintProgram(SH.VS, SH.DISPLAY_FS_D, 'displayD'), []);
+    assert.deepEqual(L.lintProgram(SH.VS, SH.DISPLAY_FS_STD, 'displaySD'), []);
+    assert.ok(SH.DISPLAY_FS.includes('#define DUST 0') && SH.DISPLAY_FS_D.includes('#define DUST 1'), 'Standard-Anzeige ohne Staub-Korrektur');
+});
+test('7.1 Julia-Lupe-Shader fehlerfrei', () => {
+    assert.deepEqual(L.lintProgram(SH.VS, SH.LUPE_FS, 'lupe'), []);
 });

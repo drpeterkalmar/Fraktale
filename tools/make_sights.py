@@ -28,7 +28,8 @@ with sync_playwright() as p:
         else:
             pg.evaluate("(s) => { const A = window.__fraktal; A.setMode(s.formula, true); A.goTo(s); A.stopAnims(); A.setView(s.cx, s.cy, s.zoom); }", s)
             time.sleep(0.3)
-            a.wait_done(240)
+            if s['formula'] == 7: time.sleep(12)        # Buddhabrot sammelt fortlaufend (kein „fertig“)
+            else: a.wait_done(240)
         time.sleep(1.5 if s['formula'] in (14, 15) else 0.3)
         pg.evaluate("() => window.__fraktal.snapshot()")
         b = pg.locator('#gl').screenshot()

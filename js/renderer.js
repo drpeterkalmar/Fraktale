@@ -482,7 +482,11 @@ function create(canvas) {
         const tw = target ? target.w : canvas.width, th = target ? target.h : canvas.height;
         // 7.1: Anzeige mit Stil nur, wenn ein Stil gewählt ist und eine Ebene den Stil-Kanal hat (sonst Variante wie bis 7.0)
         const sty = !!look.style && (layers || []).some(l => l && l.buf && l.buf.acc);
-        const pr = sty ? program('displayS', SH.DISPLAY_FS_ST) : program('display', SH.DISPLAY_FS);
+        // 7.1: Burning-Ship-Familie/Tricorn mit Menge glatt: Variante mit Staub-Korrektur (andere Welten: Shader wie bisher)
+        const dust = !!look.dust && !!(opts.de);
+        let pr = null;
+        if (dust) try { pr = sty ? program('displaySD', SH.DISPLAY_FS_STD) : program('displayD', SH.DISPLAY_FS_D); } catch (e) { if (!e.shaderKey) throw e; }   // defekt: ohne Korrektur
+        if (!pr) pr = sty ? program('displayS', SH.DISPLAY_FS_ST) : program('display', SH.DISPLAY_FS);
         const L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);

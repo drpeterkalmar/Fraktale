@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.4';
+const APP_VERSION = '7.1.5';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -91,6 +91,47 @@ const WP_DEF = {
 // 7.1 Sehenswürdigkeiten je Welt (kuratiert per tools/scout.js + Sichtprüfung, Bilder tests/shots/v71): Name = t('sight_' + k),
 // Vorschaubild assets/sights/<k>.jpg; wp = Welt-Parameter, pal = Palette, mit der der Ort gedacht ist (nur beim Anfliegen aus der Liste)
 const SIGHTS = {
+    // Klassiker (Etappe 6): bekannte Orte + Funde des Kundschafters; Burning Ship steht wie seit jeher kopf (Achse nach oben)
+    0: [{ k: 'mb_seahorse', cx: '-0.7453', cy: '0.1127', zoom: 180 },
+        { k: 'mb_elephant', cx: '0.2925', cy: '0.0149', zoom: 150 },
+        { k: 'mb_mini', cx: '-1.7549', cy: '0', zoom: 60 },
+        { k: 'mb_scepter', cx: '-1.25066', cy: '0.02012', zoom: 5000 },
+        { k: 'mb_antenna', cx: '-0.1011', cy: '0.9563', zoom: 100 },
+        { k: 'mb_deep', cx: '-0.743643887037158704752191506114774', cy: '0.131825904205311970493132056385139', zoom: 3e9 }],
+    1: [{ k: 'j_spiral', cx: '0', cy: '0', zoom: 1, jx: '0.285', jy: '0.01' },
+        { k: 'j_galaxy', cx: '0', cy: '0', zoom: 1, jx: '-0.8', jy: '0.156' },
+        { k: 'j_rabbit', cx: '0', cy: '0', zoom: 1, jx: '-0.123', jy: '0.745' },
+        { k: 'j_lightning', cx: '0', cy: '0', zoom: 1, jx: '-0.4', jy: '0.6' },
+        { k: 'j_dendrite', cx: '0', cy: '0', zoom: 1, jx: '0', jy: '1' },
+        { k: 'j_siegel', cx: '0', cy: '0', zoom: 1, jx: '-0.390541', jy: '-0.586788' }],
+    2: [{ k: 'bs_armada', cx: '-1.762', cy: '-0.028', zoom: 40, wp: { v: 0 } },
+        { k: 'bs_cathedral', cx: '-1.7612', cy: '-0.0285', zoom: 250, wp: { v: 0 } },
+        { k: 'bs_lanterns', cx: '-1.7578984375', cy: '-0.0221406250', zoom: 640, wp: { v: 0 } },
+        { k: 'bs_torch', cx: '-1.4144531250', cy: '-0.1679687500', zoom: 192, wp: { v: 0 } }],
+    3: [{ k: 'tri_whole', cx: '-0.25', cy: '0', zoom: 0.42 },
+        { k: 'tri_feathers', cx: '-1.3936035156', cy: '-0.0043945312', zoom: 512 },
+        { k: 'tri_valley', cx: '-1.3864', cy: '0', zoom: 60 },
+        { k: 'tri_breakers', cx: '0.3041666667', cy: '-0.7083333333', zoom: 13.5 }],
+    4: [{ k: 'mu_twins', cx: '0', cy: '0', zoom: 1, wp: { e: 3, m: 0 } },
+        { k: 'mu_four', cx: '0', cy: '0', zoom: 1, wp: { e: 5, m: 0 } },
+        { k: 'mu_coast', cx: '-0.5474537037', cy: '-0.2430555556', zoom: 243, wp: { e: 3, m: 0 } }],
+    5: [{ k: 'nw_eight', cx: '0', cy: '0', zoom: 1, wp: { p: 5 } },
+        { k: 'nw_z5', cx: '0', cy: '0', zoom: 1, wp: { p: 2 } },
+        { k: 'nw_z6', cx: '0', cy: '0', zoom: 1, wp: { p: 4 } },
+        { k: 'nw_islands', cx: '0', cy: '0', zoom: 1, wp: { p: 3 } }],
+    6: [{ k: 'bulb_whole', cx: '0', cy: '0', zoom: 1, b: '-1.76206388057,-0.97301665973,-1.89144544481,0.75,0.36;8' },
+         { k: 'bulb_close', cx: '0', cy: '0', zoom: 1, b: '-0.941361469089,-1.1899949914,0.0747155873632,1.65,0.9;8' },
+         { k: 'bulb_four', cx: '0', cy: '0', zoom: 1, b: '0.157807833838,0.931963437437,0.987868761137,3.3,-0.75;4' }],
+    8: [{ k: 'box_tower', cx: '0', cy: '0', zoom: 1, b: '-5.84781587868,-3.22918047169,-6.27719847608,0.75,0.36;2' },
+         { k: 'box_moon', cx: '0', cy: '0', zoom: 1, b: '-2.4001594525,-2.09623518248,-1.90464928854,0.9,0.6;-1.5' },
+         { k: 'box_corridor', cx: '0', cy: '0', zoom: 1, b: '0,0,-1.299375,0,0;-1.5' }],
+    9: [{ k: 'men_cube', cx: '0', cy: '0', zoom: 1, b: '-2.93454033185,-1.62046147307,-3.15001232618,0.75,0.36;8' },
+         { k: 'men_wall', cx: '0', cy: '0', zoom: 1, b: '-1.39231280834,-1.80165189215,0.324831499809,1.8,0.9;8' },
+         { k: 'men_view', cx: '0', cy: '0', zoom: 1, b: '0,0,-0.966000000002,0,0;8' },
+         { k: 'men_corner', cx: '0', cy: '0', zoom: 1, b: '-0.16932929915,-0.16363338879,0.168925257208,2.355,0.6;8' }],
+    7: [{ k: 'bud_classic', cx: '-0.5', cy: '0', zoom: 1, wp: { v: 0 } },
+         { k: 'bud_nebula', cx: '-0.5', cy: '0', zoom: 1, wp: { v: 1 } },
+         { k: 'bud_anti', cx: '-0.5', cy: '0', zoom: 1, wp: { v: 2 } }],
     10: [{ k: 'lya_zircon', cx: '3.7', cy: '2.95', zoom: 3.2, wp: { s: 'BBBBBBAAAAAA' } },
          { k: 'lya_aabab', cx: '3.3', cy: '3.3', zoom: 2.5, wp: { s: 'AABAB' } },
          { k: 'lya_abbab', cx: '3.3', cy: '3.4', zoom: 2, wp: { s: 'ABBAB' } },
@@ -296,9 +337,9 @@ function maxZoom() { const cf = cformula(); return cf === 28 ? 1e12 : isExo(cf) 
 function clampZoom(z) { return Math.min(maxZoom(), Math.max(isDens() ? 0.005 : 0.2, z)); }     // 7.1: Lichtbilder weit heraus (Lorenz ~0,04)
 // Bildschirmpunkt (CSS px) -> Weltoffset zur Kameramitte (double)
 function screenOffset(x, y, zoom) { const s = worldPerCss(zoom); return [(x - cssW / 2) * s, -(y - cssH / 2) * s]; }
-function setCam(cx, cy, zoom) {
+function setCam(cx, cy, zoom, quiet) {
     const z = clampZoom(zoom);
-    if (z !== zoom && zoom > maxZoom() && !setCam._warned) { setCam._warned = true; toast(t('max_depth')); }
+    if (z !== zoom && zoom > maxZoom() && !setCam._warned && !quiet) { setCam._warned = true; toast(t('max_depth')); }
     if (zoom < maxZoom()) setCam._warned = false;
     S.cam = { cx, cy, zoom: z };
     camDirty = true;
@@ -647,7 +688,7 @@ function setMode(m, keepView) {
         stopAnims();
         setCam(HP.fromString(h[0]), HP.fromString(h[1]), h[2]);
         S.iterManual = false;
-    } else setCam(S.cam.cx, S.cam.cy, S.cam.zoom);
+    } else setCam(S.cam.cx, S.cam.cy, S.cam.zoom, true);     // 7.1: still begrenzen (Ortswechsel aus tiefem Zoom meldete „Maximale Tiefe“)
     if (m !== prev) { markFramesForeign(); buddhaReset(); if (FLY.on && (isRay(m) || isRay(prev))) stopFly(); }   // 7.0: Mandelbulb hat einen eigenen Flug
     if (isRay(m) && (!keepView || m !== prev)) BULB.home();
     invalidate('mode');
@@ -806,7 +847,7 @@ function animating() { return !!inertia || !!flight || !!wheelAnim || (FLY.on &&
 
 function look() {
     const p = PAL.list[S.palette];
-    return { formula: S.formula, maxIter: RC.front ? RC.front.maxIter : currentMaxIter(), pal: p, custom: PAL.customFlat(),
+    return { formula: S.formula, maxIter: RC.front ? RC.front.maxIter : currentMaxIter(), pal: p, custom: PAL.customFlat(), dust: S.formula === 2 || S.formula === 3,
              cycle: S.cycle, density: S.density, time: S.time, relief: S.relief ? S.reliefStrength : 0,
              particles: S.particles && S.anim, banded: S.banded,
              setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0,
@@ -847,9 +888,13 @@ function present(now, camChanged) {
     const a = presentArgs(now);
     probe2d(now, a.list);
     const anim = S.anim || RC.fading || wasFading || LUPE.on;
+    // 7.1 Staub-Korrektur (Burning Ship/Tricorn) nur im Stillstand: kostet ~1 ms je Bild, beim Ziehen zählt die Bildrate
+    const lk = look();
+    if (lk.dust && (camChanged || isMoving(now))) lk.dust = false;
+    if (lk.dust !== RC.dustPrev) { RC.dustPrev = lk.dust; RC.dirty = true; }
     if (!camChanged && !anim && !RC.dirty) return;
     RC.dirty = false;
-    R.present(a.list, S.cam, look(), null, a.opts);
+    R.present(a.list, S.cam, lk, null, a.opts);
     drawLupe();
     if (FS.on) frameStatsRecord(now, a.list);
 }
