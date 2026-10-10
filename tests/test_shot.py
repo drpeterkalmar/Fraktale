@@ -3,7 +3,8 @@
 
 Prüft:
   * Kachelnähte: dasselbe Bild (640 × 360) in einem Stück und in Kacheln (128 px, 3D 160 px) – Pixelvergleich.
-    2D (Mandelbrot tief/GPU-Perturbation, Mandelbrot jenseits der GPU-Tiefe/CPU-Perturbation, Julia, Newton) und
+    2D (Mandelbrot tief/GPU-Perturbation, Mandelbrot jenseits der GPU-Tiefe/CPU-Perturbation, Julia, Newton; 6.9 dazu
+    Außen „Grenznah“ tief/GPU, 10³⁴/CPU, Julia) und
     Mandelbulb: bitgleich (0 abweichende Werte). 3D aus demselben eingefrorenen Zustand: < 0,2 % der Werte um höchstens 8/255 (Rundung, unsichtbar), keine Naht
     (mittlere Abweichung an den Kachelkanten nicht größer als im übrigen Bild).
   * Bedienung (Pixel 7): Option „Screenshot-Auflösung“ (Bildschirm/2×/4×/8K/Eigene, Seitenverhältnis wie Bildschirm/frei,
@@ -79,11 +80,16 @@ def main():
     with sync_playwright() as p:
         # ------------------------------------------------------------ Nähte
         a = App(p).open(); pg = a.page
+        outm = lambda m: pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.outMode = '{m}'; A.S.edgeW = 16; A.invalidate(); }}")
         cases = [
             ('Mandelbrot tief (GPU-Perturbation)', lambda: a.set_view(DEEP[0], DEEP[1], 3e9), {}, 640, 360, 128, ('gpu', 'perturb')),
             ('Mandelbrot 10³⁴ (CPU-Perturbation)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
             ('Julia (GPU direkt)', lambda: a.set_view('0', '0', 1.5, formula=1), {}, 640, 360, 128, ('gpu', 'direct')),
-            ('Newton', lambda: a.set_view('0', '0', 1.2, formula=5), {}, 640, 360, 128, ('gpu', 'direct')),
+            # 6.9 Außen „Grenznah“: Helligkeit aus der Distanzschätzung je Pixel – auch in Kacheln ohne Kanten
+            ('Grenznah Mandelbrot tief (GPU)', lambda: (outm('edge'), a.set_view(DEEP[0], DEEP[1], 3e9, formula=0)), {}, 640, 360, 128, ('gpu', 'perturb')),
+            ('Grenznah 10³⁴ (CPU)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
+            ('Grenznah Julia', lambda: a.set_view('0', '0', 1.5, formula=1), {}, 640, 360, 128, ('gpu', 'direct')),
+            ('Newton', lambda: (outm('pal'), a.set_view('0', '0', 1.2, formula=5)), {}, 640, 360, 128, ('gpu', 'direct')),
         ]
         res['naehte'] = {}
         for name, setup, extra, W, H, tl, devmode in cases:

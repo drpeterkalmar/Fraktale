@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.8.1';
+const APP_VERSION = '6.9.0';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -40,6 +40,7 @@ const S = {
     deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
     setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
+    outMode: 'pal', edgeW: 16,                                              // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
     chrome: true,
@@ -50,7 +51,12 @@ document.documentElement.classList.toggle('deko', DEKO);
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
 // 6.1 „glatt wie Video": Menge glatt (Distanzschätzung), Glatte Kanten = gemittelte 3D-Bilder im Stillstand (8, Akku 4)
 // (die A/B-Regler ?aa=0/N, ?de=0, ?dew sind seit 6.5.4 entfernt)
-function deActive() { return S.deOn && S.formula !== 5; }
+// 6.9: die Distanzschätzung wird auch für „Außen: Grenznah“ gerechnet (deActive = mitrechnen); die Mengen-Glättung
+// selbst (Saum in der Mengenfarbe) nur bei „Menge glatt“ (deMaskOn)
+function deActive() { return (S.deOn || S.outMode === 'edge') && S.formula !== 5; }
+function deMaskOn() { return S.deOn && S.formula !== 5; }
+// 6.9 Außen: 0 Palette, 1 Grenznah, 2 Schwarz – nur in den 2D-Welten mit Menge (nicht Newton, Mandelbulb, Buddhabrot)
+function outActive() { return S.formula < 5 ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
 function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
@@ -59,7 +65,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -68,7 +74,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
@@ -500,7 +506,9 @@ function look() {
              cycle: S.cycle, density: S.density, time: S.time, relief: S.relief ? S.reliefStrength : 0,
              particles: S.particles && S.anim, banded: S.banded,
              setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0,
-             inner: innActive() ? (S.inMode === 2 ? 2 : 1) : 0 };
+             inner: innActive() ? (S.inMode === 2 ? 2 : 1) : 0,
+             // 6.9 Außen; Saumbreite in Zielpixeln (Screenshot skaliert mit, js/capture.js; 3D: in Pufferpixeln, ≈ Zielpixel)
+             outM: outActive(), outW: S.edgeW * canvas.width / cssW };
 }
 
 // Ebenenliste + Optionen für den Display-Pass (auch für Screenshot/Thumbnail)
@@ -509,7 +517,7 @@ function presentArgs(now) {
     for (const l of RC.layers) if (!l.shown) { l.shown = true; l.t0 = now; }
     const list = orderLayers(now, S.cam);
     RC.fading = list.some(l => l.alpha < 1 && !l.prefetch);   // Vorausberechnetes liegt unter dem fertigen Bild
-    return { list, opts: { feather: FEATHER * dpr, recon: true, de: deActive() ? [0.25, 1.25] : null } };
+    return { list, opts: { feather: FEATHER * dpr, recon: true, de: deMaskOn() ? [0.25, 1.25] : null } };
 }
 // blendet gerade eine sichtbare Ebene ein (auch eine, die noch nie gezeigt wurde)?
 function isFading(now) {
@@ -695,7 +703,7 @@ function layers3d(list) {
 // ungeglätteter Kanten, wenn im Stillstand eine vorausgerechnete Ebene einblendet)
 function still3dKey(L3, v, lk) {
     const c = S.cam;
-    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine, T3.variant].join('|');
+    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine, T3.variant, lk.inner, lk.outM, lk.outW].join('|');
 }
 function still3dSoft(L3, v, lk) {
     return [v.L[0].toFixed(3), v.L[1].toFixed(3), (v.cdf || []).map(x => x.toFixed(3)).join(','), L3.map(l => l.seq + ':' + l.alpha.toFixed(2)).join(','), lk.maxIter].join('|');
@@ -1094,6 +1102,7 @@ const CTX = {
     get V3() { return V3; },
     get canvas() { return canvas; },
     get deActive() { return deActive; },
+    get deMaskOn() { return deMaskOn; },
     get smooth01() { return smooth01; },
     get viewKey() { return viewKey; },
     get GOV() { return GOV; },
@@ -1150,7 +1159,7 @@ const CTX = {
     get isDone() { return isDone; },
 };
 const M_UrlState = self.FKUrlState.create(CTX);
-const { readURL, setColParam, stateURL, syncURL } = M_UrlState;
+const { readURL, setColParam, outParam, stateURL, syncURL } = M_UrlState;
 const M_CpuPool = self.FKCpuPool.create(CTX);
 const { cancelFix, cpuBroadcast, cpuFeed, cpuPool, cpuSendRef, cpuWorkers, recompute, startFix } = M_CpuPool;
 const M_Refs = self.FKRefs.create(CTX);
@@ -1234,7 +1243,7 @@ const API = {
         const d = HP.digitsForZoom(S.cam.zoom);
         return { cx: HP.toString(S.cam.cx, d), cy: HP.toString(S.cam.cy, d), zoom: S.cam.zoom, formula: S.formula,
                  jx: S.formula === 1 ? HP.toString(S.julia.x, 12) : undefined, jy: S.formula === 1 ? HP.toString(S.julia.y, 12) : undefined,
-                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined };
+                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined, out: outParam() || undefined };
     },
     isMoving: () => isMoving(performance.now()),
     // Test (6.5.2): Grafik-Wächter – '' | 'wait' | 'lost' | 'stuck', erstes Bild gezeichnet?

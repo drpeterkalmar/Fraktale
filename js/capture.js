@@ -18,7 +18,7 @@
 'use strict';
 
 root.FKCapture = { create(ctx) {
-    let HP, R, RC, REF, S, V3, T3, FLY, canvas, cpuPool, cpuWorkers, cpuSendRef, deActive, innActive, look, maxIterFor, requestRefFor, requestBLA, refUsable, t, fmtZoom, MODE_KEYS, view3d, layers3d, orderLayers, aaFrames, pauseFly, stats;   // aus app.js, gesetzt in link()
+    let HP, R, RC, REF, S, V3, T3, FLY, canvas, cpuPool, cpuWorkers, cpuSendRef, deActive, deMaskOn, innActive, look, maxIterFor, requestRefFor, requestBLA, refUsable, t, fmtZoom, MODE_KEYS, view3d, layers3d, orderLayers, aaFrames, pauseFly, stats;   // aus app.js, gesetzt in link()
 
     const MOBILE = Math.min(screen.width, screen.height) < 700;
     const MAX_SIDE = 65535, MAX_PX = 1e9;                 // PNG-Grenze je Seite; 1 Gigapixel insgesamt
@@ -74,7 +74,7 @@ root.FKCapture = { create(ctx) {
             else if (rcpu || !ctx.gpuPerturbOK || z > ctx.GPU_MAX) { P.dev = 'cpu'; P.mode = z < ctx.DIRECT_MAX ? 'direct' : 'perturb'; }
             else { P.dev = 'gpu'; P.mode = 'perturb'; }
             P.maxIter = maxIterFor(S.cam.zoom);
-            P.de = deActive(); P.inn = innActive(); P.err = P.dev === 'gpu' && S.precise && f !== 5;
+            P.de = deActive(); P.deMask = deMaskOn(); P.inn = innActive(); P.err = P.dev === 'gpu' && S.precise && f !== 5;
             P.julia = [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)];
         } else if (kind === '3d') {
             const f = H / canvas.height;
@@ -435,8 +435,9 @@ root.FKCapture = { create(ctx) {
             const layer = { buf: job.buf, view: { cx, cy }, scale: P.s, alpha: 1 };
             const lk = look();
             lk.maxIter = P.maxIter;
+            lk.outW *= P.W / canvas.width;      // 6.9 Grenznah: Saumbreite wie am Bildschirm, relativ zur Bildgröße
             if (P.time !== undefined) lk.time = P.time;
-            R.present([layer], { cx, cy, zoom: 3 / (P.s * tile.h) }, lk, { w: tile.w, h: tile.h, fbo: ct.fbo }, { feather: 0, recon: true, de: P.de ? [0.25, 1.25] : null, vp: [tile.gx, tile.gy, P.W, P.H] });
+            R.present([layer], { cx, cy, zoom: 3 / (P.s * tile.h) }, lk, { w: tile.w, h: tile.h, fbo: ct.fbo }, { feather: 0, recon: true, de: P.deMask ? [0.25, 1.25] : null, vp: [tile.gx, tile.gy, P.W, P.H] });
             T.st = 'read';
             const buf = job.buf;
             readTile(C, ct.fbo, tile.w, tile.h, 0, 0, tile);
@@ -535,7 +536,7 @@ root.FKCapture = { create(ctx) {
     }
     function busy() { return !!RC.cap; }
 
-    return { link() { ({ HP, R, RC, REF, S, V3, T3, FLY, canvas, cpuPool, cpuWorkers, cpuSendRef, deActive, innActive, look, maxIterFor, requestRefFor, requestBLA, refUsable, t, fmtZoom, MODE_KEYS, view3d, layers3d, orderLayers, aaFrames, pauseFly, stats } = ctx); },
+    return { link() { ({ HP, R, RC, REF, S, V3, T3, FLY, canvas, cpuPool, cpuWorkers, cpuSendRef, deActive, deMaskOn, innActive, look, maxIterFor, requestRefFor, requestBLA, refUsable, t, fmtZoom, MODE_KEYS, view3d, layers3d, orderLayers, aaFrames, pauseFly, stats } = ctx); },
              shotSize, plan, estimate, start, cancel, lost, step, busy, supports, kindNow, devSize };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

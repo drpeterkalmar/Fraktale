@@ -19,6 +19,7 @@ root.FKUrlState = { create(ctx) {
         if (S.iterManual) p.set('it', S.iterValue);
         const sc = setColParam(); if (sc) p.set('sc', sc);
         if (S.alpine) p.set('al', S.valley[0]);
+        const ou = outParam(); if (ou) p.set('ou', ou);
         return location.origin + location.pathname + '#' + p.toString();
     }
     function readURL() {
@@ -34,6 +35,7 @@ root.FKUrlState = { create(ctx) {
         applySetColParam(p.get('sc') || '');
         S.alpine = p.has('al');
         if (S.alpine) S.valley = { f: 'forest', l: 'lake', m: 'meadow' }[p.get('al')] || 'forest';
+        applyOutParam(p.get('ou') || '');
         // Iterationen wie beim Knopf (changeIter) auf 50 … 500 000 begrenzen: ein Link mit it=99999999 erzeugte GPU-Häppchen
         // von Minuten (Windows-Watchdog -> Kontextverlust)
         if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
@@ -50,6 +52,14 @@ root.FKUrlState = { create(ctx) {
         else if (/^[0-9a-fA-F]{6}$/.test(v)) { S.setCol = 'custom'; S.setHex = '#' + v.toLowerCase(); }
         else S.setCol = 'black';
     }
+    // 6.9 Außen im Link: ou=e<Saumbreite in CSS-Pixeln> (Grenznah), ou=k (Schwarz); fehlt = Palette (alte Links unverändert)
+    function outParam() { return S.outMode === 'edge' ? 'e' + Math.round(S.edgeW) : S.outMode === 'black' ? 'k' : ''; }
+    function applyOutParam(v) {
+        const m = /^e(\d{1,3})$/.exec(v);
+        if (m) { S.outMode = 'edge'; S.edgeW = Math.max(2, Math.min(80, +m[1])); }
+        else if (v === 'k') S.outMode = 'black';
+        else S.outMode = 'pal';
+    }
     let urlT = 0, urlKey = '';
     function syncURL(now) {
         if (now - urlT < 700 || isMoving(now)) return;
@@ -59,6 +69,6 @@ root.FKUrlState = { create(ctx) {
     }
 
     return { link() { ({ HP, PAL, S, isMoving, setCam } = ctx); },
-             readURL, setColParam, stateURL, syncURL };
+             readURL, setColParam, outParam, stateURL, syncURL };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

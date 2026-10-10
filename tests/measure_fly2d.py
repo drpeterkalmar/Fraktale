@@ -13,7 +13,7 @@ Kennzahlen je Lauf:
 Mittelklasse-Profil: --throttle=4 (CPU 4× gedrosselt, 4 Kerne; die GPU lässt sich nicht drosseln).
 Bildraten nur im sichtbaren Fenster aussagekräftig (FK_HEADED=1; headless drosselt macOS auf ~10–15 Bilder/s).
 Serienbilder (--shots): tests/shots/flug2d/<mode>_<hoch|quer>_<start>_{start,30s,2min}.jpg
-Aufruf: FK_HEADED=1 python3 tests/measure_fly2d.py --mode=2d [--land] [--secs=120] [--throttle=4] [--only=ganz_1] [--shots] [--tag=v660]
+Aufruf: FK_HEADED=1 python3 tests/measure_fly2d.py --mode=2d [--land] [--secs=120] [--throttle=4] [--only=ganz_1] [--shots] [--tag=v660] [--out=edge]
 Ergebnis: tests/results_fly2d_<tag>_<mode>_<hoch|quer>[_thr4].json
 """
 import sys, os, json, time, math
@@ -68,6 +68,8 @@ def main():
     out = {'tag': tag, 'mode': mode, 'ori': ori, 'secs': secs, 'throttle': thr, 'speed': speed, 'headed': os.environ.get('FK_HEADED') == '1', 'runs': {}}
     with sync_playwright() as p:
         a = App(p, landscape=land, query='nosw&noanim').open(); pg = a.page
+        if arg('out'):    # 6.9: Außen pal|edge|black (Schwarz mit bunter Menge)
+            pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.outMode = '{arg('out')}'; if ('{arg('out')}' === 'black') A.S.setCol = 'bunt'; A.invalidate(); }}")
         if thr > 1:
             cdp = a.ctx.new_cdp_session(pg)
             cdp.send('Emulation.setCPUThrottlingRate', {'rate': thr})

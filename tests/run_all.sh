@@ -26,6 +26,7 @@ run env FK_HEADED=1 python3 tests/test_rueck.py
 run env FK_HEADED=1 python3 tests/test_hud_fs.py
 run env FK_HEADED=1 python3 tests/test_fs_fly.py
 run python3 tests/test_shot.py
+run python3 tests/test_v69.py
 run python3 tests/test_gpu_guard.py
 run python3 tests/test_context_loss.py
 run python3 tests/test_fix_ref.py

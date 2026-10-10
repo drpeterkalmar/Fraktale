@@ -58,10 +58,12 @@ uniform float u_cdf[9];   // Höhen-Entzerrung: log2(1+mu) an den Quantilen 0, 1
 uniform int u_h8;         // 1 = 8-bit-Ersatzformat (Höhe schon normiert)
 uniform int u_alpine;     // 6.2 Alpin-Look: 0 aus, 1 Wald, 2 See, 3 Wiese im Tal
 const float ALP_W = 0.1;  // Wasserspiegel des Talsees (relative Höhe)
+float hLA = 1.0;    // 6.9: A-Kanal (Randabstand, siehe HBUILD_FS) der zuletzt gelesenen Ebene
 vec3 hTex(int i, vec2 uv, float lod) {
-    vec3 v;
-${SWITCH(k => `v = textureLod(u_h${k}, uv, lod).rgb;`)}
-    return v;
+    vec4 v;
+${SWITCH(k => `v = textureLod(u_h${k}, uv, lod);`)}
+    hLA = v.a;
+    return v.rgb;
 }
 vec4 hLayer(int i, vec2 P, float foot) {
     vec4 lt = u_lt[i], ls = u_ls[i];
@@ -74,15 +76,17 @@ vec4 hLayer(int i, vec2 P, float foot) {
     return vec4(v.r + ls.z, v.g, v.b, cov);
 }
 float hSet = 0.0;   // 6.1: Mengen-Anteil inkl. Saum (B) aus der letzten heightAt2-Abfrage – ohne eigene Texturabfrage
+float hDist = 1.0;  // 6.9: Randabstand (A, kodiert) aus derselben Abfrage
 // Höhe (lokal) und Innen-Anteil am Bodenpunkt P; foot = Größe des Bodenstücks (lokal) für die Mip-Stufe.
 // shore = Innen-Anteil auf gröberer Stufe (< 0: wie inside): das Ufer fällt sanft zum See ab statt als Wand.
 vec2 heightAt2(vec2 P, float foot, float shore) {
-    float T = 1.0, h = 0.0, g = 0.0, b = 0.0;
+    float T = 1.0, h = 0.0, g = 0.0, b = 0.0, a = 0.0;
     for (int i = 0; i < u_n3; i++) {
         if (T <= 0.01) break;
-        vec4 r = hLayer(i, P, foot); h += T * r.w * r.x; g += T * r.w * r.y; b += T * r.w * r.z; T *= 1.0 - r.w;
+        vec4 r = hLayer(i, P, foot); h += T * r.w * r.x; g += T * r.w * r.y; b += T * r.w * r.z; a += T * r.w * hLA; T *= 1.0 - r.w;
     }
     hSet = T < 0.999 ? b / (1.0 - T) : 0.0;
+    hDist = T < 0.999 ? a / (1.0 - T) : 1.0;
     // Histogramm-Entzerrung: jede Achtel-Stufe der Höhe bekommt gleich viel Fläche -> Relief auch dort,
     // wo fast alles nahe am Rand liegt (dichte Tiefen); fehlende Daten = tiefste Stufe
     float r = h + T * u_cdf[0];
@@ -350,6 +354,8 @@ uniform int u_particles;
 uniform int u_dbg;        // Messung: 1 = Wassermaske, 2 = Mengen-Anteil (tests/measure_smooth.py), 4 = AO, 5 = Detail-Neigung (6.7)
 uniform vec2 u_jit;       // Subpixel-Versatz (NDC) der Mittelung im Stillstand
 uniform vec3 u_setCol;    // 6.2 Farbe der Menge
+uniform int u_outM;       // 6.9 Außen: 0 Palette, 1 Grenznah (Täler dunkel, Grate farbig), 2 Schwarz (dunkles Gestein)
+uniform float u_outW;     // 6.9 Grenznah: Saumbreite in Pufferpixeln (wie 2D)
 uniform vec2 u_noff[4];   // 6.2 Welt-verankertes Rauschen: Versatz je Oktave (Fokus / Wellenlänge, mod 256)
 uniform float u_nfr;      // Bruchteil von log2(lokale Einheit) – Oktaven-Überblendung beim Zoomen
 uniform int u_nq;         // 6.3: Zahl der Höhenabfragen pro Pixel (3) als Uniform – der Compiler entrollt nicht
@@ -484,9 +490,10 @@ void main() {
     // Höhe an P und den Nachbarn (Lichtnormale) – 6.3: eine Aufrufstelle in einer Schleife (u_nq = 3)
     vec2 hq[3];
     float setB = 0.0;       // Mengen-Anteil: dieselbe Abfrage wie die Lichtnormale
+    float dSet = 1.0;       // 6.9: Randabstand (kodiert), dieselbe Abfrage
     for (int k = 0; k < u_nq; k++) {
         hq[k] = heightAt(v_P + (k == 1 ? vec2(dl, 0.0) : (k == 2 ? vec2(0.0, dl) : vec2(0.0))), dl);
-        if (k == 0) setB = hSet;
+        if (k == 0) { setB = hSet; dSet = hDist; }
     }
     vec2 h0v = hq[0];
     float h0 = h0v.x, hx1 = hq[1].x, hy1 = hq[2].x;
@@ -503,6 +510,15 @@ void main() {
     float snowSet = smoothstep(0.35, 0.6, setL);
     if (setL > 0.02) lakeCol = mix(mix(u_setCol, u_zenith, 0.3), u_setCol * 0.86, snowSet);
     vec3 alb = colorAt(v_P, foot, lakeCol, u_haze);
+    // 6.9 Außen: Grenznah = Helligkeit nach dem Randabstand wie in 2D (aus der Distanzschätzung, in der Höhentextur
+    // mitgeführt) – Grate und Ufer am Rand farbig, weite Täler und Ebenen dunkel. (Erst nach der relativen Höhe versucht:
+    // im Gesamtbild liegt die weite Ebene nach der Entzerrung oben, sie blieb bunt.) Schwarz = dunkles Gestein, nur die
+    // Menge (See) trägt Farbe. Nicht im Alpin-Look (färbt nach Höhe).
+    float outK = 1.0;
+    if (u_outM == 2) outK = 0.0;
+    else if (u_outM == 1) { float dpx = exp2(dSet * 16.0 - 8.0); outK = exp2(-2.0 * dpx / u_outW) * (1.0 - smoothstep(120.0, 240.0, dpx)); }
+    vec3 outDark = vec3(0.028, 0.03, 0.038);
+    if (u_outM > 0 && u_alpine == 0) alb = mix(outDark, alb, outK);
 #if INC
     // 6.4 Bunte Menge: See bzw. Gletscher in der Innenfarbe (Mittel der Innen-Texel an dieser Stelle)
     if (inW > 1e-3) lakeCol = mix(lakeCol, inAcc / inW, 0.85);
@@ -551,9 +567,11 @@ void main() {
     if (u_dbg == 1) { fragColor = vec4(vec3(water), 1.0); return; }
     if (u_dbg == 3) { fragColor = vec4(steep, setPx.x, smoothstep(0.35, 0.6, v_shore), 1.0); return; }   // Messhilfe: Fels/Menge/See
     if (u_dbg == 2) { fragColor = vec4(vec3(setPx.x), 1.0); return; }
+    if (u_dbg == 6) { fragColor = vec4(u_hn.z > 1e-4 ? h0 / u_hn.z : 0.5, outK, dSet, 1.0); return; }   // Messhilfe 6.9: relative Höhe, Außen-Faktor, Randabstand
     // Fels: einfarbig (Palette gedämpft) mit leichter Schichtung nach Höhe – keine gestreckte Bodentextur
     // (6.1: Schichtung gröber und schwächer – an den nun glatt schattierten Steilwänden flimmerte das feine Muster)
     vec3 rock = mix(vec3(0.32, 0.3, 0.3), palette(0.55 + u_cycle), 0.25) * (0.55 + 0.07 * sin(v_z / max(u_hn.z, 1e-4) * 16.0));
+    if (u_outM > 0) rock = mix(outDark * 1.4, rock, outK);
     if (u_alpine == 0) alb = mix(alb, rock, steep * u_mix * (1.0 - snowM));
 #if DET
     // 6.7 Detail-Normalen: Fels kräftig, Boden/Wiese mittel, Schnee schwach, Wasser gar nicht; mit dem Abstand aus
@@ -869,15 +887,20 @@ ${SH.PAL_GLSL}
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy) * 2;
     ivec2 mx = ivec2(u_srcSize) - 1;
-    float h = 0.0, g = 0.0, b = 0.0;
+    float h = 0.0, g = 0.0, b = 0.0, a = 0.0;
     for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
         ivec2 c = min(p + ivec2(i, j), mx);
         float v = fetchV(u_src, c);
         if (v < 0.0) { h += u_inH; g += 1.0; b += 1.0; }
-        else { h += log2(1.0 + (u_formula == 5 ? mod(v, 1000.0) : v)); b += 1.0 - smoothstep(0.25, 1.25, fetchDE(u_srcD, c, v)); }
+        else {
+            h += log2(1.0 + (u_formula == 5 ? mod(v, 1000.0) : v));
+            float d = fetchDE(u_srcD, c, v);
+            b += 1.0 - smoothstep(0.25, 1.25, d);
+            a += clamp((log2(d) + 8.0) * 0.0625, 0.0, 1.0);   // 6.9: Randabstand in Pufferpixeln, log2 auf 0..1 (1/256 … 256)
+        }
     }
-    h *= 0.25; g *= 0.25; b *= 0.25;
-    o = u_h8 == 1 ? vec4(clamp((h - u_L.x) * u_L.y, 0.0, 1.0), g, b, 1.0) : vec4(h - u_base, g, b, 1.0);
+    h *= 0.25; g *= 0.25; b *= 0.25; a *= 0.25;
+    o = u_h8 == 1 ? vec4(clamp((h - u_L.x) * u_L.y, 0.0, 1.0), g, b, a) : vec4(h - u_base, g, b, a);
 }`;
 
 // Sonde: PW×PH Stichproben (Iterationswert der schärfsten Ebene) in einem Fenster ±u_win um den Fokus.

@@ -647,7 +647,12 @@ uniform vec3 u_custom[6];
 uniform float u_cycle, u_density, u_time, u_relief;
 uniform int u_particles, u_banded;
 uniform vec3 u_setCol;          // 6.2: Farbe der Menge (Schwarz = vec3(0, 0, 0.015) wie bis 6.1)
+uniform int u_outM;             // 6.9 Außen: 0 = Palette (wie bisher), 1 = Grenznah, 2 = Schwarz („Unendlichkeit schwarz“)
+uniform float u_outW;           // 6.9 Grenznah: Saumbreite in Zielpixeln (bei diesem Abstand zur Menge noch 1/4 Helligkeit)
 out vec4 fragColor;
+// 6.9: Helligkeit der Außenfarbe dieses Bildpunkts (1 = Palette; je Pixel in sampleLayerN gesetzt). Grenznah: aus der
+// Distanzschätzung in Zielpixeln – dieselbe Saumbreite bei jedem Zoom, glatt (bilinear interpolierte Distanz, exp-Abfall)
+float g_outK = 1.0;
 // 6.2: bei heller Menge ein weicher dunkler Saum außen an der Kontur (1,25–4 Zielpixel), damit der Rand klar bleibt
 float rimShade(float d00, float d10, float d01, float d11, vec2 f, float pxPerTexel) {
     float sl = dot(u_setCol, vec3(0.299, 0.587, 0.114));
@@ -670,15 +675,15 @@ ${PAL_GLSL}vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec
     float diff = max(dot(nrm, L), 0.0);
     float spec = pow(max(dot(reflect(-L, nrm), vec3(0.0, 0.0, 1.0)), 0.0), 18.0);
     float shade = mix(1.0, 0.25 + 1.0 * diff, clamp(u_relief, 0.0, 1.0));
-    return col * shade + vec3(spec) * 0.35 * u_relief;
+    return col * shade + vec3(spec) * 0.35 * u_relief * g_outK;
 }
 
 // bilinear eingefärbte Probe aus 4 Texeln (Verhalten 5.0.1; bei Ausrichtung 1:1 exakt der Texel)
 vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 voidCol) {
-    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : exteriorColor(v00);
-    vec3 c10 = v10 < 0.0 ? inCol(v10, voidCol) : exteriorColor(v10);
-    vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : exteriorColor(v01);
-    vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : exteriorColor(v11);
+    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : exteriorColor(v00) * g_outK;
+    vec3 c10 = v10 < 0.0 ? inCol(v10, voidCol) : exteriorColor(v10) * g_outK;
+    vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : exteriorColor(v01) * g_outK;
+    vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : exteriorColor(v11) * g_outK;
     vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
     if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
         col = relief(col, v00, v10, v01, v11, f, kx);
@@ -726,10 +731,19 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
         float wi = wq.x + wq.y + wq.z + wq.w;
         if (wi > 0.0) voidCol = (wq.x * inCol(v00, voidCol) + wq.y * inCol(v10, voidCol) + wq.z * inCol(v01, voidCol) + wq.w * inCol(v11, voidCol)) / wi;
     }
-    if (u_deOn == 1) {
+    g_outK = u_outM == 2 ? 0.0 : 1.0;
+    if (u_deOn == 1 || u_outM == 1) {
         float e00 = fetchDE(dtex, i0, v00), e10 = fetchDE(dtex, ivec2(i1.x, i0.y), v10), e01 = fetchDE(dtex, ivec2(i0.x, i1.y), v01), e11 = fetchDE(dtex, i1, v11);
-        dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);
-        rim = rimShade(e00, e10, e01, e11, f, 1.0 / xf.x);
+        if (u_deOn == 1) {
+            dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);
+            rim = rimShade(e00, e10, e01, e11, f, 1.0 / xf.x);
+        }
+        if (u_outM == 1) {
+            // 6.9 Grenznah: Helligkeit fällt mit dem Abstand zur Menge (Zielpixel) weich ab – 1/2 bei W/2, 1/4 bei W;
+            // die 8-bit-Distanz reicht bis ~245 Pufferpixel, davor blendet der Rest unmerklich aus (kein Ring)
+            float dt = mix(mix(e00, e10, f.x), mix(e01, e11, f.x), f.y);
+            g_outK = exp2(-2.0 * dt / (xf.x * u_outW)) * (1.0 - smoothstep(120.0, 240.0, dt));
+        }
     }
     if (u_recon == 0 || xf.x >= 0.9) return mix(shade4(v00, v10, v01, v11, f, xf.x, voidCol) * rim, voidCol, dm);
     // Innen/Außen getrennt: Außenwerte untereinander interpolieren, Innenanteil weich-scharf darüber
@@ -762,11 +776,11 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
             }
             if (ok && mxv - mn < 3.0 * thr) mu = clamp(s, lo, hi);
         }
-        col = exteriorColor(mu);
+        col = exteriorColor(mu) * g_outK;
     } else {
         vec3 c = vec3(0.0);
         for (int i = 0; i < 4; i++) if (v[i] >= 0.0) c += wb[i] * exteriorColor(v[i]);
-        col = c / wo;
+        col = c / wo * g_outK;
     }
     if (u_relief > 0.0 && u_formula != 5 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
     col = mix(col * rim, voidCol, max(dm, smoothstep(0.15, 0.85, inside)));

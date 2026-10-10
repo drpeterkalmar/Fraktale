@@ -515,6 +515,8 @@ function create(canvas) {
         gl.uniform1f(L.u_cycle, look.cycle);
         if (L.u_setCol) gl.uniform3fv(L.u_setCol, look.setCol || [0, 0, 0.015]);   // 6.2 Farbe der Menge
         if (L.u_inMode) gl.uniform1i(L.u_inMode, look.inner || 0);                  // 6.4 Bunte Menge
+        if (L.u_outM) gl.uniform1i(L.u_outM, look.outM || 0);                        // 6.9 Außen (Palette/Grenznah/Schwarz)
+        if (L.u_outW) gl.uniform1f(L.u_outW, look.outW || 24);
     }
     // Integer-Texturen MÜSSEN NEAREST filtern, sonst 'incomplete' -> texelFetch liefert 0
     function nearest() {

@@ -212,7 +212,7 @@ A.on((w) => {
         else if (hudless()) hudHide(true);         // 6.8: Vollbild/Kino-Modus – Tipp auf das Bild blendet die Bedienung wieder aus
         else setChrome(!S.chrome);
     } else if (w === 'frame') hudUpdate(false);
-    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); }
+    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); syncSet(); }
     else if (w === 'julia') { updateJuliaPanel(); }
     else if (w === 'iter') hudUpdate(true);
     else if (w === 'settings') syncControls();
@@ -363,14 +363,43 @@ function syncSet() {
     document.querySelectorAll('#seg-inmode button').forEach(b => b.classList.toggle('on', +b.dataset.v === (S.inMode === 2 ? 2 : 1)));
     $('set-color-custom').hidden = S.setCol !== 'custom';
     $('set-color-custom').value = S.setHex;
+    // 6.9 Außen: Palette / Grenznah (+ Saumbreite) / Schwarz – nur in den 2D-Welten mit Menge
+    const outOK = S.formula < 5;
+    document.querySelectorAll('#seg-out button').forEach(b => { b.classList.toggle('on', b.dataset.v === S.outMode); b.disabled = !outOK; });
+    $('seg-out').classList.toggle('dim', !outOK);
+    $('l-edgew').hidden = S.outMode !== 'edge' || !outOK;
+    $('out-hint').textContent = !outOK ? t('out_hint_na') : t('out_hint_' + S.outMode) + (S.alpine && S.outMode !== 'pal' ? ' ' + t('out_hint_alp') : '');
     $('t-alpine').checked = S.alpine;
     $('seg-valley').hidden = !S.alpine;
     document.querySelectorAll('#seg-valley button').forEach(b => b.classList.toggle('on', b.dataset.v === S.valley));
 }
 document.querySelectorAll('#seg-setcol button').forEach(b => b.addEventListener('click', () => {
     if (S.setCol !== b.dataset.v) crossfade(420);
-    S.setCol = b.dataset.v; A.saveSettings(); A.invalidate(); syncSet();
+    S.setCol = b.dataset.v; outPrevSet = null;
+    // 6.9: schwarze Menge bei schwarzem Außen = nichts zu sehen -> Außen wieder Palette
+    if (S.outMode === 'black' && setTooDark()) { S.outMode = 'pal'; toast(t('out_auto_pal'), 3200); }
+    A.saveSettings(); A.invalidate(); syncSet();
 }));
+// 6.9 Außen. „Schwarz“ (Unendlichkeit schwarz) mit schwarzer/fast schwarzer Menge -> Menge automatisch „Bunt“ (kurz
+// angezeigt); zurück auf Palette/Grenznah stellt die vorige Mengenfarbe wieder her, solange sie nicht geändert wurde
+let outPrevSet = null;
+function setTooDark() {
+    if (S.setCol === 'bunt') return false;
+    const c = PAL.setRGB(S.setCol, S.setHex, PAL.list[S.palette]);
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 0.06;
+}
+document.querySelectorAll('#seg-out button').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.v;
+    if (S.outMode === v) return;
+    crossfade(420);
+    S.outMode = v;
+    if (v === 'black' && setTooDark()) { outPrevSet = S.setCol; S.setCol = 'bunt'; toast(t('out_auto_bunt'), 3200); }
+    else if (v !== 'black' && outPrevSet && S.setCol === 'bunt') { S.setCol = outPrevSet; outPrevSet = null; }
+    A.saveSettings(); A.invalidate(); syncSet();
+}));
+// Saumbreite 2–80 CSS-Pixel, logarithmisch (Regler 0..1)
+const edgeGet = () => S.edgeW; edgeGet.raw = () => Math.log(S.edgeW / 2) / Math.log(40);
+const syncEdge = bindRange('s-edgew', 'o-edgew', edgeGet, (v) => { S.edgeW = Math.round(2 * Math.pow(40, v) * 10) / 10; }, (v) => Math.round(v) + ' px');
 document.querySelectorAll('#seg-inmode button').forEach(b => b.addEventListener('click', () => {
     if (S.inMode !== +b.dataset.v) crossfade(420);
     S.inMode = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncSet();    // nur Darstellung, keine Neuberechnung
@@ -393,7 +422,12 @@ function bindRange(id, out, get, set, fmt) {
 }
 const densGet = () => S.density; densGet.raw = () => Math.log2(S.density);
 const syncDensity = bindRange('s-density', 'o-density', densGet, (v) => { S.density = Math.pow(2, v); }, (v) => v.toFixed(2) + '×');
-const syncSpeed = bindRange('s-speed', 'o-speed', () => S.speed, (v) => { S.speed = v; }, (v) => v.toFixed(2));
+// 6.9: Tempo logarithmisch 0,002–0,8 Paletten-Runden pro Sekunde (bis 6.8: 0,02–0,8 linear), angezeigt als Dauer einer Runde
+const speedGet = () => S.speed; speedGet.raw = () => Math.log(S.speed / 0.002) / Math.log(400);
+const syncSpeed = bindRange('s-speed', 'o-speed', speedGet, (v) => { S.speed = +(0.002 * Math.pow(400, v)).toPrecision(3); }, (v) => {
+    const s = 1 / Math.max(v, 1e-4), num = (x) => (x < 10 ? x.toFixed(1) : Math.round(x).toString()).replace('.', S.lang === 'de' || S.lang === 'hu' || S.lang === 'es' || S.lang === 'fr' || S.lang === 'pt' ? ',' : '.');
+    return t('anim_round').replace('{t}', s < 60 ? num(s) + '\u00a0s' : num(s / 60) + '\u00a0min');
+});
 const syncRelief = bindRange('s-relief', 'o-relief', () => S.reliefStrength, (v) => { S.reliefStrength = v; }, (v) => v.toFixed(2));
 function bindToggle(id, get, set) {
     const c = $(id);
@@ -423,7 +457,7 @@ const segs = [
     bindSeg('seg-renderer', () => S.renderer, (v) => { S.renderer = v; A.invalidate(); }),
 ];
 function syncControls() {
-    syncDensity(); syncSpeed(); syncRelief(); syncSet();
+    syncDensity(); syncSpeed(); syncRelief(); syncEdge(); syncSet();
     toggles.forEach(f => f()); segs.forEach(f => f());
     $('s-speed').closest('label').classList.toggle('dim', !S.anim);
     $('s-relief').closest('label').classList.toggle('dim', !S.relief);
@@ -436,7 +470,7 @@ function syncControls() {
     const s = $('sel-lang');
     for (const k of Object.keys(TRANSLATIONS)) { const o = el('option'); o.value = k; o.textContent = TRANSLATIONS[k].lang_name || k; s.appendChild(o); }
     s.value = S.lang;
-    s.addEventListener('change', () => { S.lang = s.value; A.saveSettings(); applyI18n(); });
+    s.addEventListener('change', () => { S.lang = s.value; A.saveSettings(); applyI18n(); syncControls(); });
 })();
 
 // ------------------------------------------------------------------ Orte
