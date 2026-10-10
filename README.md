@@ -110,6 +110,9 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 6.9.1** – Zwischenstand 7.0: neuer Mandelbulb (Details im Abschnitt 7.0, sobald fertig)
+- Mandelbulb mit Licht (Haupt-, Himmels-, Rückstreulicht), weichen Schatten, Ambient Occlusion, Glanz und Randlicht; Farbe nach Struktur (Orbit-Traps) in der App-Palette inkl. Farbanimation; Stile Klassisch/Stein/Metall/Glas-Neon; freie Kamera (Ziehen = drehen, zwei Finger = zoomen, Doppeltipp = zur Stelle fliegen); echtes Hineinzoomen bis ≈ 4·10⁴ mit neuen Details; Ruhebild gemittelt; ✈ Flug an der Oberfläche; Exponent 2–16, Atmen, Julia-Bulb (Langdruck), Nebel, Tiefenunschärfe; Screenshot in Kacheln. Rückfall auf das einfache Bild bis 6.9, wenn die Grafik es nicht kann.
+
 **Version 6.9.0** – Außen: Palette, Grenznah oder Schwarz + langsamere Farbanimation
 - **Außen** (Farben-Tab, unter „Farbe der Menge“): *Grenznah* färbt nur Punkte nahe an der Menge – die Helligkeit fällt mit dem Abstand zur Menge weich ab (aus der Distanzschätzung, die seit 6.1 neben jedem Bild liegt; halbe Helligkeit bei der halben Saumbreite, ein Viertel bei der Saumbreite, kein harter Rand, kein Flimmern beim Zoomen), Regler „Saumbreite“ 2–80 px. *Schwarz*: alles, was entkommt, ist schwarz; die Menge trägt die Farbe – bei schwarzer Menge schaltet die App automatisch auf Bunt (die Bunt-Modi Inseln/Ringe reichen: Kuppel-Licht bzw. Ringe geben der Menge Tiefe, ein dritter Innen-Verlauf war im Bildvergleich nicht nötig). Gilt auch im Deep Zoom über die CPU und in Screenshot-Kacheln (gemessen: bitgleich zum Bild aus einem Stück). 3D: Grenznah nach demselben Randabstand (neu im A-Kanal der Höhentextur), Schwarz als dunkles Gestein.
 - **Farbanimation:** Tempo-Regler logarithmisch 0,002–0,8 Runden/s (bisher 0,02–0,8 linear), Anzeige „1 Runde in X s/min“.

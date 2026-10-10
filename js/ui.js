@@ -214,6 +214,7 @@ A.on((w) => {
     } else if (w === 'frame') hudUpdate(false);
     else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); syncSet(); }
     else if (w === 'julia') { updateJuliaPanel(); }
+    else if (w === 'bulb') syncBulb();
     else if (w === 'iter') hudUpdate(true);
     else if (w === 'settings') syncControls();
     else if (w === '3d' || w === 'fly') { sync3d(); if (w === '3d') syncShot(); }
@@ -233,7 +234,28 @@ function buildModes() {
         g.appendChild(b);
     });
 }
+// 7.0 Mandelbulb-Panel (Welten-Tab): Exponent, Atmen, Stil, Julia-Bulb, Nebel, Tiefenunschärfe
+function syncBulb() {
+    const BU = A.BULB, on = S.formula === 6;
+    $('bulb-panel').hidden = !on;
+    if (!on || !BU) return;
+    $('s-bpow').value = BU.B.power0; $('o-bpow').textContent = BU.B.power0.toFixed(2);
+    $('t-bbreathe').checked = S.bulbBreathe;
+    $('t-bjulia').checked = BU.B.julia;
+    document.querySelectorAll('#seg-bstyle button').forEach(b => b.classList.toggle('on', +b.dataset.v === S.bulbStyle));
+    $('s-bfog').value = S.bulbFog; $('o-bfog').textContent = Math.round(S.bulbFog * 100) + ' %';
+    $('s-bdof').value = S.bulbDof; $('o-bdof').textContent = S.bulbDof > 0 ? Math.round(S.bulbDof * 100) + ' %' : t('off');
+}
+$('s-bpow').addEventListener('input', (e) => { const BU = A.BULB; BU.B.power0 = BU.B.power = +e.target.value; BU.invalidate(); A.RC.dirty = true; syncBulb(); });
+$('t-bbreathe').addEventListener('change', (e) => { S.bulbBreathe = e.target.checked; A.saveSettings(); A.RC.dirty = true; syncBulb(); });
+$('t-bjulia').addEventListener('change', (e) => { const BU = A.BULB; BU.B.julia = e.target.checked; BU.invalidate(); A.RC.dirty = true; if (e.target.checked) toast(t('bulb_julia_hint'), 3000); syncBulb(); });
+document.querySelectorAll('#seg-bstyle button').forEach(b => b.addEventListener('click', () => { if (S.bulbStyle !== +b.dataset.v) crossfade(420); S.bulbStyle = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncBulb(); }));
+$('s-bfog').addEventListener('input', (e) => { S.bulbFog = +e.target.value; A.RC.dirty = true; syncBulb(); });
+$('s-bfog').addEventListener('change', () => A.saveSettings());
+$('s-bdof').addEventListener('input', (e) => { S.bulbDof = +e.target.value; A.RC.dirty = true; syncBulb(); });
+$('s-bdof').addEventListener('change', () => A.saveSettings());
 function updateJuliaPanel() {
+    syncBulb();
     $('julia-panel').hidden = S.formula !== 1;
     $('jx').textContent = HP.toString(S.julia.x, 5).replace('-', '−');
     $('jy').textContent = HP.toString(S.julia.y, 5).replace('-', '−');
@@ -364,11 +386,11 @@ function syncSet() {
     $('set-color-custom').hidden = S.setCol !== 'custom';
     $('set-color-custom').value = S.setHex;
     // 6.9 Außen: Palette / Grenznah (+ Saumbreite) / Schwarz – nur in den 2D-Welten mit Menge
-    const outOK = S.formula < 5;
+    const outOK = S.formula < 5 || S.formula === 6;
     document.querySelectorAll('#seg-out button').forEach(b => { b.classList.toggle('on', b.dataset.v === S.outMode); b.disabled = !outOK; });
     $('seg-out').classList.toggle('dim', !outOK);
     $('l-edgew').hidden = S.outMode !== 'edge' || !outOK;
-    $('out-hint').textContent = !outOK ? t('out_hint_na') : t('out_hint_' + S.outMode) + (S.alpine && S.outMode !== 'pal' ? ' ' + t('out_hint_alp') : '');
+    $('out-hint').textContent = !outOK ? t('out_hint_na') : S.formula === 6 ? t('out_hint_bulb') : t('out_hint_' + S.outMode) + (S.alpine && S.outMode !== 'pal' ? ' ' + t('out_hint_alp') : '');
     $('t-alpine').checked = S.alpine;
     $('seg-valley').hidden = !S.alpine;
     document.querySelectorAll('#seg-valley button').forEach(b => b.classList.toggle('on', b.dataset.v === S.valley));
@@ -393,7 +415,7 @@ document.querySelectorAll('#seg-out button').forEach(b => b.addEventListener('cl
     if (S.outMode === v) return;
     crossfade(420);
     S.outMode = v;
-    if (v === 'black' && setTooDark()) { outPrevSet = S.setCol; S.setCol = 'bunt'; toast(t('out_auto_bunt'), 3200); }
+    if (v === 'black' && S.formula < 5 && setTooDark()) { outPrevSet = S.setCol; S.setCol = 'bunt'; toast(t('out_auto_bunt'), 3200); }
     else if (v !== 'black' && outPrevSet && S.setCol === 'bunt') { S.setCol = outPrevSet; outPrevSet = null; }
     A.saveSettings(); A.invalidate(); syncSet();
 }));
@@ -457,7 +479,7 @@ const segs = [
     bindSeg('seg-renderer', () => S.renderer, (v) => { S.renderer = v; A.invalidate(); }),
 ];
 function syncControls() {
-    syncDensity(); syncSpeed(); syncRelief(); syncEdge(); syncSet();
+    syncDensity(); syncSpeed(); syncRelief(); syncEdge(); syncSet(); syncBulb();
     toggles.forEach(f => f()); segs.forEach(f => f());
     $('s-speed').closest('label').classList.toggle('dim', !S.anim);
     $('s-relief').closest('label').classList.toggle('dim', !S.relief);

@@ -144,7 +144,7 @@ def main():
         a.set_view('-0.5', '0', 1); a.wait_done(60)
         pg.click('#btn-fly2d'); time.sleep(1)
         pg.evaluate("() => window.__fraktal.setMode(6)"); time.sleep(0.6)
-        need(not fly_state(pg)['on'] and box(pg, '#btn-fly2d') is None, 'Mandelbulb: Flug endet, kein ✈-Knopf')
+        need(not fly_state(pg)['on'] and box(pg, '#btn-fly2d') is not None, 'Mandelbulb: Flug endet, ✈-Knopf für den eigenen Flug (7.0)')
         pg.evaluate("() => window.__fraktal.setMode(7)"); time.sleep(0.4)
         need(box(pg, '#btn-fly2d') is None, 'Buddhabrot: kein ✈-Knopf')
         pg.evaluate("() => window.__fraktal.setMode(0)"); time.sleep(0.6)

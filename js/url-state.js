@@ -20,6 +20,13 @@ root.FKUrlState = { create(ctx) {
         const sc = setColParam(); if (sc) p.set('sc', sc);
         if (S.alpine) p.set('al', S.valley[0]);
         const ou = outParam(); if (ou) p.set('ou', ou);
+        // 7.0 Mandelbulb: Kamera (Position, Gieren, Nicken), Exponent, Julia-c; Stil/Nebel/Tiefenunschärfe, wenn nicht Standard
+        if (S.formula === 6 && ctx.BULB) {
+            p.set('b', ctx.BULB.stateString());
+            if (S.bulbStyle) p.set('bs', S.bulbStyle);
+            if (S.bulbFog !== 0.15) p.set('bf', S.bulbFog);
+            if (S.bulbDof > 0) p.set('bd', S.bulbDof);
+        }
         return location.origin + location.pathname + '#' + p.toString();
     }
     function readURL() {
@@ -40,6 +47,12 @@ root.FKUrlState = { create(ctx) {
         // von Minuten (Windows-Watchdog -> Kontextverlust)
         if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
         setCam(HP.fromString(p.get('x')), HP.fromString(p.get('y') || '0'), parseFloat(p.get('z')) || 1);
+        if (m === 6 && ctx.BULB) {
+            if (!(p.has('b') && ctx.BULB.applyState(p.get('b')))) ctx.BULB.applyLegacy(parseFloat(p.get('x')) || 0, parseFloat(p.get('y')) || 0, parseFloat(p.get('z')) || 1);
+            S.bulbStyle = Math.max(0, Math.min(3, parseInt(p.get('bs') || '0', 10) || 0));
+            S.bulbFog = p.has('bf') ? Math.max(0, Math.min(1, +p.get('bf') || 0)) : 0.15;
+            S.bulbDof = p.has('bd') ? Math.max(0, Math.min(1, +p.get('bd') || 0)) : 0;
+        }
         return true;
     }
     // 6.2 Farbe der Menge im Link: sc=w (Weiß), d/l (dunkelste/hellste Palettenfarbe), sonst Hex ohne # (eigene);

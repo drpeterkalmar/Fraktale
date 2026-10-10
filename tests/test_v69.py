@@ -6,7 +6,7 @@ Prüft:
   * Schwarz bei schwarzer Menge -> Menge automatisch Bunt (Hinweis), zurück auf Palette -> wieder Schwarz
   * Grenznah: Bildmitte weit weg von der Menge dunkel, Randnähe hell; auch mit „Menge glatt“ aus (Distanzschätzung wird
     dann trotzdem gerechnet); Palette mit Grenznah-Saum 80 px heller als mit 4 px
-  * Newton/Mandelbulb: Wahl gesperrt, Hinweis
+  * Newton/Buddhabrot: Wahl gesperrt, Hinweis; Mandelbulb (7.0): wählbar (Hintergrund)
   * Tempo-Regler logarithmisch: unteres Ende 0,002 (1 Runde in 8,3 min), Standard 0,15 unverändert, gespeichert
 Aufruf: python3 tests/test_v69.py   (Server: python3 tools/serve.py 8472)
 """
@@ -63,10 +63,15 @@ def main():
             need(res[(de, 80)][1] > res[(de, 4)][1] * 1.2, f"Grenznah (Menge glatt {'an' if de else 'aus'}): Saum 80 px heller als 4 px ({res[(de, 80)][1]:.1f} / {res[(de, 4)][1]:.1f})")
         pg.evaluate("() => { const A = window.__fraktal; A.S.deOn = true; A.invalidate(); }")
         # gesperrt in Newton/Mandelbulb
-        for m in (5, 6):
+        for m in (5, 7):
             pg.evaluate(f"() => window.__fraktal.setMode({m})"); time.sleep(0.5)
             d = pg.evaluate("() => [document.querySelector('#seg-out button').disabled, window.__fraktal.look().outM]")
             need(d == [True, 0], f"Modus {m}: Außen gesperrt, ohne Wirkung ({d})")
+        # 7.0: im Mandelbulb gilt Außen für den Hintergrund (Verlauf / Leuchten am Rand / schwarz)
+        pg.evaluate("() => { const A = window.__fraktal; A.setMode(6); A.S.outMode = 'edge'; }"); time.sleep(0.5)
+        d = pg.evaluate("() => [document.querySelector('#seg-out button').disabled, window.__fraktal.look().outM]")
+        need(d == [False, 1], f"Mandelbulb: Außen wählbar, Grenznah wirkt ({d})")
+        pg.evaluate("() => { window.__fraktal.S.outMode = 'pal'; }")
         pg.evaluate("() => window.__fraktal.setMode(0)")
         # Tempo logarithmisch
         pg.evaluate("() => { const r = document.getElementById('s-speed'); r.value = 0; r.dispatchEvent(new Event('input')); r.dispatchEvent(new Event('change')); }")

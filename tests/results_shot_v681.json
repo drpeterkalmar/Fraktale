@@ -4,8 +4,8 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 1245,
-    "tilesMs": 1112,
+    "ms": 569,
+    "tilesMs": 435,
     "bytes": 391401,
     "tiles": 1,
     "tile": [
@@ -17,7 +17,7 @@
     "dev": "gpu",
     "mode": "perturb",
     "est": {
-     "ms": 455,
+     "ms": 477,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -27,8 +27,8 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 4064,
-    "tilesMs": 3831,
+    "ms": 4083,
+    "tilesMs": 3931,
     "bytes": 391401,
     "tiles": 15,
     "tile": [
@@ -40,7 +40,7 @@
     "dev": "gpu",
     "mode": "perturb",
     "est": {
-     "ms": 5287,
+     "ms": 4674,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -58,8 +58,8 @@
    "one": {
     "W": 320,
     "H": 180,
-    "ms": 178,
-    "tilesMs": 115,
+    "ms": 299,
+    "tilesMs": 273,
     "bytes": 1948,
     "tiles": 1,
     "tile": [
@@ -71,7 +71,7 @@
     "dev": "cpu",
     "mode": "perturb",
     "est": {
-     "ms": 415,
+     "ms": 319,
      "bytes": 92160,
      "mp": 0.1
     },
@@ -81,8 +81,8 @@
    "tiled": {
     "W": 320,
     "H": 180,
-    "ms": 1414,
-    "tilesMs": 1359,
+    "ms": 1769,
+    "tilesMs": 1673,
     "bytes": 1948,
     "tiles": 8,
     "tile": [
@@ -94,7 +94,7 @@
     "dev": "cpu",
     "mode": "perturb",
     "est": {
-     "ms": 3169,
+     "ms": 2170,
      "bytes": 92160,
      "mp": 0.1
     },
@@ -112,8 +112,8 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 345,
-    "tilesMs": 224,
+    "ms": 447,
+    "tilesMs": 336,
     "bytes": 311893,
     "tiles": 1,
     "tile": [
@@ -125,7 +125,7 @@
     "dev": "gpu",
     "mode": "direct",
     "est": {
-     "ms": 268,
+     "ms": 283,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -135,8 +135,8 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 3778,
-    "tilesMs": 3608,
+    "ms": 4083,
+    "tilesMs": 4012,
     "bytes": 311893,
     "tiles": 15,
     "tile": [
@@ -148,7 +148,7 @@
     "dev": "gpu",
     "mode": "direct",
     "est": {
-     "ms": 5304,
+     "ms": 4353,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -166,9 +166,9 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 568,
-    "tilesMs": 386,
-    "bytes": 398085,
+    "ms": 855,
+    "tilesMs": 562,
+    "bytes": 398101,
     "tiles": 1,
     "tile": [
      640,
@@ -179,7 +179,7 @@
     "dev": "gpu",
     "mode": "perturb",
     "est": {
-     "ms": 442,
+     "ms": 367,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -189,9 +189,9 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 3987,
-    "tilesMs": 3867,
-    "bytes": 398085,
+    "ms": 3744,
+    "tilesMs": 3630,
+    "bytes": 398101,
     "tiles": 15,
     "tile": [
      128,
@@ -202,7 +202,7 @@
     "dev": "gpu",
     "mode": "perturb",
     "est": {
-     "ms": 5054,
+     "ms": 4683,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -220,8 +220,8 @@
    "one": {
     "W": 320,
     "H": 180,
-    "ms": 293,
-    "tilesMs": 238,
+    "ms": 337,
+    "tilesMs": 201,
     "bytes": 1948,
     "tiles": 1,
     "tile": [
@@ -233,7 +233,7 @@
     "dev": "cpu",
     "mode": "perturb",
     "est": {
-     "ms": 397,
+     "ms": 277,
      "bytes": 92160,
      "mp": 0.1
     },
@@ -243,8 +243,8 @@
    "tiled": {
     "W": 320,
     "H": 180,
-    "ms": 1701,
-    "tilesMs": 1576,
+    "ms": 1250,
+    "tilesMs": 1132,
     "bytes": 1948,
     "tiles": 8,
     "tile": [
@@ -256,7 +256,7 @@
     "dev": "cpu",
     "mode": "perturb",
     "est": {
-     "ms": 2804,
+     "ms": 2365,
      "bytes": 92160,
      "mp": 0.1
     },
@@ -274,8 +274,8 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 362,
-    "tilesMs": 196,
+    "ms": 292,
+    "tilesMs": 177,
     "bytes": 260102,
     "tiles": 1,
     "tile": [
@@ -287,7 +287,7 @@
     "dev": "gpu",
     "mode": "direct",
     "est": {
-     "ms": 323,
+     "ms": 262,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -297,8 +297,8 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 3967,
-    "tilesMs": 3786,
+    "ms": 3695,
+    "tilesMs": 3460,
     "bytes": 260102,
     "tiles": 15,
     "tile": [
@@ -310,7 +310,7 @@
     "dev": "gpu",
     "mode": "direct",
     "est": {
-     "ms": 4922,
+     "ms": 3398,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -328,8 +328,8 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 225,
-    "tilesMs": 136,
+    "ms": 303,
+    "tilesMs": 110,
     "bytes": 153586,
     "tiles": 1,
     "tile": [
@@ -341,7 +341,7 @@
     "dev": "gpu",
     "mode": "direct",
     "est": {
-     "ms": 345,
+     "ms": 284,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -351,8 +351,8 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 2295,
-    "tilesMs": 2177,
+    "ms": 1932,
+    "tilesMs": 1844,
     "bytes": 153586,
     "tiles": 15,
     "tile": [
@@ -364,7 +364,7 @@
     "dev": "gpu",
     "mode": "direct",
     "est": {
-     "ms": 4478,
+     "ms": 4276,
      "bytes": 368640,
      "mp": 0.2
     },
@@ -382,9 +382,9 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 137,
-    "tilesMs": 46,
-    "bytes": 152237,
+    "ms": 1596,
+    "tilesMs": 1578,
+    "bytes": 315449,
     "tiles": 1,
     "tile": [
      640,
@@ -395,8 +395,8 @@
     "dev": null,
     "mode": null,
     "est": {
-     "ms": 228,
-     "bytes": 230400,
+     "ms": 681,
+     "bytes": 414720,
      "mp": 0.2
     },
     "peakMB": 16.3,
@@ -405,9 +405,9 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 1277,
-    "tilesMs": 1175,
-    "bytes": 152237,
+    "ms": 11974,
+    "tilesMs": 11854,
+    "bytes": 315449,
     "tiles": 15,
     "tile": [
      128,
@@ -418,8 +418,8 @@
     "dev": null,
     "mode": null,
     "est": {
-     "ms": 2992,
-     "bytes": 230400,
+     "ms": 8451,
+     "bytes": 414720,
      "mp": 0.2
     },
     "peakMB": 16.3,
@@ -436,9 +436,9 @@
    "one": {
     "W": 640,
     "H": 360,
-    "ms": 764,
-    "tilesMs": 520,
-    "bytes": 402158,
+    "ms": 1057,
+    "tilesMs": 834,
+    "bytes": 402131,
     "tiles": 1,
     "tile": [
      640,
@@ -449,7 +449,7 @@
     "dev": null,
     "mode": null,
     "est": {
-     "ms": 453,
+     "ms": 333,
      "bytes": 506880,
      "mp": 0.2
     },
@@ -459,9 +459,9 @@
    "tiled": {
     "W": 640,
     "H": 360,
-    "ms": 7498,
-    "tilesMs": 7229,
-    "bytes": 402170,
+    "ms": 6623,
+    "tilesMs": 6336,
+    "bytes": 402226,
     "tiles": 12,
     "tile": [
      160,
@@ -472,43 +472,43 @@
     "dev": null,
     "mode": null,
     "est": {
-     "ms": 7412,
+     "ms": 7670,
      "bytes": 506880,
      "mp": 0.2
     },
     "peakMB": 16.3,
     "margin": 8
    },
-   "ndiff": 291,
+   "ndiff": 428,
    "maxdiff": 3,
-   "seam": 0.0014264861995753714,
-   "rest": 0.0005506341368961177,
+   "seam": 0.0011942675159235668,
+   "rest": 0.0008683076774131087,
    "W": 640,
    "H": 360
   }
  },
  "menue": {
   "screen": "1082 × 2202 px · 2,4 MP · ca. 2 s · ca. 3,5 MB",
-  "2x": "2164 × 4404 px · 9,5 MP · ca. 7 s · ca. 11 MB",
-  "4x": "4328 × 8808 px · 38 MP · ca. 23 s · ca. 37 MB",
-  "8k": "7680 × 4320 px · 33 MP · ca. 26 s · ca. 40 MB"
+  "2x": "2164 × 4404 px · 9,5 MP · ca. 6 s · ca. 11 MB",
+  "4x": "4328 × 8808 px · 38 MP · ca. 22 s · ca. 37 MB",
+  "8k": "7680 × 4320 px · 33 MP · ca. 18 s · ca. 40 MB"
  },
  "ablauf": {
   "ask": [
    "Screenshot-Auflösung 2×",
-   "2164 × 4404 px · 9,5 MP · ca. 5 s · ca. 11 MB",
+   "2164 × 4404 px · 9,5 MP · ca. 6 s · ca. 11 MB",
    true
   ],
   "run": [
-   "Rendere Kachel 3/15 …",
-   "2164 × 4404 px · 18 % · noch 6 s",
+   "Rendere Kachel 2/15 …",
+   "2164 × 4404 px · 12 % · noch 7 s",
    [
     true,
     true,
     true
    ]
   ],
-  "datei": "Fraktal_mandelbrot_1.1e3_2164x4404_1791616140098.png",
+  "datei": "Fraktal_mandelbrot_1.3e3_2164x4404_1791619550642.png",
   "flug_danach": [
    true,
    false
@@ -523,14 +523,14 @@
   "ok Naht Grenznah Julia: 15 Kacheln gegen ein Stück, 0 abweichende Werte (Rechenweg gpu/direct)",
   "ok Naht Newton: 15 Kacheln gegen ein Stück, 0 abweichende Werte (Rechenweg gpu/direct)",
   "ok Naht Mandelbulb: 15 Kacheln, 0 abweichende Werte",
-  "ok Naht 3D: 12 Kacheln, 291 von 691200 Werten weichen ab, höchstens 3/255; mittlere Abweichung an den Kanten 0.0014, sonst 0.0006",
-  "ok Menü: Größe, MP, Dauer, Dateigröße je Stufe {'screen': '1082 × 2202 px · 2,4 MP · ca. 2 s · ca. 3,5 MB', '2x': '2164 × 4404 px · 9,5 MP · ca. 7 s · ca. 11 MB', '4x': '4328 × 8808 px · 38 MP · ca. 23 s · ca. 37 MB', '8k': '7680 × 4320 px · 33 MP · ca. 26 s · ca. 40 MB'}",
+  "ok Naht 3D: 12 Kacheln, 428 von 691200 Werten weichen ab, höchstens 3/255; mittlere Abweichung an den Kanten 0.0012, sonst 0.0009",
+  "ok Menü: Größe, MP, Dauer, Dateigröße je Stufe {'screen': '1082 × 2202 px · 2,4 MP · ca. 2 s · ca. 3,5 MB', '2x': '2164 × 4404 px · 9,5 MP · ca. 6 s · ca. 11 MB', '4x': '4328 × 8808 px · 38 MP · ca. 22 s · ca. 37 MB', '8k': '7680 × 4320 px · 33 MP · ca. 18 s · ca. 40 MB'}",
   "ok Eigene Größe (Vorgabe 3840, Höhe wie Bildschirm gesperrt True), frei 3000 × 2000, Beschriftung aus – nach Neuladen gespeichert ['custom', 3000, 2000, 'free', False, [3000, 2000]]",
   "ok Eigene Größe wie Bildschirm: 3000 × 6105 (Bildschirm 1082 × 2202)",
-  "ok Abfrage vor dem Start: 'Screenshot-Auflösung 2×' '2164 × 4404 px · 9,5 MP · ca. 5 s · ca. 11 MB'",
-  "ok Fortschritt: 'Rendere Kachel 3/15 …' '2164 × 4404 px · 18 % · noch 6 s'",
+  "ok Abfrage vor dem Start: 'Screenshot-Auflösung 2×' '2164 × 4404 px · 9,5 MP · ca. 6 s · ca. 11 MB'",
+  "ok Fortschritt: 'Rendere Kachel 2/15 …' '2164 × 4404 px · 12 % · noch 7 s'",
   "ok Während des Renderns steht die Ansicht (Flug angehalten [True, True, True], Zoom unverändert)",
-  "ok Dateiname mit Auflösung: Fraktal_mandelbrot_1.1e3_2164x4404_1791616140098.png",
+  "ok Dateiname mit Auflösung: Fraktal_mandelbrot_1.3e3_2164x4404_1791619550642.png",
   "ok Flug danach wieder unterwegs [True, False]",
   "ok Abbrechen: lief True, danach frei [False, True, 'Screenshot abgebrochen']",
   "ok Kontextverlust: Abbruch mit „lost“ ['lost', False], danach wieder ein Screenshot [800, 450, 345421]",

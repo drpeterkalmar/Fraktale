@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.9.0';
+const APP_VERSION = '6.9.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -22,7 +22,7 @@ const DIRECT_MAX = 1000;        // bis hier direkte f32-Iteration auf der GPU (P
 const GPU_MAX = 1e30;           // f32-Perturbation (Deltas bis ~1e-35 darstellbar)
 const DEEP_MAX = 1e290;         // CPU-f64-Perturbation
 const NEWTON_GPU_MAX = 3000;
-const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 40, 1e6];
+const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
 const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot'];
 const MODE_HOME = [['-0.5', '0', 1], ['0', '0', 1], ['-0.5', '-0.5', 1], ['-0.3', '0', 1], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1], ['-0.5', '0', 1]];
 
@@ -41,6 +41,7 @@ const S = {
     setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
     outMode: 'pal', edgeW: 16,                                              // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
+    bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false,             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
     chrome: true,
@@ -55,8 +56,9 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');
 // selbst (Saum in der Mengenfarbe) nur bei „Menge glatt“ (deMaskOn)
 function deActive() { return (S.deOn || S.outMode === 'edge') && S.formula !== 5; }
 function deMaskOn() { return S.deOn && S.formula !== 5; }
-// 6.9 Außen: 0 Palette, 1 Grenznah, 2 Schwarz – nur in den 2D-Welten mit Menge (nicht Newton, Mandelbulb, Buddhabrot)
-function outActive() { return S.formula < 5 ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
+// 6.9 Außen: 0 Palette, 1 Grenznah, 2 Schwarz – in den 2D-Welten mit Menge und (7.0) im Mandelbulb (Hintergrund: Verlauf /
+// Leuchten nahe der Oberfläche / schwarz); nicht Newton, Buddhabrot
+function outActive() { return S.formula < 5 || S.formula === 6 ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
 function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
@@ -65,7 +67,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -74,7 +76,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
@@ -267,6 +269,7 @@ function trackVelocity(now, moving) {
 }
 function predictCam(dt, clamp = true) {
     let c = null;
+    if (isBulb()) return S.cam;
     if (FLY.on && !FLY.paused) c = flyStep(S.cam, V3.heading, dt).cam;
     else if (flight) c = flightCamAt(flight, Math.min(1, (flight.u || 0) + dt * 1000 * GOV.g / flight.dur));
     else if (inertia) {
@@ -295,9 +298,10 @@ function predictCam(dt, clamp = true) {
 // ------------------------------------------------------------------ Gesten
 const gestures = self.FKGestures.attach(canvas, {
     rectMode: () => S.rectMode,
-    onStart(ax, ay) { if (!FLY.on) stopAnims(); gestureBase = { cam: S.cam, ax, ay, tilt: V3.tilt, heading: V3.heading }; FLY.userBase = FLY.user || 0; },
+    onStart(ax, ay) { if (!FLY.on) stopAnims(); gestureBase = { cam: S.cam, ax, ay, tilt: V3.tilt, heading: V3.heading }; FLY.userBase = FLY.user || 0; if (isBulb()) BULB.G.start(ax, ay); },
     onTransform(ax0, ay0, ax, ay, scale, rot, n) {
         if (!gestureBase) return;
+        if (isBulb()) { BULB.G.transform(ax0, ay0, ax, ay, scale, rot || 0, n || 1); return; }
         const b = gestureBase;
         if (V3.on) { gesture3d(b, ax0, ay0, ax, ay, scale, rot || 0, n || 1); return; }
         if (FLY.on && gesture2dFly(b, ax0, ay0, ax, ay, scale, n || 1)) return;
@@ -308,16 +312,18 @@ const gestures = self.FKGestures.attach(canvas, {
         gestureBase = null;
         const cap = (v, m) => Math.max(-m, Math.min(m, v));
         vx = cap(vx, 5000); vy = cap(vy, 5000); vs = cap(vs, 7);
+        if (isBulb()) { BULB.G.end(vx, vy, vs); return; }
         if (FLY.on) return;
         if (Math.hypot(vx, vy) > 60 || Math.abs(vs) > 0.3)
             inertia = { vx, vy, vs, ax: last ? last.ax : cssW / 2, ay: last ? last.ay : cssH / 2 };
     },
     // 6.8: HUD im Vollbild/Kino-Modus ausgeblendet -> ein Tipp holt es nur zurück (ui.js, API.tapHook), der Flug läuft weiter
-    onTap(x, y) { if (API.tapHook && API.tapHook(x, y)) return; if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
+    onTap(x, y) { if (API.tapHook && API.tapHook(x, y)) return; if (isBulb() && !FLY.on && BULB.G.tap(x, y)) return; if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
     // 6.8.1: HUD im Vollbild/Kino-Modus ausgeblendet -> Doppeltipp = Flug an/aus (ui.js, API.dblTapHook)
-    onDoubleTap(x, y) { if (API.dblTapHook && API.dblTapHook(x, y)) return; stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 3); else zoomAt(x, y, 3); },
-    onTwoFingerTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 1 / 3); else zoomAt(x, y, 1 / 3); },
+    onDoubleTap(x, y) { if (API.dblTapHook && API.dblTapHook(x, y)) return; stopFly(); if (isBulb()) { BULB.G.doubleTap(x, y); return; } if (V3.on) zoomAt(cssW / 2, cssH / 2, 3); else zoomAt(x, y, 3); },
+    onTwoFingerTap(x, y) { stopFly(); if (isBulb()) { BULB.G.twoFingerTap(x, y); return; } if (V3.on) zoomAt(cssW / 2, cssH / 2, 1 / 3); else zoomAt(x, y, 1 / 3); },
     onOrbit(dx, dy, phase) {
+        if (isBulb()) { BULB.G.orbitMouse(dx, dy, phase); return; }
         if (!V3.on) return;
         if (phase === 'start') { gestureBase = { cam: S.cam, tilt: V3.tilt, heading: V3.heading }; return; }
         if (phase === 'end' || !gestureBase) { gestureBase = null; return; }
@@ -326,6 +332,7 @@ const gestures = self.FKGestures.attach(canvas, {
         RC.dirty = true;
     },
     onLongPress(x, y) {
+        if (isBulb() && !FLY.on) { BULB.G.longPress(x, y); return; }
         if (S.formula !== 0 || V3.on || FLY.on) return;
         const [ox, oy] = screenOffset(x, y, S.cam.zoom);
         const jx = S.cam.cx + HP.fromNumber(ox), jy = S.cam.cy + HP.fromNumber(oy);
@@ -337,6 +344,7 @@ const gestures = self.FKGestures.attach(canvas, {
     onWheel(x, y, f) {
         inertia = null; flight = null;
         stopFly();
+        if (isBulb()) { BULB.G.wheel(x, y, f); return; }
         if (V3.on) { x = cssW / 2; y = cssH / 2; }
         if (!wheelAnim || Math.abs(wheelAnim.x - x) + Math.abs(wheelAnim.y - y) > 4) wheelAnim = { x, y, ls: 0 };
         wheelAnim.ls += Math.log(f);
@@ -376,6 +384,7 @@ function zoomAt(x, y, f) {
 // ------------------------------------------------------------------ Tour (Auto-Zoom zu einem Ort)
 function startTour(p) {
     stopAnims();
+    if (p.formula === 6) { setMode(6, true); if (p.b) BULB.tourTo(p.b, 7); return; }
     setMode(p.formula || 0, true);
     if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
     const home = MODE_HOME[S.formula];
@@ -399,7 +408,8 @@ function setMode(m, keepView) {
         setCam(HP.fromString(h[0]), HP.fromString(h[1]), h[2]);
         S.iterManual = false;
     } else setCam(S.cam.cx, S.cam.cy, S.cam.zoom);
-    if (m !== prev) { markFramesForeign(); buddhaReset(); }
+    if (m !== prev) { markFramesForeign(); buddhaReset(); if (FLY.on && (m === 6 || prev === 6)) stopFly(); }   // 7.0: Mandelbulb hat einen eigenen Flug
+    if (m === 6 && (!keepView || m !== prev)) BULB.home();
     invalidate('mode');
     emit('mode');
 }
@@ -494,7 +504,7 @@ const smooth01 = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 // Exakte Nachrechnung (GPU-f32 -> CPU-f64): js/cpu-pool.js
 
 function isMoving(now) {
-    return gestures.active() || !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused) || now - RC.lastMoveT < 150 || now - lastParamT < 150;
+    return gestures.active() || !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused) || now - RC.lastMoveT < 150 || now - lastParamT < 150 || (isBulb() && BULB.moving());
 }
 function animating() { return !!inertia || !!flight || !!wheelAnim || (FLY.on && !FLY.paused); }
 
@@ -528,10 +538,7 @@ function presentNow() { const a = presentArgs(performance.now()); R.present(a.li
 let lastPresentKey = '';
 function present(now, camChanged) {
     const p = plan();
-    if (p.kind === 'bulb') {
-        if (camChanged || S.anim || RC.dirty) { R.presentBulb(S.cam, look()); RC.dirty = false; }
-        return;
-    }
+    if (p.kind === 'bulb') { BULB.present(now, camChanged || RC.dirty); RC.dirty = false; return; }
     if (p.kind === 'buddha') { buddhaTick(now); return; }
     if (V3.on) {
         // 3D zeichnet bei Bewegung, Übergang, Farbanimation, Einblenden, Flug; sonst ruht es (Akku)
@@ -875,6 +882,7 @@ function frame(now) {
     S.time %= 86400;
     if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
     updateAnims(now, dt);
+    if (isBulb()) BULB.update(now, dt);
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
     if (FLY.on && !canFly()) stopFly();
@@ -928,6 +936,7 @@ R.onRestored = () => {
     gpuPerturbOK = SIMPLE ? false : R.selfTest();
     // alle GPU-Objekte sind weg: 3D-Ziele/Programme, Höhentexturen der Ebenen, Mittelung, Buddhabrot-Bild (P1-3)
     if (T3) T3.reset();
+    BULB.reset();
     for (const l of RC.layers) l.h3d = null;
     V3.accKey = null; V3.accPending = false; V3.Lset = false;
     BUD.hist = null;
@@ -1041,7 +1050,7 @@ function captureShot(opts) {
 }
 function captureBlob(opts) { return captureShot(opts).then(r => r.blob); }
 // 6.5: frisches Bild zeichnen (2D oder 3D) – danach ist der Canvas im selben Task lesbar (Überblendung, Schnappschuss)
-function freshFrame() { if (V3.on) present3d(performance.now(), false, true); else presentNow(); }
+function freshFrame() { if (isBulb()) BULB.redraw(); else if (V3.on) present3d(performance.now(), false, true); else presentNow(); }
 function fileName(W, H) { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.toExponential(1).replace('+', '')}${W ? `_${W}x${H}` : ''}_${Date.now()}.png`; }
 
 // ------------------------------------------------------------------ Start
@@ -1157,6 +1166,10 @@ const CTX = {
     get MODE_KEYS() { return MODE_KEYS; },
     get invalidate() { return invalidate; },
     get isDone() { return isDone; },
+    get BULB() { return BULB; },
+    get stopFly() { return stopFly; },
+    get setFlySpeed() { return setFlySpeed; },
+    get RM() { return RM; },
 };
 const M_UrlState = self.FKUrlState.create(CTX);
 const { readURL, setColParam, outParam, stateURL, syncURL } = M_UrlState;
@@ -1172,6 +1185,8 @@ const M_Scheduler = self.FKScheduler.create(CTX);
 const { governorUpdate, schedule } = M_Scheduler;
 const M_Capture = self.FKCapture.create(CTX);
 const shotStep = (now) => M_Capture.step(now);
+const BULB = self.FKBulb.create(CTX);          // 7.0 Mandelbulb (js/bulb.js)
+const isBulb = () => S.formula === 6;
 // MODULE_LINK
 // Module verknüpfen
 M_Scheduler.link();
@@ -1181,6 +1196,7 @@ M_Refs.link();
 M_CpuPool.link();
 M_UrlState.link();
 M_Capture.link();
+BULB.link();
 
 // fertiges Bild der aktuellen Ansicht (exakt, nichts rechnet, nichts blendet ein) – wie status().done
 function isDone() { const f = RC.front, now = performance.now(); return !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(now); }
@@ -1193,6 +1209,7 @@ const API = {
     shot: { plan: (o) => M_Capture.plan(o), size: (o) => M_Capture.shotSize(o), cancel: () => M_Capture.cancel(), busy: () => M_Capture.busy(), supports: (r) => M_Capture.supports(r), kind: () => M_Capture.kindNow(), devSize: () => M_Capture.devSize() },
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
     RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, dblTapHook: null, clearance,
+    BULB,
     // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel
     // einer gültigen Ebene, 0 = Lücke (kein Bild) – für „Nachladen hinter der Kamera“
     coverAt(pts) {
@@ -1234,6 +1251,7 @@ const API = {
     goHome() { const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
     goTo(p) {
         if ((p.formula || 0) !== S.formula) setMode(p.formula || 0, true);
+        if (p.formula === 6) { if (p.b) BULB.tourTo(p.b, 1.2); return; }
         if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
         S.iterManual = !!p.iter; if (p.iter) S.iterValue = p.iter;
         flyTo(HP.fromString(p.cx), HP.fromString(p.cy), +p.zoom);
@@ -1243,13 +1261,14 @@ const API = {
         const d = HP.digitsForZoom(S.cam.zoom);
         return { cx: HP.toString(S.cam.cx, d), cy: HP.toString(S.cam.cy, d), zoom: S.cam.zoom, formula: S.formula,
                  jx: S.formula === 1 ? HP.toString(S.julia.x, 12) : undefined, jy: S.formula === 1 ? HP.toString(S.julia.y, 12) : undefined,
-                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined, out: outParam() || undefined };
+                 iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined, out: outParam() || undefined,
+                 b: isBulb() ? BULB.stateString() : undefined };
     },
     isMoving: () => isMoving(performance.now()),
     // Test (6.5.2): Grafik-Wächter – '' | 'wait' | 'lost' | 'stuck', erstes Bild gezeichnet?
     gpuGuard: () => ({ kind: GW.kind, firstPic: GW.firstPic, simple: !!SIMPLE, lost: !!R.lost }),
     // Test/Messung: aktuelles Bild frisch auf den Canvas (2D: Display-Pass; 3D: gemitteltes Bild bzw. neu zeichnen)
-    snapshot() { if (V3.on) present3d(performance.now(), false, true); else presentNow(); },
+    snapshot() { if (isBulb()) BULB.redraw(); else if (V3.on) present3d(performance.now(), false, true); else presentNow(); },
     // Test: 3D-Mittelung sofort abschließen (alle Bilder in einem Rutsch)
     // o = { N, scale }: Messreferenz (z. B. 48 Bilder in doppelter Auflösung) statt der Standard-Mittelung
     settle3d(o) {

@@ -51,12 +51,27 @@ root.FKFlight = { create(ctx) {
     const REV_MS = 600;           // Richtungswechsel: Dauer der S-Kurve
     const TRAIL_STEP = 0.01;      // Kursverlauf: ein Eintrag je 1/100 Zehnerpotenz
     const REV_VMAX = 2;           // Rückflug: höchstens so schnell seitlich zum Verlauf (Bildhälften/s)
-    function canFly2d(f) { return FLY2D && !!T3 && ![6, 7].includes(f === undefined ? S.formula : f); }
+    function canFly2d(f) {
+        const m = f === undefined ? S.formula : f;
+        if (m === 6) return !!ctx.BULB && ctx.BULB.canFly();       // 7.0: Flug durch den Mandelbulb (js/bulb.js)
+        return FLY2D && !!T3 && m !== 7;
+    }
     function canFly(f) { return can3d(f) || canFly2d(f); }
     const in3d = () => V3.on && V3.dir >= 0;
     // opts.d3: in 3D fliegen (Standard: im aktuellen Modus; mit ?fly2d=0 immer 3D wie bis 6.5)
     function startFly(place, opts) {
         const fm = place && place.formula !== undefined ? place.formula : S.formula;
+        if (fm === 6) {
+            // 7.0 Mandelbulb: eigener Flug (js/bulb.js); Tempo, Pause, Rückwärts und die Leiste wie im 2D-Flug
+            stopAnims();
+            if (S.formula !== 6) setMode(6, true);
+            if (!ctx.BULB.startFly(place)) return;
+            if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && S.cam.zoom < 1.5)) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.5);
+            FLY.sp = S.flySpeed; FLY.ramp = null; FLY.rev = FLY.sp < 0; FLY.out = false; FLY.lastDir = Math.sign(FLY.sp) || 1;
+            FLY.on = true; FLY.paused = false; FLY.d3 = false; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0;
+            emit('fly');
+            return;
+        }
         const d3 = !FLY2D || (opts && opts.d3 !== undefined ? !!opts.d3 : in3d());
         if (d3 ? !can3d(fm) : !canFly2d(fm)) return;
         // 6.3: Shader noch nicht fertig -> erst vorbereiten (2D bleibt bedienbar), dann diesen Flug starten
@@ -95,6 +110,7 @@ root.FKFlight = { create(ctx) {
     function north3d() { V3.northT = performance.now(); V3.northFrom = [V3.heading, V3.tilt]; stopFly(); }
     function stopFly() {
         if (!FLY.on) return;
+        if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { ctx.BULB.flyStopped(); FLY.mode = 'random'; }
         FLY.on = false; FLY.paused = false; FLY.ramp = null; ctx.camDirty = true;
         FLY.trailEnd = { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom };
         // 6.8 Umdrehen: der Blick wird zum Kurs (nach dem Flug zeigt die Ansicht weiter dorthin, wohin sie schaute)
@@ -261,6 +277,7 @@ root.FKFlight = { create(ctx) {
         if (!rev) FLY.out = false;
     }
     function flyUpdate(now, dt) {
+        if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { flySpeedStep(now, dt); ctx.BULB.flyUpdate(now, dt); return; }
         flyMode();
         flySpeedStep(now, dt);
         const rev = FLY.sp < 0;

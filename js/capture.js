@@ -111,10 +111,13 @@ root.FKCapture = { create(ctx) {
         } else if (P.kind === '3d') {
             const tmp = (P.tw + 2 * P.m) * (P.th + 2 * P.m) / 1e6;
             ms = P.n * (P.N + 2) * Math.max(frame, (r.k || 1) * (20 + 40 * tmp));      // je Mittelungsbild ~40 ms/MP (M1, gemessen)
+        } else if (P.kind === 'bulb') {
+            // 7.0: je Kachel ~12 gemittelte Durchgänge in voller Qualität (M1: ~60 ms je Megapixel und Durchgang), Streifen je App-Bild
+            ms = mp * (r.k || 1) * 12 * 60 + P.n * 12 * frame;
         } else ms = mp * (r.k || 1) * 40 + P.n * 3 * frame;
         ms += mp * (P.stream ? 45 : 25);                    // Kodieren (gemessen M1: Canvas ~25, PNG-Worker ~45 ms/MP)
         const f = Math.max(1, P.H / canvas.height);
-        const bpp = (r.bpp || { '2d': 1.6, '3d': 2.2, bulb: 1.0, buddha: 1.2 }[P.kind]) * Math.pow(f, -0.3);
+        const bpp = (r.bpp || { '2d': 1.6, '3d': 2.2, bulb: 1.8, buddha: 1.2 }[P.kind]) * Math.pow(f, -0.3);
         return { ms: Math.round(ms), bytes: Math.round(mp * 1e6 * bpp), mp: +mp.toFixed(1) };
     }
     function learn(P, ms, bytes) {
@@ -253,6 +256,7 @@ root.FKCapture = { create(ctx) {
             C.tiles.push({ r, c, x0, y0, w, h, gx: x0, gy: P.H - y0 - h });       // gx, gy: linke untere Ecke in GL-Pixeln des Bilds
         }
         if (P.kind === '3d') { C.phase = 'settle'; RC.capHold = true; return false; }     // RC.capHold: Planer darf noch fertig rechnen
+        if (P.kind === 'bulb') { C.look = look(); if (P.time !== undefined) C.look.time = P.time; P.bulbK = ctx.BULB.capK(); }
         if (P.kind === '2d' && P.mode === 'perturb') { C.phase = 'ref'; return true; }
         C.phase = 'tiles';
         return true;
@@ -337,12 +341,19 @@ root.FKCapture = { create(ctx) {
         const T = C.ts;
         if (P.kind === '2d') return tile2d(C, tile, T, now);
         if (P.kind === '3d') return tile3d(C, tile, T);
-        if (P.kind === 'bulb') return tileFlat(C, tile);
+        if (P.kind === 'bulb') return tileBulb(C, tile, T);
         return false;
     }
-    function tileFlat(C, tile) {
-        const P = C.P, ct = colorTarget(C, tile.w, tile.h);
-        R.presentBulb(P.cam, look(), { w: tile.w, h: tile.h, fbo: ct.fbo }, [tile.gx, tile.gy, P.W, P.H]);
+    // 7.0 Mandelbulb: Mittelung je Kachel wie im Ruhebild (js/bulb.js capTile), dann POST ins Farbziel und auslesen.
+    // Rückfall-Darstellung (ohne Float-Ziel/defekter Shader): einfaches Bild wie bis 6.9
+    function tileBulb(C, tile, T) {
+        const P = C.P, ct = colorTarget(C, tile.w, tile.h), BU = ctx.BULB;
+        if (BU.ready() !== true) {
+            R.presentBulb(P.cam, C.look, { w: tile.w, h: tile.h, fbo: ct.fbo }, [tile.gx, tile.gy, P.W, P.H]);
+            readTile(C, ct.fbo, tile.w, tile.h, 0, 0, tile);
+            return false;
+        }
+        if (!BU.capTile(C, T, tile, ct)) return false;
         readTile(C, ct.fbo, tile.w, tile.h, 0, 0, tile);
         return false;
     }

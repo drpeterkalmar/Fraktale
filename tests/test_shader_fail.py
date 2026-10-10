@@ -11,7 +11,8 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
   (e) 6.7 nur das Gelände MIT Horizont-AO defekt -> Rückfall auf das Gelände wie 6.6 (Programm t3terr_66), 3D läuft,
       kein Toast
   (f) 6.7 TAA- und Bloom-Programm defekt (?taa=1) -> beide aus, 3D läuft ohne Toast
-Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f]
+  (g) 7.0 Mandelbulb-Marsch-Shader defekt -> Toast, einfacher Mandelbulb wie bis 6.9 (Bild nicht leer), Drehen geht, Screenshot geht
+Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g]
 """
 import sys, os, time, json
 sys.path.insert(0, os.path.dirname(__file__))
@@ -183,8 +184,34 @@ def case_f(p):
     a.close()
 
 
+def case_g(p):
+    print('(g) 7.0 Mandelbulb-Shader defekt -> einfacher Mandelbulb')
+    a = open_app(p, [['u_tayR', 'u_dr1']])
+    pg = a.page
+    a.wait_done(60)
+    pg.evaluate("() => window.__fraktal.setMode(6)")
+    tx = wait_toast(pg)
+    check('Grafikfehler' in tx, 'Toast: %r' % tx)
+    time.sleep(0.8)
+    info = pg.evaluate("() => window.__fraktal.BULB.info()")
+    check(info['ok'] is False and info['why'] == 'shader', 'Rückfall aktiv (%s/%s)' % (info['ok'], info['why']))
+    # Bild nicht leer: Helligkeitsspanne in der Bildmitte
+    spread = pg.evaluate("""() => { const A = window.__fraktal; A.snapshot(); const g = A.R.gl, c = A.R.canvas, w = 64, h = 64;
+        const px = new Uint8Array(w * h * 4); g.readPixels((c.width >> 1) - 32, (c.height >> 1) - 32, w, h, g.RGBA, g.UNSIGNED_BYTE, px);
+        let mn = 255, mx = 0; for (let i = 0; i < px.length; i += 4) { const l = px[i] + px[i + 1] + px[i + 2]; mn = Math.min(mn, l); mx = Math.max(mx, l); } return mx - mn; }""")
+    check(spread > 30, 'Bild nicht leer (Spanne %d)' % spread)
+    z0 = pg.evaluate("() => [window.__fraktal.BULB.B.yaw, window.__fraktal.S.cam.zoom]")
+    pg.mouse.move(200, 400); pg.mouse.down(); pg.mouse.move(260, 420, steps=5); pg.mouse.up()
+    z1 = pg.evaluate("() => [window.__fraktal.BULB.B.yaw, window.__fraktal.S.cam.zoom]")
+    check(abs(z1[0] - z0[0]) > 1e-3, 'Drehen geht (%.3f -> %.3f)' % (z0[0], z1[0]))
+    r = pg.evaluate("() => window.__fraktal.captureShot({ W: 320, H: 180, label: false }).then(r => [r.W, r.H, r.blob.size])")
+    check(r and r[0] == 320 and r[2] > 1000, 'Screenshot (%s)' % r)
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g)]:
         if ONLY and k not in ONLY:
             continue
         try:
