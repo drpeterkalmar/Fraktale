@@ -112,6 +112,7 @@ const CAM = `
 uniform vec3 u_cam, u_fwd, u_rt, u_up;
 uniform vec2 u_tan;       // tan(FOV/2)·Seitenverhältnis, tan(FOV/2)
 uniform vec2 u_target;
+uniform vec4 u_vt;        // 6.8.1 Kachel-Screenshot: NDC der Kachel = NDC des ganzen Bilds · xy + zw (sonst 1, 1, 0, 0)
 `;
 
 // 6.7 Endpass in post() (Himmel und Gelände, vor dem Schreiben ins 8-bit-Ziel – also auch vor der Mittelung im
@@ -150,7 +151,7 @@ vec3 grade(vec3 c) {
 vec3 post(vec3 col) {
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.2);
-    vec2 vv = gl_FragCoord.xy / u_target - 0.5;
+    vec2 vv = (gl_FragCoord.xy / u_target - 0.5 - 0.5 * u_vt.zw) / u_vt.xy;    // (Vignette des ganzen Bilds, auch in einer Kachel)
     col *= 1.0 - dot(vv, vv) * 0.25;
     col = pow(max(col, vec3(0.0)), vec3(0.92));
     if (u_tone == 0) return col;
@@ -284,7 +285,7 @@ void main() {
     vec3 Q = vec3(P, hz.x);
     vec3 v = Q - u_cam;
     float zc = dot(v, u_fwd);
-    gl_Position = vec4(dot(v, u_rt) / u_tan.x + u_jit.x * zc, dot(v, u_up) / u_tan.y + u_jit.y * zc, u_depth.x * zc + u_depth.y, zc);
+    gl_Position = vec4(dot(v, u_rt) / u_tan.x * u_vt.x + (u_vt.z + u_jit.x) * zc, dot(v, u_up) / u_tan.y * u_vt.y + (u_vt.w + u_jit.y) * zc, u_depth.x * zc + u_depth.y, zc);
     v_P = P; v_z = hz.x; v_V = v;
 }`;
 
@@ -683,7 +684,7 @@ ${POST}
 out vec4 fragColor;
 uniform vec2 u_jit;
 void main() {
-    vec2 ndc = gl_FragCoord.xy / u_target * 2.0 - 1.0 - u_jit;
+    vec2 ndc = ((gl_FragCoord.xy / u_target * 2.0 - 1.0 - u_jit) - u_vt.zw) / u_vt.xy;
     vec3 d = normalize(u_fwd + ndc.x * u_tan.x * u_rt + ndc.y * u_tan.y * u_up);
     fragColor = vec4(post(skyDeko(d, 4)), 1.0);
 }`;
@@ -1070,12 +1071,19 @@ function create(R, flags) {
         gl.uniform3fv(U.u_cam, c.cam); gl.uniform3fv(U.u_fwd, c.fwd); gl.uniform3fv(U.u_rt, c.rt); gl.uniform3fv(U.u_up, c.up);
         gl.uniform2fv(U.u_tan, c.tan);
         gl.uniform2f(U.u_target, tw, th);
+        gl.uniform4fv(U.u_vt, VT);
     }
+    // 6.8.1 Kachel-Screenshot: Abbildung NDC ganzes Bild -> NDC Kachel (nur während T.capFrame gesetzt)
+    const VT0 = new Float32Array([1, 1, 0, 0]);
+    let VT = VT0;
 
     // ---------------- Gitter (Bildraum)
+    let grid2 = null;                      // 6.8.1: zweiter Eintrag (Screenshot mit anderem Seitenverhältnis)
     function makeGrid(cols, rows) {
         if (grid && grid.cols === cols && grid.rows === rows) return grid;
-        if (grid) { gl.deleteBuffer(grid.vb); gl.deleteBuffer(grid.ib); gl.deleteVertexArray(grid.vao); }
+        if (grid2 && grid2.cols === cols && grid2.rows === rows) { const g = grid; grid = grid2; grid2 = g; return grid; }
+        if (grid2) { gl.deleteBuffer(grid2.vb); gl.deleteBuffer(grid2.ib); gl.deleteVertexArray(grid2.vao); }
+        grid2 = grid;
         const uv = new Float32Array((cols + 1) * (rows + 1) * 2);
         let k = 0;
         for (let j = 0; j <= rows; j++) for (let i = 0; i <= cols; i++) { uv[k++] = i / cols; uv[k++] = j / rows; }
@@ -1539,27 +1547,27 @@ function create(R, flags) {
     }
     let motionOut = null;                  // 6.7: letztes Bewegungsbild (mit TAA die History, sonst fbo)
 
-    T.render = function (list, v, look, alpha, o) {
-        o = o || {};
-        const W = R.canvas.width, H = R.canvas.height;
-        const still = o.still || null;
-        const ss = still ? (still.scale || 1) : T.scale;
-        const sw = Math.max(16, Math.round(W * ss)), shh = Math.max(16, Math.round(H * ss));
+    // gleitender Mittelwert im Akkumulationsziel ac (Blending mit konstantem Gewicht): Bild n von N aus tg
+    function accumulate(tg, ac, n, N) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, ac.fb);
+        gl.viewport(0, 0, ac.w, ac.h);
+        const w = n === 0 ? 1 : 1 / Math.min(n + 1, Math.max(1, N));
+        gl.enable(gl.BLEND); gl.blendColor(0, 0, 0, w); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
+        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src2, 1);
+        gl.uniform1i(U.u_bloom, 1);        // 6.7: Sampler auf eine Einheit ohne das Ziel legen (sonst Rückkopplung)
+        gl.uniform2f(U.u_target, ac.w, ac.h); gl.uniform1f(U.u_alpha, 1); gl.uniform1f(U.u_mix2, 0);
+        gl.uniform1f(U.u_sharp, 0); gl.uniform1f(U.u_bloomK, 0);    // 6.7: Mitteln ohne Schärfen/Bloom
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.BLEND);
+    }
+    const DP = [(80 + 0.02) / (80 - 0.02), -2 * 80 * 0.02 / (80 - 0.02)];   // Tiefen-Parameter (nah 0,02, fern 80) wie in drawScene
+    // Himmel + Gelände ins Ziel tg (sw × shh) – Bewegungsbild, Mittelung im Stillstand und (6.8.1) Screenshot-Kacheln
+    // gs = Gitter { cols, rows }; timed = Gelände-Pass mit Timer-Query (6.7 Gitter-Messung)
+    function drawScene(list, v, look, c, prT, tg, sw, shh, jit, gs, timed) {
         const st = T.stage;
-        renderN++;
-        gqPoll(v);
-        list = list.slice(0, N3);
-        for (const l of list) if (!l.h3d || (T.h8 && (!l.h3d.L || Math.abs(l.h3d.L[0] - v.L[0]) + Math.abs(l.h3d.L[1] - v.L[1]) > 0.05 * (v.L[1] - v.L[0])))) buildHeight(l, look, v.L);
-        layerUniforms(list, v.focus, v.u);
-        const c = T.camera(v, W, H);
-        T.lastCam = c;
-        if ((F.detail || look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) && R.programReady('t3noise', NOISE_FS)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
-        const prT = terrainProgram(look);      // 6.3: vor dem Binden des Ziels (wärmt ggf. eine neue Variante an)
-        const tg = still ? targetS(sw, shh) : target(sw, shh);
-        const taa = !still && F.taa;
-        let jit = [0, 0];
-        if (still && still.N > 1) { const k = still.n % 64 + 1; jit = [(halton(k, 2) - 0.5) * 2 / sw, (halton(k, 3) - 0.5) * 2 / shh]; }
-        else if (taa) jit = TX.taaJitter(TA.n++, sw, shh);     // 6.7: auch im Bewegungsbild Subpixel-Versatz (TAA mittelt)
         gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fb);
         gl.viewport(0, 0, sw, shh);
         const sunAz = T.sunAz, sunEl = T.sunEl;   // Sonne fest im Fraktal (von links oben wie das 2D-Relief); 6.7: als Hook
@@ -1587,7 +1595,7 @@ function create(R, flags) {
         camUniforms(U, c, sw, shh);
         gl.uniform2fv(U.u_jit, jit);
         // 6.7: Teiler T.gridDiv (gemessen bzw. 6.6-Regel: Handy 8, sonst 6) – Formel wie FK3DTech.gridSize
-        const gs = TX.gridSize(W, H, T.gridDiv), cols = gs.cols, rows = gs.rows;
+        const cols = gs.cols, rows = gs.rows;
         const g = makeGrid(cols, rows);
         gl.uniform2f(U.u_yr, -2.1, c.yTop);   // weit unter den Bildrand: hohe Berge vorn heben die unterste Reihe an
         const n = 0.02, far = 80;
@@ -1623,32 +1631,42 @@ function create(R, flags) {
         if (U.u_noiseG) { gl.activeTexture(gl.TEXTURE0 + 2 * N3 + 1); gl.bindTexture(gl.TEXTURE_2D, noiseG || dummyF()); gl.uniform1i(U.u_noiseG, 2 * N3 + 1); }   // 6.7
         gl.bindVertexArray(g.vao);
         let gq = null;
-        if (gqWant(v, still)) { gq = gl.createQuery(); gl.beginQuery(GQ.ext.TIME_ELAPSED_EXT, gq); }   // 6.7 nur der Gelände-Pass
+        if (timed) { gq = gl.createQuery(); gl.beginQuery(GQ.ext.TIME_ELAPSED_EXT, gq); }   // 6.7 nur der Gelände-Pass
         gl.drawElements(gl.TRIANGLES, g.n, gl.UNSIGNED_SHORT, 0);
         if (gq) { gl.endQuery(GQ.ext.TIME_ELAPSED_EXT); GQ.q.push(gq); }
         gl.bindVertexArray(R.vao);
         gl.disable(gl.DEPTH_TEST);
+    }
+    T.render = function (list, v, look, alpha, o) {
+        o = o || {};
+        const W = R.canvas.width, H = R.canvas.height;
+        const still = o.still || null;
+        const ss = still ? (still.scale || 1) : T.scale;
+        const sw = Math.max(16, Math.round(W * ss)), shh = Math.max(16, Math.round(H * ss));
+        const st = T.stage;
+        renderN++;
+        gqPoll(v);
+        list = list.slice(0, N3);
+        for (const l of list) if (!l.h3d || (T.h8 && (!l.h3d.L || Math.abs(l.h3d.L[0] - v.L[0]) + Math.abs(l.h3d.L[1] - v.L[1]) > 0.05 * (v.L[1] - v.L[0])))) buildHeight(l, look, v.L);
+        layerUniforms(list, v.focus, v.u);
+        const c = T.camera(v, W, H);
+        T.lastCam = c;
+        if ((F.detail || look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) && R.programReady('t3noise', NOISE_FS)) getNoise();   // vor dem Binden des Ziels (eigener Pass)
+        const prT = terrainProgram(look);      // 6.3: vor dem Binden des Ziels (wärmt ggf. eine neue Variante an)
+        const tg = still ? targetS(sw, shh) : target(sw, shh);
+        const taa = !still && F.taa;
+        let jit = [0, 0];
+        if (still && still.N > 1) { const k = still.n % 64 + 1; jit = [(halton(k, 2) - 0.5) * 2 / sw, (halton(k, 3) - 0.5) * 2 / shh]; }
+        else if (taa) jit = TX.taaJitter(TA.n++, sw, shh);     // 6.7: auch im Bewegungsbild Subpixel-Versatz (TAA mittelt)
+        drawScene(list, v, look, c, prT, tg, sw, shh, jit, TX.gridSize(W, H, T.gridDiv), gqWant(v, still));
         let src = tg, src2 = null, mix2 = 0;
         if (still) {
-            // gleitender Mittelwert im Akkumulationsziel (Blending mit konstantem Gewicht)
             const ac = accTarget(sw, shh);
-            gl.bindFramebuffer(gl.FRAMEBUFFER, ac.fb);
-            gl.viewport(0, 0, sw, shh);
-            const w = still.n === 0 ? 1 : 1 / Math.min(still.n + 1, Math.max(1, still.N));
-            gl.enable(gl.BLEND); gl.blendColor(0, 0, 0, w); gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
-            pr = R.program('t3blit', BLIT_FS); U = pr.loc;
-            gl.useProgram(pr.p);
-            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src, 0);
-            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tg.tex); gl.uniform1i(U.u_src2, 1);
-            gl.uniform1i(U.u_bloom, 1);        // 6.7: Sampler auf eine Einheit ohne das Ziel legen (sonst Rückkopplung)
-            gl.uniform2f(U.u_target, sw, shh); gl.uniform1f(U.u_alpha, 1); gl.uniform1f(U.u_mix2, 0);
-            gl.uniform1f(U.u_sharp, 0); gl.uniform1f(U.u_bloomK, 0);    // 6.7: Mitteln ohne Schärfen/Bloom
-            gl.drawArrays(gl.TRIANGLES, 0, 3);
-            gl.disable(gl.BLEND);
+            accumulate(tg, ac, still.n, still.N);
             src = ac;
             if (still.mix2 > 0 && (motionOut || fbo)) { src2 = motionOut || fbo; mix2 = still.mix2; }
         } else {
-            if (taa) src = taaResolve(tg, c, jit, v, sw, shh, dp);
+            if (taa) src = taaResolve(tg, c, jit, v, tg.w, tg.h, DP);
             motionOut = src;
         }
         // 6.7 Bloom (Stufe Akku und ?bloom=0: aus) aus dem fertigen Bild dieses Durchgangs
@@ -1687,9 +1705,91 @@ function create(R, flags) {
         gl.disable(gl.BLEND);
     };
     T.hasAcc = () => !!acc;
+
+    // ---------------- 6.8.1 Screenshot in Kacheln: je Kachel dieselbe Kamera wie für das ganze Bild (Seitenverhältnis des
+    // Bilds), nur die Projektion wird verschoben/gestreckt (VT) – Geometrie, Gitter, Licht und Rauschen sind in jeder Kachel
+    // dieselben. Ablauf: capBegin(k) -> capFrame(…, n) für n = 0 … N−1 (je App-Bild eines, gemittelt wie im Stillstand) ->
+    // capFinish() (Bloom und Schärfen wie auf dem Bildschirm) -> Ergebnis-Ziel lesen -> capEnd().
+    // k = { W, H: ganzes Bild · x, y: linke untere Ecke der Kachel samt Rand (GL, Pixel des ganzen Bilds) · w, h: Größe samt
+    // Rand · N: Mittelungsbilder · grid: { cols, rows } · bloomDiv: Verkleinerung für Bloom (2 × Maßstab, ganzzahlig) }.
+    // Der Rand (vom Aufrufer) deckt Bloom und Schärfen ab, die Kacheln setzen sich ohne Naht zusammen.
+    let cap = null, capBL = null;
+    T.capBegin = function (k) {
+        if (!cap || cap.w !== k.w || cap.h !== k.h) {
+            T.capEnd();
+            cap = { w: k.w, h: k.h, s: makeTarget(k.w, k.h, true), acc: makeTarget(k.w, k.h, false), out: makeTarget(k.w, k.h, false) };
+        }
+        cap.k = k;
+        return cap;
+    };
+    T.capFrame = function (list, v, look, n) {
+        const k = cap.k;
+        list = list.slice(0, N3);
+        for (const l of list) if (!l.h3d || (T.h8 && (!l.h3d.L || Math.abs(l.h3d.L[0] - v.L[0]) + Math.abs(l.h3d.L[1] - v.L[1]) > 0.05 * (v.L[1] - v.L[0])))) buildHeight(l, look, v.L);
+        layerUniforms(list, v.focus, v.u);
+        const c = T.camera(v, k.W, k.H);
+        if ((F.detail || look.alpine || (look.setCol && SH_LUM(look.setCol) > 0.34)) && R.programReady('t3noise', NOISE_FS)) getNoise();
+        const prT = terrainProgram(look);
+        let jit = [0, 0];
+        if (k.N > 1) { const q = n % 64 + 1; jit = [(halton(q, 2) - 0.5) * 2 / k.w, (halton(q, 3) - 0.5) * 2 / k.h]; }
+        VT = new Float32Array([k.W / k.w, k.H / k.h, -(2 * k.x + k.w - k.W) / k.w, -(2 * k.y + k.h - k.H) / k.h]);
+        try { drawScene(list, v, look, c, prT, cap.s, k.w, k.h, jit, k.grid, false); } finally { VT = VT0; }
+        accumulate(cap.s, cap.acc, n, k.N);
+    };
+    // Bloom des Screenshots in eigenen Zielen (die des Bildschirms bleiben unberührt), Verkleinerung div statt 2: gleicher
+    // Radius relativ zum Bild wie auf dem Bildschirm; Vorfilter-Abgriffe im Abstand div/2 Quellpixel
+    function capBloom(src, div) {
+        const bw = Math.max(8, Math.ceil(src.w / div)), bh = Math.max(8, Math.ceil(src.h / div));
+        if (!capBL || capBL.a.w !== bw || capBL.a.h !== bh) { if (capBL) { delTarget(capBL.a); delTarget(capBL.b); } capBL = { a: makeTarget(bw, bh, false), b: makeTarget(bw, bh, false) }; }
+        const pr = R.program('t3bloom', BLOOM_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.uniform2f(U.u_target, bw, bh); gl.uniform1f(U.u_thr, TX.BLOOM.thr);
+        gl.activeTexture(gl.TEXTURE0); gl.uniform1i(U.u_src, 0);
+        const pass = (from, to, dx, dy, tx, ty) => {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, to.fb); gl.viewport(0, 0, bw, bh);
+            gl.bindTexture(gl.TEXTURE_2D, from.tex);
+            gl.uniform2f(U.u_texel, tx, ty); gl.uniform2f(U.u_dir, dx, dy);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        };
+        pass(src, capBL.a, 0, 0, div / 2 / src.w, div / 2 / src.h);
+        pass(capBL.a, capBL.b, TX.BLOOM.spread / bw, 0, 1 / bw, 1 / bh);
+        pass(capBL.b, capBL.a, 0, TX.BLOOM.spread / bh, 1 / bw, 1 / bh);
+    }
+    T.capFinish = function () {
+        const k = cap.k, st = T.stage;
+        let bk = 0;
+        if (F.bloom && st.bloom) { capBloom(cap.acc, k.bloomDiv || 2); bk = TX.BLOOM.k; }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, cap.out.fb);
+        gl.viewport(0, 0, k.w, k.h);
+        const pr = R.program('t3blit', BLIT_FS), U = pr.loc;
+        gl.useProgram(pr.p);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cap.acc.tex); gl.uniform1i(U.u_src, 0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, cap.acc.tex); gl.uniform1i(U.u_src2, 1);
+        gl.uniform2f(U.u_target, k.w, k.h); gl.uniform1f(U.u_alpha, 1); gl.uniform1f(U.u_mix2, 0);
+        const sh = TX.sharpForScale(1, F.scharf);          // wie das gemittelte Bild auf dem Bildschirm (volle Auflösung)
+        gl.uniform1f(U.u_sharp, sh); gl.uniform2f(U.u_texel, 1 / k.w, 1 / k.h);
+        gl.uniform1f(U.u_sharp2, sh); gl.uniform2f(U.u_texel2, 1 / k.w, 1 / k.h);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, bk ? capBL.a.tex : dummyF()); gl.uniform1i(U.u_bloom, 2);
+        gl.uniform1f(U.u_bloomK, bk);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return { fbo: cap.out.fb, w: k.w, h: k.h };
+    };
+    T.capEnd = function () {
+        if (cap) { delTarget(cap.s); delTarget(cap.acc); delTarget(cap.out); cap = null; }
+        if (capBL) { delTarget(capBL.a); delTarget(capBL.b); capBL = null; }
+    };
+    // Gitter für ein Bild W × H: wie auf dem Bildschirm (gleiche Punktzahl), bei anderem Seitenverhältnis umverteilt
+    T.capGrid = function (W, H) {
+        const cw = R.canvas.width, ch = R.canvas.height;
+        if (Math.abs(W / H - cw / ch) < 0.01 * cw / ch) return TX.gridSize(cw, ch, T.gridDiv);
+        const gh = Math.sqrt(cw * ch * H / W), gw = gh * W / H;
+        return TX.gridSize(gw, gh, T.gridDiv);
+    };
     // nach einem Kontextverlust: alle GL-Handles gehören dem alten Kontext -> vergessen, beim nächsten Bild neu anlegen (P1-3)
     T.reset = function () {
-        fbo = fboS = acc = grid = noiseTex = noiseG = warmT = probeBuf = _df = null;
+        fbo = fboS = acc = grid = grid2 = noiseTex = noiseG = warmT = probeBuf = _df = null;
+        cap = null; capBL = null;                                    // 6.8.1 Screenshot-Ziele des alten Kontexts
         lastTerr = null; warmDone = {}; probeBusy = false;
         TA.h = [null, null]; TA.prev = null; BL.a = BL.b = null; BL.on = false; motionOut = null;   // 6.7
         GQ.q = [];                                                   // Abfragen des alten Kontexts verwerfen

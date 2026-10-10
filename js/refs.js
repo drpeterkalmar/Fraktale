@@ -91,6 +91,13 @@ root.FKRefs = { create(ctx) {
         REF.lastReqT = performance.now();
         orbitWorker.postMessage(q);
     }
+    // 6.8.1 Screenshot: BLA-Tabelle für einen größeren Umkreis cmax (Welt) neu bauen lassen (O(N) im Worker)
+    function requestBLA(cmax) {
+        const r = REF.cur;
+        if (!r || REF.blaPending) return;
+        REF.blaPending = true;
+        orbitWorker.postMessage({ type: 'bla', refId: r.id, cmax, want64: !!r.orbit64 });
+    }
     function refDist(r) { return Math.hypot(HP.toNumber(S.cam.cx - r.refXb), HP.toNumber(S.cam.cy - r.refYb)); }
     // taugt die aktuelle Referenz für diese Ansicht? strict: frisch genug für das finale Bild
     function refUsable(strict, want64) {
@@ -135,6 +142,6 @@ root.FKRefs = { create(ctx) {
     }
 
     return { link() { ({ FLY, HP, R, RC, S, V, autoIter, cancelFix, cancelJob, cancelPrefetch, cpuBroadcast, cpuSendRef, currentMaxIter, flightCamAt, innActive, recompute, worldPerCss } = ctx); },
-             REF, ensureRef, refUsable, requestRefFor };
+             REF, ensureRef, refUsable, requestRefFor, requestBLA };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

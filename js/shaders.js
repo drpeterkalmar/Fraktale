@@ -103,6 +103,7 @@ function computeFS(formula, mode, err, de, inn) {
 ${IN ? '#define IN 1' : ''}
 ${COMMON}
 uniform vec2 u_res;        // Puffergröße
+uniform vec2 u_pxoff;      // 6.8.1 Kachel-Screenshot: Lage der Puffermitte zur Bildmitte (Pixel, ganz/halb – exakt in f32)
 uniform float u_scale;     // Weltbreite pro Pufferpixel
 uniform int u_maxIter;
 layout(location = 0) out uint o_it;
@@ -169,7 +170,7 @@ float newton(vec2 z) {
     return -1.0;
 }
 void main() {
-    vec2 p = gl_FragCoord.xy - 0.5 * u_res;
+    vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;   // (u_pxoff = 0: wie bisher; Kachel: dieselben p wie im ganzen Bild)
     vec2 pos = u_center + p * u_scale;
     float result = -1.0;
     o_de = vec4(0.0);
@@ -321,7 +322,7 @@ float diffabs(float c, float d) {
 int ctz(int k) { return int(log2(float(k & -k)) + 0.5); }
 
 void main() {
-    vec2 p = gl_FragCoord.xy - 0.5 * u_res;
+    vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;   // (u_pxoff = 0: wie bisher; Kachel: dieselben p wie im ganzen Bild)
     vec2 dc = u_offset + p * u_scale;
     int base = u_baseA, len = u_lenA, o = 0;
     vec2 Zc = orb(base);
@@ -638,6 +639,7 @@ uniform int u_n;                // Zahl der Ebenen
 uniform float u_feather;        // Federbreite der Ebenenränder (Zielpixel)
 uniform int u_recon;            // 1 = Vorschau auf dem Iterationswert rekonstruieren
 uniform vec2 u_target;          // Zielgröße in Pixeln
+uniform vec4 u_vp;              // 6.8.1: Lage des Ziels im ganzen Bild (Versatz xy, Bildgröße zw) – Vignette/Funkeln einer Kachel wie im ganzen Bild
 uniform int u_formula, u_maxIter;
 uniform vec3 u_palA, u_palB, u_palC, u_palD;
 uniform int u_palCustom;
@@ -776,7 +778,7 @@ vec3 voidColor() {
     // Funkeln nur auf dunkler Menge (auf hellen Farben wirkt es schmutzig): blendet zwischen Helligkeit 0,15 und 0,45 aus
     float sk = 1.0 - smoothstep(0.15, 0.45, dot(bg, vec3(0.299, 0.587, 0.114)));
     if (u_particles == 0 || sk <= 0.0) return bg;
-    vec2 uv = gl_FragCoord.xy / min(u_target.x, u_target.y);
+    vec2 uv = (gl_FragCoord.xy + u_vp.xy) / min(u_vp.z, u_vp.w);
     float sparkle = 0.0;
     for (int layer = 0; layer < 3; layer++) {
         float speed = 0.15 + float(layer) * 0.08;
@@ -806,7 +808,7 @@ ${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float
     // Sättigung, Vignette, Gamma wie v4
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.2);
-    vec2 vv = gl_FragCoord.xy / u_target - 0.5;
+    vec2 vv = (gl_FragCoord.xy + u_vp.xy) / u_vp.zw - 0.5;
     col *= 1.0 - dot(vv, vv) * 0.25;
     col = pow(max(col, vec3(0.0)), vec3(0.92));
     fragColor = vec4(col, 1.0);
@@ -816,6 +818,7 @@ ${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float
 const BULB_FS = `#version 300 es
 ${COMMON}
 uniform vec2 u_target;
+uniform vec4 u_vp;         // 6.8.1: Lage des Ziels im ganzen Bild (Kachel-Screenshot), sonst (0, 0, u_target)
 uniform vec2 u_rot;        // aus Ansichtsmitte (wie v4)
 uniform float u_zoom;
 uniform vec3 u_palA, u_palB, u_palC, u_palD;
@@ -836,7 +839,7 @@ vec3 palette(float t) {
     return u_palA + u_palB * cos(6.28318 * (u_palC * t + u_palD));
 }
 void main() {
-    vec2 uv = (gl_FragCoord.xy - 0.5 * u_target) / min(u_target.x, u_target.y);
+    vec2 uv = (gl_FragCoord.xy + u_vp.xy - 0.5 * u_vp.zw) / min(u_vp.z, u_vp.w);
     float dist = 2.5 / u_zoom;
     vec3 ro = vec3(0.0, 0.0, -dist);
     vec3 rd = normalize(vec3(uv, 1.0));
@@ -869,7 +872,7 @@ void main() {
     }
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.2);
-    vec2 vv = gl_FragCoord.xy / u_target - 0.5;
+    vec2 vv = (gl_FragCoord.xy + u_vp.xy) / u_vp.zw - 0.5;
     col *= 1.0 - dot(vv, vv) * 0.25;
     fragColor = vec4(pow(max(col, vec3(0.0)), vec3(0.92)), 1.0);
 }`;

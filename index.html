@@ -176,6 +176,18 @@
                     <p class="hint" data-i18n="precise_hint">Die GPU rechnet schnell in f32 und schätzt pro Pixel den Rundungsfehler; unsichere Pixel rechnet die CPU exakt nach.</p>
                     <p class="hint mono" id="engine-info"></p>
                 </div>
+                <div class="section" id="shot-section">
+                    <h3 data-i18n="shot_res">Screenshot-Auflösung</h3>
+                    <div class="seg" id="seg-shot"><button data-v="screen" data-i18n="shot_screen">Bildschirm</button><button data-v="2x">2×</button><button data-v="4x">4×</button><button data-v="8k" title="7680 × 4320">8K</button><button data-v="custom" data-i18n="shot_custom">Eigene</button></div>
+                    <div id="shot-custom" hidden>
+                        <div class="shot-wh"><input id="shot-w" type="number" min="16" max="65535" step="1" inputmode="numeric" aria-label="Breite"><span>×</span><input id="shot-h" type="number" min="16" max="65535" step="1" inputmode="numeric" aria-label="Höhe"><span class="unit">px</span></div>
+                        <div class="seg" id="seg-shot-aspect"><button data-v="screen" data-i18n="shot_aspect_screen">wie Bildschirm</button><button data-v="free" data-i18n="shot_aspect_free">frei</button></div>
+                    </div>
+                    <p class="hint mono" id="shot-info"></p>
+                    <p class="hint" id="shot-buddha" data-i18n="shot_buddha" hidden>Buddhabrot: nur Bildschirmauflösung – das Bild entsteht aus Zufallsproben über die Zeit.</p>
+                    <label class="toggle"><span data-i18n="shot_label">Beschriftung im Screenshot</span><input type="checkbox" id="t-shotlabel" checked><i></i></label>
+                    <p class="hint" data-i18n="shot_hint">Große Bilder werden in Kacheln gerechnet und nahtlos zusammengesetzt – weit über die Bildschirmauflösung hinaus (bis 1 Gigapixel). Die Ansicht steht solange still.</p>
+                </div>
                 <div class="section">
                     <label class="toggle"><span data-i18n="minimap">Übersichtskarte</span><input type="checkbox" id="t-minimap"><i></i></label>
                     <label class="toggle"><span data-i18n="rect_zoom">Rechteck-Zoom (Ziehen)</span><input type="checkbox" id="t-rect"><i></i></label>
@@ -210,6 +222,16 @@
         </div>
     </div>
 
+    <!-- 6.8.1 Screenshot: Abfrage (Größe, Dauer, Dateigröße), Fortschritt mit Abbrechen, Ergebnis -->
+    <div id="shot-block" hidden></div>
+    <div id="shot-panel" class="glass" role="dialog" aria-live="polite" hidden>
+        <p id="shot-title" class="msg"></p>
+        <p id="shot-sub" class="hint mono"></p>
+        <p id="shot-warn" class="hint" hidden></p>
+        <div id="shot-bar" hidden><i></i></div>
+        <div class="btns"><button id="shot-go" class="chip" data-i18n="shot_go">Rendern</button><button id="shot-share" class="chip" data-i18n="shot_share">Teilen</button><button id="shot-save" class="chip" data-i18n="shot_save">Speichern</button><button id="shot-x" class="chip" data-i18n="shot_cancel">Abbrechen</button></div>
+    </div>
+
     <div id="toast" role="status" aria-live="polite"></div>
 
     <noscript><p class="noscript">Fraktal-Explorer 6.8.0 braucht JavaScript und WebGL2.</p></noscript>
@@ -229,6 +251,7 @@
     <script src="js/layers.js?v=6.8.0"></script>
     <script src="js/flight.js?v=6.8.0"></script>
     <script src="js/scheduler.js?v=6.8.0"></script>
+    <script src="js/capture.js?v=6.8.0"></script>
     <script src="js/app.js?v=6.8.0"></script>
     <script src="js/ui.js?v=6.8.0"></script>
 </body>

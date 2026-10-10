@@ -46,8 +46,8 @@ body.immersive #dock { transform: translateY(24px); }
 body:not(.ready) .chrome { opacity: 0; }
 /* 6.8 HUD im Vollbild / Kino-Modus: nur das Bild bleibt (alles außer Canvas, Überblendung und Grafik-Meldung); Tipp bzw.
    Mausbewegung zeigt die Bedienung 3 s (body.hud-peek) */
-body.hudless > :not(#gl):not(#xfade):not(#gpu-note) { transition: opacity .3s var(--ease), transform .45s var(--ease); }
-body.hudless:not(.hud-peek) > :not(#gl):not(#xfade):not(#gpu-note) { opacity: 0 !important; pointer-events: none !important; }
+body.hudless > :not(#gl):not(#xfade):not(#gpu-note):not(#shot-panel):not(#shot-block) { transition: opacity .3s var(--ease), transform .45s var(--ease); }
+body.hudless:not(.hud-peek) > :not(#gl):not(#xfade):not(#gpu-note):not(#shot-panel):not(#shot-block) { opacity: 0 !important; pointer-events: none !important; }
 body.hudless:not(.hud-peek) #gl { cursor: none; }
 #btn-fullscreen.on { background: rgba(167, 139, 250, 0.35); border-color: rgba(167, 139, 250, 0.8); }
 
@@ -393,3 +393,24 @@ html.deko #toast { background: linear-gradient(160deg, rgba(255, 255, 255, 0.08)
 /* sanfter Start: das erste Bild blendet aus dem Dunkel auf */
 html.deko body.ready #gl { animation: glIn .9s ease-out; }
 @keyframes glIn { from { opacity: 0; } }
+
+/* 6.8.1 Screenshot in hoher Auflösung: Eingabe der eigenen Größe, Abfrage/Fortschritt/Ergebnis (bleibt auch im Vollbild ohne HUD sichtbar) */
+.shot-wh { display: flex; align-items: center; gap: 8px; margin: 10px 0 8px; }
+.shot-wh input { width: 7.2em; min-height: 40px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, .06); color: inherit; font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.shot-wh input:disabled { opacity: .55; }
+.shot-wh .unit { opacity: .6; font-size: 13px; }
+#seg-shot button:disabled { opacity: .35; pointer-events: none; }
+#shot-block { position: fixed; inset: 0; z-index: 79; background: rgba(2, 3, 10, .28); touch-action: none; }
+#shot-block[hidden], #shot-panel[hidden] { display: none; }
+#shot-panel { position: fixed; z-index: 80; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px));
+    padding: 18px 18px 14px; display: grid; gap: 8px; text-align: center; animation: pop .22s var(--ease); }
+#shot-panel .msg { margin: 0; font-size: 15.5px; font-weight: 600; color: #fff; line-height: 1.4; }
+#shot-panel .hint { margin: 0; }
+#shot-warn { color: #fcd34d; }
+#shot-panel .btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+#shot-panel .chip { font-size: 14px; padding: 0 18px; min-height: 44px; }
+#shot-panel .chip[hidden] { display: none; }
+#shot-go, #shot-share { color: #fff; background: rgba(167, 139, 250, 0.25); border-color: rgba(167, 139, 250, 0.6); }
+#shot-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+#shot-bar[hidden] { display: none; }
+#shot-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #a78bfa, #f0abfc); transition: width .25s linear; }

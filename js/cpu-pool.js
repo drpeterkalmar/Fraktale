@@ -29,6 +29,7 @@ root.FKCpuPool = { create(ctx) {
     function onCpuMessage(e) {
         const m = e.data, w = e.target;
         w.busy = Math.max(0, w.busy - 1);
+        if (RC.cap && RC.cap.onCpu && RC.cap.onCpu(m, w)) return;      // 6.8.1 Screenshot-Kacheln (js/capture.js)
         if (m.type === 'buddha') { buddhaMerge(m); return; }
         if (m.type === 'pixels') { onFixPixels(m, w); return; }
         const job = RC.job && RC.job.id === m.jobId ? RC.job : (RC.pjob && RC.pjob.id === m.jobId ? RC.pjob : null);
@@ -40,6 +41,7 @@ root.FKCpuPool = { create(ctx) {
         cpuFeed();
     }
     function cpuFeed() {
+        if (RC.cap && RC.cap.feed) { RC.cap.feed(cpuWorkers); return; }   // 6.8.1: während eines Screenshots nur dessen Arbeit
         fixFeed();
         let job = RC.job;
         // Vorausrechnen nur, wenn der sichtbare Job und die Nachrechnung keine Worker brauchen

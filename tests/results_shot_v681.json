@@ -1,0 +1,375 @@
+{
+ "naehte": {
+  "Mandelbrot tief (GPU-Perturbation)": {
+   "one": {
+    "W": 640,
+    "H": 360,
+    "ms": 441,
+    "tilesMs": 274,
+    "bytes": 391401,
+    "tiles": 1,
+    "tile": [
+     640,
+     360
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "gpu",
+    "mode": "perturb",
+    "est": {
+     "ms": 312,
+     "bytes": 368640,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "tiled": {
+    "W": 640,
+    "H": 360,
+    "ms": 3997,
+    "tilesMs": 3849,
+    "bytes": 391401,
+    "tiles": 15,
+    "tile": [
+     128,
+     128
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "gpu",
+    "mode": "perturb",
+    "est": {
+     "ms": 790,
+     "bytes": 391450,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "ndiff": 0,
+   "maxdiff": 0,
+   "seam": 0,
+   "rest": 0,
+   "W": 640,
+   "H": 360
+  },
+  "Mandelbrot 10³⁴ (CPU-Perturbation)": {
+   "one": {
+    "W": 320,
+    "H": 180,
+    "ms": 240,
+    "tilesMs": 220,
+    "bytes": 1948,
+    "tiles": 1,
+    "tile": [
+     320,
+     180
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "cpu",
+    "mode": "perturb",
+    "est": {
+     "ms": 142,
+     "bytes": 92160,
+     "mp": 0.1
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "tiled": {
+    "W": 320,
+    "H": 180,
+    "ms": 1365,
+    "tilesMs": 1346,
+    "bytes": 1948,
+    "tiles": 8,
+    "tile": [
+     96,
+     96
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "cpu",
+    "mode": "perturb",
+    "est": {
+     "ms": 391,
+     "bytes": 1958,
+     "mp": 0.1
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "ndiff": 0,
+   "maxdiff": 0,
+   "seam": 0,
+   "rest": 0,
+   "W": 320,
+   "H": 180
+  },
+  "Julia (GPU direkt)": {
+   "one": {
+    "W": 640,
+    "H": 360,
+    "ms": 186,
+    "tilesMs": 156,
+    "bytes": 311893,
+    "tiles": 1,
+    "tile": [
+     640,
+     360
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "gpu",
+    "mode": "direct",
+    "est": {
+     "ms": 416,
+     "bytes": 391450,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "tiled": {
+    "W": 640,
+    "H": 360,
+    "ms": 3845,
+    "tilesMs": 3762,
+    "bytes": 311893,
+    "tiles": 15,
+    "tile": [
+     128,
+     128
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "gpu",
+    "mode": "direct",
+    "est": {
+     "ms": 730,
+     "bytes": 311962,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "ndiff": 0,
+   "maxdiff": 0,
+   "seam": 0,
+   "rest": 0,
+   "W": 640,
+   "H": 360
+  },
+  "Newton": {
+   "one": {
+    "W": 640,
+    "H": 360,
+    "ms": 260,
+    "tilesMs": 64,
+    "bytes": 153586,
+    "tiles": 1,
+    "tile": [
+     640,
+     360
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "gpu",
+    "mode": "direct",
+    "est": {
+     "ms": 911,
+     "bytes": 311962,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "tiled": {
+    "W": 640,
+    "H": 360,
+    "ms": 2333,
+    "tilesMs": 2154,
+    "bytes": 153586,
+    "tiles": 15,
+    "tile": [
+     128,
+     128
+    ],
+    "stream": false,
+    "kind": "2d",
+    "dev": "gpu",
+    "mode": "direct",
+    "est": {
+     "ms": 1016,
+     "bytes": 153677,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 4
+   },
+   "ndiff": 0,
+   "maxdiff": 0,
+   "seam": 0,
+   "rest": 0,
+   "W": 640,
+   "H": 360
+  },
+  "Mandelbulb": {
+   "one": {
+    "W": 640,
+    "H": 360,
+    "ms": 97,
+    "tilesMs": 60,
+    "bytes": 152237,
+    "tiles": 1,
+    "tile": [
+     640,
+     360
+    ],
+    "stream": false,
+    "kind": "bulb",
+    "dev": null,
+    "mode": null,
+    "est": {
+     "ms": 15,
+     "bytes": 230400,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 0
+   },
+   "tiled": {
+    "W": 640,
+    "H": 360,
+    "ms": 1268,
+    "tilesMs": 1202,
+    "bytes": 152237,
+    "tiles": 15,
+    "tile": [
+     128,
+     128
+    ],
+    "stream": false,
+    "kind": "bulb",
+    "dev": null,
+    "mode": null,
+    "est": {
+     "ms": 56,
+     "bytes": 152294,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 0
+   },
+   "ndiff": 0,
+   "maxdiff": 0,
+   "seam": 0,
+   "rest": 0,
+   "W": 640,
+   "H": 360
+  },
+  "3D": {
+   "one": {
+    "W": 640,
+    "H": 360,
+    "ms": 977,
+    "tilesMs": 826,
+    "bytes": 402249,
+    "tiles": 1,
+    "tile": [
+     640,
+     360
+    ],
+    "stream": false,
+    "kind": "3d",
+    "dev": null,
+    "mode": null,
+    "est": {
+     "ms": 136,
+     "bytes": 506880,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 8
+   },
+   "tiled": {
+    "W": 640,
+    "H": 360,
+    "ms": 5933,
+    "tilesMs": 5790,
+    "bytes": 402256,
+    "tiles": 12,
+    "tile": [
+     160,
+     160
+    ],
+    "stream": false,
+    "kind": "3d",
+    "dev": null,
+    "mode": null,
+    "est": {
+     "ms": 5803,
+     "bytes": 402278,
+     "mp": 0.2
+    },
+    "peakMB": 16.3,
+    "margin": 8
+   },
+   "ndiff": 263,
+   "maxdiff": 3,
+   "seam": 0.001326963906581741,
+   "rest": 0.0004976885468099525,
+   "W": 640,
+   "H": 360
+  }
+ },
+ "menue": {
+  "screen": "1082 × 2202 px · 2,4 MP · ca. 2 s · ca. 3,5 MB",
+  "2x": "2164 × 4404 px · 9,5 MP · ca. 8 s · ca. 11 MB",
+  "4x": "4328 × 8808 px · 38 MP · ca. 32 s · ca. 37 MB",
+  "8k": "7680 × 4320 px · 33 MP · ca. 28 s · ca. 40 MB"
+ },
+ "ablauf": {
+  "ask": [
+   "Screenshot-Auflösung 2×",
+   "2164 × 4404 px · 9,5 MP · ca. 17 s · ca. 11 MB",
+   true
+  ],
+  "run": [
+   "Rendere Kachel 4/15 …",
+   "2164 × 4404 px · 24 % · noch 4 s",
+   [
+    true,
+    true,
+    true
+   ]
+  ],
+  "datei": "Fraktal_mandelbrot_1.3e3_2164x4404_1791612006299.png",
+  "flug_danach": [
+   true,
+   false
+  ]
+ },
+ "checks": [
+  "ok Naht Mandelbrot tief (GPU-Perturbation): 15 Kacheln gegen ein Stück, 0 abweichende Werte (Rechenweg gpu/perturb)",
+  "ok Naht Mandelbrot 10³⁴ (CPU-Perturbation): 8 Kacheln gegen ein Stück, 0 abweichende Werte (Rechenweg cpu/perturb)",
+  "ok Naht Julia (GPU direkt): 15 Kacheln gegen ein Stück, 0 abweichende Werte (Rechenweg gpu/direct)",
+  "ok Naht Newton: 15 Kacheln gegen ein Stück, 0 abweichende Werte (Rechenweg gpu/direct)",
+  "ok Naht Mandelbulb: 15 Kacheln, 0 abweichende Werte",
+  "ok Naht 3D: 12 Kacheln, 263 von 691200 Werten weichen ab, höchstens 3/255; mittlere Abweichung an den Kanten 0.0013, sonst 0.0005",
+  "ok Menü: Größe, MP, Dauer, Dateigröße je Stufe {'screen': '1082 × 2202 px · 2,4 MP · ca. 2 s · ca. 3,5 MB', '2x': '2164 × 4404 px · 9,5 MP · ca. 8 s · ca. 11 MB', '4x': '4328 × 8808 px · 38 MP · ca. 32 s · ca. 37 MB', '8k': '7680 × 4320 px · 33 MP · ca. 28 s · ca. 40 MB'}",
+  "ok Eigene Größe (Vorgabe 3840, Höhe wie Bildschirm gesperrt True), frei 3000 × 2000, Beschriftung aus – nach Neuladen gespeichert ['custom', 3000, 2000, 'free', False, [3000, 2000]]",
+  "ok Eigene Größe wie Bildschirm: 3000 × 6105 (Bildschirm 1082 × 2202)",
+  "ok Abfrage vor dem Start: 'Screenshot-Auflösung 2×' '2164 × 4404 px · 9,5 MP · ca. 17 s · ca. 11 MB'",
+  "ok Fortschritt: 'Rendere Kachel 4/15 …' '2164 × 4404 px · 24 % · noch 4 s'",
+  "ok Während des Renderns steht die Ansicht (Flug angehalten [True, True, True], Zoom unverändert)",
+  "ok Dateiname mit Auflösung: Fraktal_mandelbrot_1.3e3_2164x4404_1791612006299.png",
+  "ok Flug danach wieder unterwegs [True, False]",
+  "ok Abbrechen: lief True, danach frei [False, True, 'Screenshot abgebrochen']",
+  "ok Kontextverlust: Abbruch mit „lost“ ['lost', False], danach wieder ein Screenshot [800, 450, 345421]",
+  "ok Buddhabrot: nur „Bildschirm“ wählbar ([['screen', False], ['2x', True], ['4x', True], ['8k', True], ['custom', True]]), Hinweis sichtbar True, Bild 824 × 1678",
+  "ok Fehler: []"
+ ]
+}

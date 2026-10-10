@@ -151,6 +151,7 @@ function openSheet(tab) {
     $('share-pop').hidden = true;
     document.body.classList.add('sheet-open');
     if (tab === 'worlds') { buildModes(); drawCpad(); }
+    if (tab === 'more') syncShot();
     if (tab === 'more') hudUpdate(true);
 }
 // 6.5: gleitender Leuchtbalken unter dem aktiven Reiter
@@ -211,11 +212,11 @@ A.on((w) => {
         else if (hudless()) hudHide(true);         // 6.8: Vollbild/Kino-Modus – Tipp auf das Bild blendet die Bedienung wieder aus
         else setChrome(!S.chrome);
     } else if (w === 'frame') hudUpdate(false);
-    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); }
+    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); }
     else if (w === 'julia') { updateJuliaPanel(); }
     else if (w === 'iter') hudUpdate(true);
     else if (w === 'settings') syncControls();
-    else if (w === '3d' || w === 'fly') sync3d();
+    else if (w === '3d' || w === 'fly') { sync3d(); if (w === '3d') syncShot(); }
     else if (w === '3dprep') prep3dProgress();
     else if (w && w.toast) toast(w.toast, w.ms);
 });
@@ -427,6 +428,7 @@ function syncControls() {
     $('s-speed').closest('label').classList.toggle('dim', !S.anim);
     $('s-relief').closest('label').classList.toggle('dim', !S.relief);
     hudUpdate(true);
+    syncShot();
 }
 
 // Sprache
@@ -483,23 +485,116 @@ $('btn-save-place').addEventListener('click', () => {
 
 // ------------------------------------------------------------------ Teilen
 $('btn-share').addEventListener('click', () => { const p = $('share-pop'); p.hidden = !p.hidden; if (!p.hidden) closeSheet(); });
-$('share-image').addEventListener('click', async () => {
-    $('share-pop').hidden = true;
-    const blob = await A.captureBlob();
-    if (!blob) { toast(t('share_failed')); return; }
-    const file = new File([blob], A.fileName(), { type: 'image/png' });
+$('share-image').addEventListener('click', () => shareImage());
+// Datei teilen (Teilen-Menü des Geräts) oder herunterladen; how: 'auto' | 'share' | 'save'
+async function deliver(file, how) {
     try {
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        if (how !== 'save' && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ files: [file], title: 'Fraktal-Explorer', text: A.stateURL() });
             return;
         }
-    } catch (e) { if (e && e.name === 'AbortError') return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; if (how === 'share') { toast(t('share_failed')); return; } }
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = file.name;
+    a.href = URL.createObjectURL(file); a.download = file.name;
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     toast(t('image_saved'));
+}
+
+// ------------------------------------------------------------------ 6.8.1 Screenshot in hoher Auflösung
+// Einstellung „Screenshot-Auflösung“ (Bildschirm, 2×, 4×, 8K, Eigene) und „Beschriftung im Screenshot“; vor dem Start Größe,
+// geschätzte Dauer und Dateigröße (Handy > 100 MP: Warnung), dann Fortschritt „Rendere Kachel 12/64 …“ mit Abbrechen.
+// Ist die Nutzer-Geste nach langem Rechnen verfallen (Teilen/Herunterladen brauchen eine), fragt die Leiste mit Teilen/Speichern.
+const decS = (x, n) => { const v = x.toFixed(n); return S.lang === 'de' ? v.replace('.', ',') : v; };
+const fmtDur = (ms) => { const s = ms / 1000; return s < 1 ? '< 1 s' : s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : decS(s / 3600, 1) + ' h'; };
+const fmtBytes = (b) => b < 1e6 ? Math.max(1, Math.round(b / 1e3)) + ' kB' : b < 1e9 ? (b < 1e7 ? decS(b / 1e6, 1) : Math.round(b / 1e6)) + ' MB' : decS(b / 1e9, 1) + ' GB';
+function shotInfo(P) { return `${P.W} × ${P.H} px · ${decS(P.est.mp, P.est.mp < 10 ? 1 : 0)} MP · ${t('shot_about')} ${fmtDur(P.est.ms)} · ${t('shot_about')} ${fmtBytes(P.est.bytes)}`; }
+function syncShot() {
+    if (!A.shot) return;
+    const buddha = A.shot.kind() === 'buddha';
+    document.querySelectorAll('#seg-shot button').forEach(b => { b.classList.toggle('on', b.dataset.v === S.shotRes); b.disabled = buddha && b.dataset.v !== 'screen'; });
+    document.querySelectorAll('#seg-shot-aspect button').forEach(b => b.classList.toggle('on', b.dataset.v === (S.shotAspect === 'free' ? 'free' : 'screen')));
+    $('shot-custom').hidden = S.shotRes !== 'custom' || buddha;
+    const [w, h] = A.shot.size({ shotRes: 'custom' });
+    if (document.activeElement !== $('shot-w')) $('shot-w').value = w;
+    if (document.activeElement !== $('shot-h')) $('shot-h').value = h;
+    $('shot-h').disabled = S.shotAspect !== 'free';
+    $('shot-buddha').hidden = !buddha;
+    $('t-shotlabel').checked = S.shotLabel;
+    try { $('shot-info').textContent = buddha ? A.R.canvas.width + ' × ' + A.R.canvas.height + ' px' : shotInfo(A.shot.plan()); } catch (e) { $('shot-info').textContent = ''; }
+}
+document.querySelectorAll('#seg-shot button').forEach(b => b.addEventListener('click', () => { S.shotRes = b.dataset.v; A.saveSettings(); syncShot(); }));
+document.querySelectorAll('#seg-shot-aspect button').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.v === 'free' && S.shotAspect !== 'free') { const [w, h] = A.shot.size({ shotRes: 'custom' }); S.shotW = w; S.shotH = h; }
+    S.shotAspect = b.dataset.v; A.saveSettings(); syncShot();
+}));
+for (const id of ['shot-w', 'shot-h']) {
+    const inp = $(id);
+    const apply = () => { const v = Math.round(+inp.value); if (!(v >= 16)) return; if (id === 'shot-w') S.shotW = Math.min(65535, v); else S.shotH = Math.min(65535, v); A.saveSettings(); syncShot(); };
+    inp.addEventListener('change', () => { apply(); inp.blur(); syncShot(); });
+    inp.addEventListener('input', () => { const v = Math.round(+inp.value); if (v >= 16) { if (id === 'shot-w') S.shotW = Math.min(65535, v); else S.shotH = Math.min(65535, v); const P = A.shot.plan(); $('shot-info').textContent = shotInfo(P); } });
+}
+$('t-shotlabel').addEventListener('change', (e) => { S.shotLabel = e.target.checked; A.saveSettings(); });
+
+const SP = { mode: '', resolve: null, file: null };
+function shotShow(mode, o) {
+    o = o || {};
+    SP.mode = mode;
+    $('shot-block').hidden = false; $('shot-panel').hidden = false;
+    $('shot-go').hidden = mode !== 'ask';
+    $('shot-share').hidden = mode !== 'done' || !(navigator.canShare && o.file && navigator.canShare({ files: [o.file] }));
+    $('shot-save').hidden = mode !== 'done';
+    $('shot-x').textContent = t(mode === 'done' ? 'close' : 'shot_cancel');
+    $('shot-bar').hidden = mode !== 'run';
+    $('shot-warn').hidden = !o.warn;
+    if (o.warn) $('shot-warn').textContent = t('shot_warn');
+    if (o.title !== undefined) $('shot-title').textContent = o.title;
+    if (o.sub !== undefined) $('shot-sub').textContent = o.sub;
+    if (mode === 'run') $('shot-bar').firstElementChild.style.width = '0%';
+}
+function shotHide() { SP.mode = ''; SP.file = null; $('shot-block').hidden = true; $('shot-panel').hidden = true; }
+function shotProgress(p) {
+    if (SP.mode !== 'run') return;
+    const title = p.phase === 'encode' ? t('shot_encode') : p.phase === 'ref' ? t('shot_ref') : p.phase === 'settle' ? t('shot_settle') : p.phase === 'prep' ? t('shot_prep') : t('shot_tile').replace('{i}', p.i).replace('{n}', p.n);
+    $('shot-title').textContent = title;
+    $('shot-sub').textContent = `${p.W} × ${p.H} px · ${Math.round(p.frac * 100)} % · ${t('shot_rest').replace('{t}', fmtDur(p.restMs))}`;
+    $('shot-bar').firstElementChild.style.width = (p.frac * 100).toFixed(1) + '%';
+}
+$('shot-go').addEventListener('click', () => { const r = SP.resolve; SP.resolve = null; if (r) r(true); });
+$('shot-x').addEventListener('click', () => {
+    if (SP.mode === 'ask') { const r = SP.resolve; SP.resolve = null; shotHide(); if (r) r(false); }
+    else if (SP.mode === 'run') A.shot.cancel();
+    else shotHide();
 });
+$('shot-share').addEventListener('click', () => { const f = SP.file; shotHide(); if (f) deliver(f, 'share'); });
+$('shot-save').addEventListener('click', () => { const f = SP.file; shotHide(); if (f) deliver(f, 'save'); });
+async function shareImage() {
+    $('share-pop').hidden = true;
+    if (A.shot.busy() || SP.mode) return;
+    const P = A.shot.plan();
+    if (P.kind !== 'buddha' && S.shotRes !== 'screen') {
+        shotShow('ask', { title: t('shot_res') + (S.shotRes === '8k' ? ' 8K' : S.shotRes === 'custom' ? '' : ' ' + ({ '2x': '2×', '4x': '4×' }[S.shotRes] || '')), sub: shotInfo(P), warn: P.warn });
+        const go = await new Promise((res) => { SP.resolve = res; });
+        if (!go) return;
+    }
+    shotShow('run', { title: t('shot_prep'), sub: `${P.W} × ${P.H} px` });
+    let r;
+    try { r = await A.captureShot({ plan: P, onProgress: shotProgress }); }
+    catch (e) {
+        shotHide();
+        const m = String(e && e.message || e);
+        toast(t(m === 'cancelled' ? 'shot_cancelled' : m === 'lost' ? 'shot_lost' : 'shot_failed'), m === 'cancelled' ? 2200 : 5000);
+        if (m !== 'cancelled' && m !== 'lost') console.warn('Screenshot:', e);
+        return;
+    }
+    if (!r || !r.blob) { shotHide(); toast(t('share_failed')); return; }
+    const file = new File([r.blob], A.fileName(r.W, r.H), { type: 'image/png' });
+    A.lastShot = { name: file.name, W: r.W, H: r.H, bytes: r.blob.size, ms: r.ms };     // (Test)
+    const ua = navigator.userActivation;
+    if (!ua || ua.isActive) { shotHide(); await deliver(file, 'auto'); return; }
+    SP.file = file;
+    shotShow('done', { file, title: t('shot_done'), sub: `${r.W} × ${r.H} px · ${fmtBytes(r.blob.size)} · ${fmtDur(r.ms)}` });
+}
 async function shareLink() {
     $('share-pop').hidden = true;
     const url = A.stateURL();
@@ -624,6 +719,7 @@ $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) close
 const KEY = { space: false };
 window.addEventListener('keyup', (e) => { if ((e.key === ' ' || e.key === 'Spacebar') && KEY.space) { e.preventDefault(); KEY.space = false; } });
 window.addEventListener('keydown', (e) => {
+    if (SP.mode) { if (e.key === 'Escape') $('shot-x').click(); else if (e.key === 'Enter' && SP.mode === 'ask') $('shot-go').click(); return; }   // 6.8.1 Screenshot-Leiste
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key;

@@ -41,6 +41,7 @@ const S = {
     setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
+    shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
     chrome: true,
 };
 // 6.5 Deko (Glas, weiche Übergänge, 3D-Himmel/Dunst/Wasser): ?deko=0 = Aussehen bis 6.4.1 (A/B-Vergleich)
@@ -58,7 +59,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
             if (s[k] !== undefined) S[k] = s[k];
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
@@ -67,7 +68,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
@@ -895,9 +896,12 @@ function frame(now) {
     const moving = isMoving(now);
     trackVelocity(now, moving);
     governorUpdate(now, dt);
-    if (stats.frames % 8 === 0) pruneLayers(now);
+    // 6.8.1 Screenshot in Kacheln: rechnet in Häppchen in diesem Takt; die Ansicht steht solange (Planer pausiert – in 3D erst
+    // nach dem fertigen Bildschirmbild, RC.capHold –, keine Ebenen werden verworfen)
+    if (RC.cap) { try { shotStep(now); } catch (e) { reportOnce(e); } }
+    if (stats.frames % 8 === 0 && !RC.cap && !RC.freeze) pruneLayers(now);
     const tS = performance.now();
-    try { schedule(now); } catch (e) { reportOnce(e); }       // P1-2: ein Fehler friert die Schleife nicht ein
+    if ((!RC.cap || RC.capHold) && !RC.freeze) { try { schedule(now); } catch (e) { reportOnce(e); } }      // P1-2: ein Fehler friert die Schleife nicht ein
     const tP = performance.now();
     try { present(now, camChanged); } catch (e) { reportOnce(e); }
     if (!GW.firstPic && (RC.layers.length || S.formula >= 6)) gwFirstPicture();
@@ -921,7 +925,7 @@ R.onRestored = () => {
     BUD.hist = null;
     RC.front = RC.lastPreview = null; RC.layers = []; RC.job = RC.pjob = null; RC.fix = null; REF.cur = null; invalidate();
 };
-R.onLost = () => { RC.job = RC.pjob = null; gwLost(); };
+R.onLost = () => { RC.job = RC.pjob = null; gwLost(); M_Capture.lost(); };   // 6.8.1: laufenden Screenshot abbrechen
 
 // ------------------------------------------------------------------ 6.5.2 Grafik-Wächter: nie eine endlose leere Fläche
 // (1) Kontextverlust: nach 1,5 s „Grafik wird neu verbunden …“; kommt nach 6 s keine Wiederherstellung (Chrome nach einem
@@ -1002,24 +1006,35 @@ function fmtC(x, y) {
 function toast(msg, ms) { emit({ toast: msg, ms }); }
 
 // ------------------------------------------------------------------ Screenshot / Teilen
-function captureBlob() {
+// 6.8.1: Bildschirm-Kopie (Buddhabrot – entsteht aus Zufallsproben über die Zeit, nur in Bildschirmauflösung); label: Beschriftung
+function screenBlob(label) {
     return new Promise((resolve) => {
         if (V3.on) present3d(performance.now(), false, true); else presentNow();   // frisch zeichnen, dann sofort abgreifen
         const out = document.createElement('canvas');
         out.width = canvas.width; out.height = canvas.height;
         const c2 = out.getContext('2d');
         c2.drawImage(canvas, 0, 0);
-        const fs = Math.max(12, Math.round(out.height / 70));
-        c2.font = `600 ${fs}px system-ui, sans-serif`;
-        c2.fillStyle = 'rgba(255,255,255,0.75)';
-        c2.shadowColor = 'rgba(0,0,0,0.6)'; c2.shadowBlur = fs / 2;
-        c2.fillText(`Fraktal-Explorer · ${t(MODE_KEYS[S.formula])} · ${fmtZoom(S.cam.zoom, 'sci')}`, fs, out.height - fs);
-        out.toBlob((b) => resolve(b), 'image/png');
+        if (label) {
+            const fs = Math.max(12, Math.round(out.height / 70));
+            c2.font = `600 ${fs}px system-ui, sans-serif`;
+            c2.fillStyle = 'rgba(255,255,255,0.75)';
+            c2.shadowColor = 'rgba(0,0,0,0.6)'; c2.shadowBlur = fs / 2;
+            c2.fillText(`Fraktal-Explorer · ${t(MODE_KEYS[S.formula])} · ${fmtZoom(S.cam.zoom, 'sci')}`, fs, out.height - fs);
+        }
+        out.toBlob((b) => resolve({ blob: b, W: out.width, H: out.height, ms: 0, bytes: b ? b.size : 0, kind: 'buddha', tiles: 1 }), 'image/png');
     });
 }
+// Screenshot in der eingestellten Auflösung (Kachel-Rendern, js/capture.js). opts: { onProgress, W, H, tile, stream, label }
+// -> Promise { blob, W, H, ms, bytes, … }; Abbruch: shotCancel() (reject 'cancelled'), Kontextverlust: reject 'lost'
+function captureShot(opts) {
+    opts = opts || {};
+    if (M_Capture.kindNow() === 'buddha') return screenBlob(opts.label === undefined ? S.shotLabel : opts.label);
+    return M_Capture.start(opts);
+}
+function captureBlob(opts) { return captureShot(opts).then(r => r.blob); }
 // 6.5: frisches Bild zeichnen (2D oder 3D) – danach ist der Canvas im selben Task lesbar (Überblendung, Schnappschuss)
 function freshFrame() { if (V3.on) present3d(performance.now(), false, true); else presentNow(); }
-function fileName() { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.toExponential(1).replace('+', '')}_${Date.now()}.png`; }
+function fileName(W, H) { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.toExponential(1).replace('+', '')}${W ? `_${W}x${H}` : ''}_${Date.now()}.png`; }
 
 // ------------------------------------------------------------------ Start
 function init() {
@@ -1117,19 +1132,37 @@ const CTX = {
     get refUsable() { return refUsable; },
     get requestRefFor() { return requestRefFor; },
     get startFix() { return startFix; },
+    // 6.8.1 Screenshot (js/capture.js)
+    get forceCPU() { return forceCPU; },
+    get gpuPerturbOK() { return gpuPerturbOK; },
+    get DIRECT_MAX() { return DIRECT_MAX; },
+    get GPU_MAX() { return GPU_MAX; },
+    get NEWTON_GPU_MAX() { return NEWTON_GPU_MAX; },
+    get cpuWorkers() { return cpuWorkers; },
+    get requestBLA() { return requestBLA; },
+    get view3d() { return view3d; },
+    get layers3d() { return layers3d; },
+    get aaFrames() { return aaFrames; },
+    get pauseFly() { return pauseFly; },
+    get fmtZoom() { return fmtZoom; },
+    get MODE_KEYS() { return MODE_KEYS; },
+    get invalidate() { return invalidate; },
+    get isDone() { return isDone; },
 };
 const M_UrlState = self.FKUrlState.create(CTX);
 const { readURL, setColParam, stateURL, syncURL } = M_UrlState;
 const M_CpuPool = self.FKCpuPool.create(CTX);
 const { cancelFix, cpuBroadcast, cpuFeed, cpuPool, cpuSendRef, cpuWorkers, recompute, startFix } = M_CpuPool;
 const M_Refs = self.FKRefs.create(CTX);
-const { REF, ensureRef, refUsable, requestRefFor } = M_Refs;
+const { REF, ensureRef, refUsable, requestRefFor, requestBLA } = M_Refs;
 const M_Layers = self.FKLayers.create(CTX);
 const { addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers } = M_Layers;
 const M_Flight = self.FKFlight.create(CTX);
 const { FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, trailAt, turnFly, clearance } = M_Flight;
 const M_Scheduler = self.FKScheduler.create(CTX);
 const { governorUpdate, schedule } = M_Scheduler;
+const M_Capture = self.FKCapture.create(CTX);
+const shotStep = (now) => M_Capture.step(now);
 // MODULE_LINK
 // Module verknüpfen
 M_Scheduler.link();
@@ -1138,13 +1171,17 @@ M_Layers.link();
 M_Refs.link();
 M_CpuPool.link();
 M_UrlState.link();
+M_Capture.link();
 
+// fertiges Bild der aktuellen Ansicht (exakt, nichts rechnet, nichts blendet ein) – wie status().done
+function isDone() { const f = RC.front, now = performance.now(); return !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(now); }
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
-    invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
+    invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, captureShot, fileName, zoomAt, presentNow,
+    shot: { plan: (o) => M_Capture.plan(o), size: (o) => M_Capture.shotSize(o), cancel: () => M_Capture.cancel(), busy: () => M_Capture.busy(), supports: (r) => M_Capture.supports(r), kind: () => M_Capture.kindNow(), devSize: () => M_Capture.devSize() },
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
     RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, dblTapHook: null, clearance,
     // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel
@@ -1283,10 +1320,12 @@ const API = {
         return { key: viewKey(), frontKey: f ? f.key : null, stage: f ? f.stage : null, busy: !!RC.job, moving: isMoving(performance.now()),
                  fading: RC.fading, done: !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(performance.now()), fix: stats.lastFix || null, fixing: !!RC.fix, gpuFullMs: stats.gpuFullMs,
                  plan: plan(), ref: REF.cur ? { id: REF.cur.id, method: REF.cur.method, period: REF.cur.period, len: REF.cur.lenA, ms: REF.cur.ms } : null,
-                 jsMs: stats.jsMs, jsMax: stats.jsMax, vsync: RC.vsync, dtEMA: RC.dtEMA, chunk: R.chunkInfo(), lastFullMs: stats.lastFullMs, lastJobMs: stats.lastJobMs, fps: stats.fps, useBLA: f ? f.useBLA : null, kind: f ? f.kind : null, previewDiv: RC.previewDiv,
+                 jsMs: stats.jsMs, jsMax: stats.jsMax, capturing: !!RC.cap, vsync: RC.vsync, dtEMA: RC.dtEMA, chunk: R.chunkInfo(), lastFullMs: stats.lastFullMs, lastJobMs: stats.lastJobMs, fps: stats.fps, useBLA: f ? f.useBLA : null, kind: f ? f.kind : null, previewDiv: RC.previewDiv,
                  canvas: [canvas.width, canvas.height], maxIter: currentMaxIter(), gpuPerturbOK };
     },
     setView(cx, cy, zoom) { stopAnims(); setCam(HP.fromString(cx), HP.fromString(cy), zoom); },
+    // Test (6.8.1): Planer anhalten (keine neuen Ebenen, nichts wird verworfen) – Vergleichsbilder auf demselben Ebenen-Stapel
+    freeze(on) { RC.freeze = !!on; },
     // Test (P1-1): neue Referenz für die aktuelle Ansicht erzwingen (z. B. mitten in der exakten Nachrechnung)
     testNewRef() { requestRefFor(S.cam, null, true, ++REF.seq); },
     // Test: Iterationswerte des fertigen Bildes an Pixeln [i, jVonOben] + exakte Ansicht

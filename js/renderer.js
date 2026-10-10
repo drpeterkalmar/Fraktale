@@ -307,6 +307,8 @@ function create(canvas) {
         gl.enable(gl.SCISSOR_TEST);
         gl.scissor(0, y0, job.w, rows);
         gl.uniform2f(L.u_res, job.w, job.h);
+        // 6.8.1 Kachel-Screenshot: Puffermitte relativ zur Bildmitte (sonst 0) – Uniforms gelten je Programm, darum immer setzen
+        gl.uniform2f(L.u_pxoff, job.pxoff ? job.pxoff[0] : 0, job.pxoff ? job.pxoff[1] : 0);
         gl.uniform1f(L.u_scale, job.scale);
         gl.uniform1i(L.u_maxIter, job.maxIter);
         if (job.mode === 'direct') {
@@ -429,6 +431,8 @@ function create(canvas) {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
     };
     R.acquireBuffer = acquire;
+    // 6.8.1: Puffer sofort löschen (große Screenshot-Kacheln sollen nicht im Pool liegen bleiben)
+    R.dropBuffer = function (b) { if (!b) return; const i = pool.indexOf(b); if (i >= 0) pool.splice(i, 1); if (!gl.isContextLost()) freeBuffer(b); };
     R.chunkInfo = () => ({ pxPerChunk: Math.round(pxPerChunk), pxMove: Math.round(pxMove) });
 
     R.cancelJob = function (job) {
@@ -453,7 +457,7 @@ function create(canvas) {
         return [k, k, dx - tw / 2 * k + layer.buf.w / 2, dy - th / 2 * k + layer.buf.h / 2];
     }
     // layers: [{ buf, view, scale, alpha }] von oben (schärfste) nach unten, höchstens SH.NL.
-    // opts: { feather, recon, de }
+    // opts: { feather, recon, de, vp } – vp (6.8.1): [x, y, W, H] Lage des Ziels im ganzen Bild (Kachel-Screenshot)
     const xfBuf = new Float32Array(4 * SH.NL), sizeBuf = new Float32Array(2 * SH.NL), alphaBuf = new Float32Array(SH.NL);
     R.present = function (layers, cam, look, target, opts) {
         opts = opts || {};
@@ -464,6 +468,8 @@ function create(canvas) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
         gl.viewport(0, 0, tw, th);
         gl.uniform2f(L.u_target, tw, th);
+        const vp = opts.vp;
+        gl.uniform4f(L.u_vp, vp ? vp[0] : 0, vp ? vp[1] : 0, vp ? vp[2] : tw, vp ? vp[3] : th);
         const list = (layers || []).filter(l => l && l.buf).slice(0, SH.NL);
         for (let i = 0; i < SH.NL; i++) {
             const l = list[i];
@@ -532,16 +538,20 @@ function create(canvas) {
         return _dummy;
     }
 
-    R.presentBulb = function (cam, look) {
+    // target/vp (6.8.1 Kachel-Screenshot): { w, h, fbo } und Lage im ganzen Bild [x, y, W, H]
+    R.presentBulb = function (cam, look, target, vp) {
         const pr = program('bulb', SH.BULB_FS), L = pr.loc;
+        const tw = target ? target.w : canvas.width, th = target ? target.h : canvas.height;
         gl.useProgram(pr.p);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, canvas.width, canvas.height);
-        gl.uniform2f(L.u_target, canvas.width, canvas.height);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+        gl.viewport(0, 0, tw, th);
+        gl.uniform2f(L.u_target, tw, th);
+        gl.uniform4f(L.u_vp, vp ? vp[0] : 0, vp ? vp[1] : 0, vp ? vp[2] : tw, vp ? vp[3] : th);
         gl.uniform2f(L.u_rot, HP.toNumber(cam.cx), HP.toNumber(cam.cy));
         gl.uniform1f(L.u_zoom, cam.zoom);
         setPalette(L, look);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (target) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };
 
     let histTex = null, histW = 0, histH = 0;
@@ -581,13 +591,14 @@ function create(canvas) {
     };
 
     // Asynchrones Auslesen per PBO + Fence (blockiert den Main-Thread nicht)
-    R.readAsync = function (fbo, w, h, format, type, Arr, comps) {
+    // (6.8.1: x, y = Ausschnitt ab dieser Ecke, z. B. Kachel ohne Rand)
+    R.readAsync = function (fbo, w, h, format, type, Arr, comps, x, y) {
         const bytes = w * h * comps * Arr.BYTES_PER_ELEMENT;
         const pbo = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, bytes, gl.STREAM_READ);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo);
-        gl.readPixels(0, 0, w, h, format, type, 0);
+        gl.readPixels(x || 0, y || 0, w, h, format, type, 0);
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
         const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
