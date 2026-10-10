@@ -22,7 +22,7 @@ run python3 tests/test_v63.py
 run python3 tests/test_v64.py
 run env FK_HEADED=1 python3 tests/test_fly64.py
 run env FK_HEADED=1 python3 tests/test_fly2d.py
-run python3 tests/test_rueck.py
+run env FK_HEADED=1 python3 tests/test_rueck.py
 run env FK_HEADED=1 python3 tests/test_hud_fs.py
 run env FK_HEADED=1 python3 tests/test_fs_fly.py
 run python3 tests/test_shot.py

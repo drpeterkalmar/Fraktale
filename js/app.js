@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '6.8.0';
+const APP_VERSION = '6.8.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)

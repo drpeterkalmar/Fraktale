@@ -160,3 +160,157 @@ Drosselung) ebenso: unterer Bildrand 0 % Lücken, Schärfe 1,34 gegen 0,5 % und 
   Nach Schieben/Lenken im Rückflug geht es zentriert hinaus.
 - Fullscreen in iOS-Safari selbst und auf einem echten Mittelklasse-Handy nicht gemessen (WebKit-Emulation bzw. gedrosselter M1).
 - Toasts liegen im Flug wie bisher über der Flug-Leiste (z. B. „Ganz draußen“ für 2,6 s).
+
+
+---
+
+# 6.8.1 – Flug im Vollbild + Screenshot in beliebig hoher Auflösung
+
+Auftrag `fraktale-v6-8b` (Wunsch von Peter, 09.10.2026). Stand 10.10.2026, live unter https://drpeterkalmar.github.io/Fraktale/
+(Version 6.8.1). Zwischenstände E1 (Flug im Vollbild), E2 (Screenshot), E3 (Messung) – je gepusht und live geprüft.
+
+## Kurz für Peter
+
+- **Flug im Vollbild:** Vollbild an und aus, die wegfallende Adressleiste, Drehen hoch/quer und der Kino-Modus am iPhone
+  unterbrechen einen laufenden Flug nicht mehr – er fliegt mit Kurs und Tempo weiter, ohne Ruck.
+- **Ohne Bedienung steuern:** Leertaste = Flug an/aus, `R` = Richtung, `↑/↓` = Tempo. Am Handy bei ausgeblendeter
+  Bedienung: **Doppeltipp = Flug an/aus**, ein einfacher Tipp holt wie bisher die Bedienung.
+- **Screenshot groß:** Mehr → „Screenshot-Auflösung“: Bildschirm, 2×, 4×, 8K oder eigene Größe (bis 1 Gigapixel). Darunter
+  steht, wie groß, wie lange, wie viele MB. Teilen → Bild: kurze Rückfrage mit dieser Schätzung, dann „Rendere Kachel 12/64 …“
+  mit Abbrechen. Das Bild wird in Stücken gerechnet und zusammengesetzt – ohne sichtbare Nähte. Die Beschriftung unten links
+  lässt sich abschalten.
+- Grenzen: Buddhabrot nur in Bildschirmgröße; große 3D-Bilder sind scharf im Licht, aber nicht detailreicher im Gelände.
+- Bilder: `tests/shots/v681/` (Ausschnitte Mitte, Kachelkante, Beschriftung für 1×/4×/8K/16k je Modus).
+
+## Flug im Vollbild (E1)
+
+**Befund:** Ein Größenwechsel stoppte den Flug nicht (Flugzustand, Sonde und Ebenen überleben `resize()`: `invalidate()`
+markiert nur neu, die Ebenen liegen in Welt-Koordinaten und tragen weiter, Puffer der neuen Größe kommen mit den nächsten
+Vorschauen). Gestört haben zwei Dinge: Beim Umschalten lässt der Browser Bilder aus (macOS-Vollbild, Drehen: 80–100 ms) – der
+zeitbasierte Flug machte dann einen Sprung; und die Tempo-Bremse sah nach dem Wechsel kurz unscharfe Ränder und bremste.
+
+**Umsetzung (`js/app.js`, `js/scheduler.js`, `js/ui.js`):**
+- `RC.resizeT` = Zeit der letzten Größenänderung; gesetzt in `resize()` und schon vorher bei Vollbild-Knopf/`F`, Kino-Modus,
+  `fullscreenchange`, `orientationchange`, `screen.orientation` (die Aussetzer kommen vor dem `resize`-Ereignis).
+- 0,6 s danach ist ein Flugschritt höchstens 1/30 s lang (lieber einen Augenblick langsamer als ein Kamerasprung); 1,5 s hält
+  die Tempo-Bremse ihren Wert (die neuen Ränder sind bis dahin gerechnet).
+- Leertaste = Flug an/aus (ein fokussierter Knopf, z. B. Vollbild, wird dabei nicht ausgelöst); Doppeltipp bei ausgeblendetem
+  HUD = Flug an/aus (`API.dblTapHook`), sonst wie bisher hineinzoomen.
+
+**Prüfung `tests/test_fs_fly.py`** (Pixel 7, sichtbares Fenster, `results_fs_fly_v681.json`): je 2D und 3D Flug starten →
+Vollbild an + Adressleiste weg → 4 s → quer → 3 s → hoch → 3 s → Vollbild aus (F, HUD ist aus) → 2,5 s.
+- Flug durchgehend an, nie pausiert (2D 876, 3D 854 Bilder); 6 Größenänderungen, in den 0,6 s danach **kein Bild mit Sprung**
+  (Zoomschritt ≤ Tempo/30 s in 154 bzw. 151 Bildern); Tempo-Bremse hält 1,5 s ihren Wert.
+- Bildrate ohne → mit Vollbild: 2D 55,1 → 55,1, 3D 53,5 → 52,3 Bilder/s; Zoomtempo 0,45 → 0,50 bzw. 0,47 → 0,45 log₁₀/s.
+- Im Vollbild ohne HUD: Leertaste aus/an, R kehrt um (und wieder zurück), ↑ Tempo +0,1, Tasten holen das HUD nicht; Doppeltipp
+  aus/an, HUD bleibt aus; einfacher Tipp zeigt das HUD, der Flug läuft weiter.
+- iPhone 13 (WebKit, ohne Vollbild-Schnittstelle): 2D-Flug durch Kino-Modus an, Drehen, Kino-Modus aus – 631 Bilder, keins
+  angehalten, größter Zoomschritt 0,024 (längste Bildzeit 49 ms).
+- Hinweis: `test_hud_fs` fällt headless (≈ 10 Bilder/s, Tipp-Zeiten unzuverlässig) auch mit 6.8.0 durch – im sichtbaren
+  Fenster grün; `run_all.sh` startet ihn jetzt so.
+
+## Screenshot in hoher Auflösung (E2)
+
+**Option** (Mehr, gespeichert): *Bildschirm* (volle Geräteauflösung – auch bei Auflösung „Akku“), *2×*, *4×*, *8K*
+(7680 × 4320), *Eigene* (Breite × Höhe, Seitenverhältnis wie Bildschirm oder frei, Vorgabe 3840 × 2160, je Seite ≤ 65535,
+≤ 1 Gigapixel); „Beschriftung im Screenshot“ (Standard an, Schrift = Bildhöhe/70). Andere Seitenverhältnisse als der
+Bildschirm: in 2D passt das ganze Bildschirmbild hinein (am Rand kommt mehr dazu), in 3D bleibt der senkrechte Blickwinkel.
+
+**Kachel-Rendern (`js/capture.js`):**
+- Kacheln ≤ min(MAX_TEXTURE_SIZE, MAX_RENDERBUFFER_SIZE, MAX_VIEWPORT_DIMS, Handy 1024 / sonst 2048) samt Rand, Streifenhöhe
+  so, dass ein RGBA-Streifen ≤ 24 MB (Handy) bzw. 64 MB bleibt. Reihenfolge Streifen für Streifen.
+- **2D:** je Kachel ein Rechenpuffer (GPU oder CPU-Worker – derselbe Rechenweg wie das Ruhebild bei dieser Pixelgröße, d. h.
+  ab Bildschirm-Zoom-Äquivalent 1000 Perturbation; gleiche Iterationen, Distanzschätzung, exakte f64-Nachrechnung unsicherer
+  Pixel) mit 4 px Rand, dann der Anzeige-Pass 1:1 in ein RGBA-Ziel. **Bitgleich zum Bild aus einem Stück**, weil jede Kachel
+  mit derselben Ansichtsmitte rechnet und ihre Lage als ganz-/halbzahligen Pixelversatz `u_pxoff` bekommt (in f32 exakt – die
+  Pixelkoordinate p ist dieselbe Zahl wie im ganzen Bild), die BLA-Entscheidung fürs ganze Bild fällt (bei Bedarf wird die
+  Tabelle für den größeren Umkreis neu gebaut, `requestBLA`), CPU-Kacheln und Nachrechnung mit den Koordinaten des ganzen Bilds
+  laufen und Vignette/Funkeln über `u_vp` die Lage im ganzen Bild kennen.
+- **3D:** dieselbe Kamera für das ganze Bild (Seitenverhältnis des Bilds), je Kachel nur die Projektion verschoben/gestreckt
+  (`u_vt`: Gelände-Vertex-Shader, Himmelsstrahl, Vignette); Gitter und Detailstufen wie auf dem Bildschirm, 8 versetzte Bilder
+  gemittelt wie im Stillstand (ein Bild je App-Takt), Bloom mit Verkleinerung 2 × Maßstab (gleicher Radius relativ zum Bild),
+  Rand ≥ Bloom-Radius. Dafür ist das Zeichnen von Himmel + Gelände aus `T.render` in `drawScene` herausgelöst (gleicher Code
+  für Bildschirm und Kacheln). Vor dem Start rechnet der Planer das Bildschirmbild fertig (die Kacheln lesen seine Ebenen).
+- **Mandelbulb:** Anzeige-Shader mit `u_vp`, bitgleich. **Buddhabrot:** nur Bildschirm (Bild aus Zufallsproben über die Zeit;
+  4× bräuchte 16× so viele – Minuten bis Stunden), die anderen Stufen sind dort ausgegraut mit Hinweis.
+- **Ausgabe:** bis 100 MP (Handy 16,7 MP – iOS-Canvas-Grenze) Streifen per `putImageData` in ein OffscreenCanvas, dann
+  `convertToBlob`; darüber **streamend** (`js/png-worker.js`): Paeth-Filter je Zeile, `CompressionStream('deflate')`, jedes
+  komprimierte Stück sofort ein IDAT-Block, höchstens zwei Streifen unterwegs – das Bild liegt nie ganz im Speicher.
+- **Ablauf:** Ansicht steht (Planer pausiert, laufender Flug angehalten und danach fortgesetzt, Gesten/Tasten gesperrt außer
+  Esc), Rechnen in Häppchen im App-Takt (`step()` aus `frame()`), Fortschritt „Rendere Kachel i/n“ mit Restzeit und Abbrechen.
+  Schätzung vor dem Start aus der Rechenzeit des Bildschirmbilds bzw. 3D-Kosten je Mittelungsbild, Kodierzeit, Dateigröße aus
+  Bits je Pixel; nach jedem echten Screenshot ≥ 4 MP lernt sie nach (Faktor 0,25–4, localStorage). GPU-Kontextverlust (`R.onLost`)
+  bricht sauber ab („Grafik verloren – Screenshot abgebrochen“), danach geht es wieder. Ist nach langem Rechnen die Nutzer-Geste
+  verfallen, fragt die Leiste mit „Teilen / Speichern“ (Teilen und Herunterladen brauchen eine Geste).
+
+## Prüfung und Messung (E2/E3)
+
+**Kachelnähte** (`tests/test_shot.py`, 640 × 360 in einem Stück gegen Kacheln zu 128 px bzw. 3D 160 px, gleiche
+Animationszeit; 3D aus demselben eingefrorenen Zustand):
+
+| Fall | Kacheln | Rechenweg | abweichende Werte | größte Abweichung |
+|---|---|---|---|---|
+| Mandelbrot tief (GPU-Perturbation) | 15 | gpu/perturb | 0 von 691200 | 0 |
+| Mandelbrot 10³⁴ (CPU-Perturbation) | 8 | cpu/perturb | 0 von 172800 | 0 |
+| Julia (GPU direkt) | 15 | gpu/direct | 0 von 691200 | 0 |
+| Newton | 15 | gpu/direct | 0 von 691200 | 0 |
+| Mandelbulb | 15 | –/– | 0 von 691200 | 0 |
+| 3D | 12 | –/– | 263 von 691200 | 3 |
+
+3D: die wenigen Abweichungen (Rundung bei Rasterung und Bloom je Kachel) liegen verstreut, an den Kachelkanten im Mittel
+0,0013 gegen 0,0006 Stufen sonst – keine Naht. (Zwei getrennte 3D-Aufnahmen hintereinander unterscheiden sich stärker, weil
+Höhen-Normierung, Himmel und Vorausrechnung zwischen ihnen weiterlaufen – darum der Vergleich aus demselben Zustand.)
+
+**Bedienung** (Pixel 7): Menü zeigt je Stufe Größe/MP/Dauer/Dateigröße; Eigene 3000 × 2000 frei + Beschriftung aus bleibt nach
+Neuladen; „wie Bildschirm“ koppelt die Höhe; Ablauf 2× mit laufendem Flug: Rückfrage mit Schätzung, „Rendere Kachel 2/15 …“,
+Ansicht steht, Datei `Fraktal_mandelbrot_1.4e3_2164x4404_….png`, Flug danach wieder unterwegs; Abbrechen; Kontextverlust
+während 4× → Abbruch „lost“, danach wieder ein Screenshot; Buddhabrot nur „Bildschirm“. iPhone 13 (WebKit): Canvas-Weg (2×)
+und streamender Weg (8K) liefern gültige PNGs der richtigen Größe.
+
+**Größen** (`test_shot.py --matrix`, Desktop 1280 × 720, Apple M1, Chromium headless mit Metal, Beschriftung an;
+Speicher = Summe RSS aller Browser-Prozesse; Naht = mittlerer Farbsprung über die Kachelkante / zwischen Nachbarspalten):
+
+| Modus | Stufe | Größe | Kacheln | Ausgabe | Zeit | Schätzung | Datei | Speicher | Naht |
+|---|---|---|---|---|---|---|---|---|---|
+| Mandelbrot 3·10⁹ | 1x | 1280 × 720 | 1 (1280×720) | Canvas | 0,8 s | 1 s | 1,4 MB | 436 MB | – |
+| Mandelbrot 3·10⁹ | 4x | 5120 × 2880 | 6 (2040×2040) | Canvas | 13,8 s | 13 s | 19,4 MB | 1014 MB | 3,81 / 4,85 |
+| Mandelbrot 3·10⁹ | 8k | 7680 × 4320 | 12 (2040×2040) | Canvas | 22,8 s | 25 s | 41,0 MB | 1481 MB | 3,85 / 3,56 |
+| Mandelbrot 3·10⁹ | 16k | 16384 × 9216 | 81 (2040×1024) | PNG-Worker | 81,5 s | 124 s | 117,3 MB | 1580 MB | 5,57 / 5,57 |
+| Julia | 1x | 1280 × 720 | 1 (1280×720) | Canvas | 0,7 s | 1 s | 0,9 MB | 447 MB | – |
+| Julia | 4x | 5120 × 2880 | 6 (2040×2040) | Canvas | 6,8 s | 10 s | 10,0 MB | 970 MB | 4,54 / 4,70 |
+| Julia | 8k | 7680 × 4320 | 12 (2040×2040) | Canvas | 10,8 s | 11 s | 20,1 MB | 1393 MB | 2,43 / 2,79 |
+| Julia | 16k | 16384 × 9216 | 81 (2040×1024) | PNG-Worker | 27,5 s | 77 s | 52,4 MB | 1305 MB | 1,49 / 1,37 |
+| 3D-Landschaft | 1x | 1280 × 720 | 1 (1280×720) | Canvas | 1,5 s | 1 s | 1,4 MB | 475 MB | – |
+| 3D-Landschaft | 4x | 5120 × 2880 | 6 (1920×1920) | Canvas | 11,0 s | 29 s | 17,0 MB | 861 MB | 1,99 / 1,96 |
+| 3D-Landschaft | 8k | 7680 × 4320 | 15 (1848×1848) | Canvas | 18,4 s | 50 s | 34,2 MB | 1328 MB | 1,25 / 1,22 |
+| 3D-Landschaft | 16k | 16384 × 9216 | 110 (1612×1014) | PNG-Worker | 67,5 s | 184 s | 83,2 MB | 1178 MB | 0,53 / 0,61 |
+
+- Headless läuft der App-Takt mit ≈ 10 Bildern/s, 3D braucht je Kachel 10 Takte – im sichtbaren Fenster: 3D 8K 5,4 s statt 18 s,
+  2D 8K 15,7 s, 2D 16k 65 s. **Die App bleibt dabei flüssig:** 2D 8K 48,9 Bilder/s (95 % ≤ 33 ms, längster Takt 200 ms beim
+  Kodieren), 2D 16k 48,7 Bilder/s (längster 56 ms), 3D 8K 50,7 Bilder/s (längster 83 ms).
+- Speicher bleibt auch bei 151 MP unter ~1,5 GB (streamend), Canvas-Weg 8K ~1,3–1,6 GB.
+- Ausschnitte selbst angesehen (`tests/shots/v681/*_kante.jpg` an der detailreichsten Stelle der Kachelkante, `*_mitte.jpg`,
+  `*_beschriftung.jpg`): keine Kante, keine Versätze; die Beschriftung läuft ungebrochen über eine Kachelgrenze. 2D in 16k
+  gestochen scharf bis in feinste Filamente; 3D in 8K/16k weich im Gelände (siehe Grenzen).
+
+**Übrige Suite** (headless, Metal) nach dem Umbau von Shadern und 3D-Renderer grün: Unit-Tests (48), `node_core_test`,
+`test_release`, `tools/check_release.py`, `test_truth` (GPU), `test_features`, `test_3d` (sichtbar), `test_context_loss`,
+`test_shader_fail`, `test_gestures`, `test_ui`, `test_fs_fly`, `test_shot`. Abschlusslauf mit 6.8.1: Unit, `node_core_test`,
+`test_release`, `check_release`, `test_gestures`, `test_ui`, `test_hud_fs` (sichtbar), `test_fs_fly` (sichtbar), `test_shot`,
+`test_p3`, `test_deeplink`, `test_blend`, `test_fly2d` (sichtbar) grün. `test_rueck` fällt headless durch (2D-Flug kommt in 12 s
+nur bis Zoom ~60, die Tempo-Bremse steht auf 0,3, weil der unsichtbare Browser heute nur ~12 Bilder/s liefert) – **mit 6.8.0
+genauso** (Gegenprobe auf einer Arbeitskopie von 783443d: Zoom 62); im sichtbaren Fenster mit 6.8.1 grün. `run_all.sh` startet
+ihn jetzt sichtbar.
+
+## Offen / Grenzen
+
+- **3D-Gelände in sehr großen Bildern:** Die Höhen kommen aus den für den Bildschirm gerechneten Ebenen (bis 1600 px Kante). Licht,
+  Kanten und Himmel sind in voller Auflösung scharf, das Gelände wird ab ~4× aber nicht detailreicher, sondern weicher. Für echte
+  Detailgewinne müssten für den Screenshot eigene, feinere Ebenen gerechnet werden – Kandidat für Job 7.0 (Mandelbulb übernimmt
+  die Technik, `T3.capBegin/capFrame/capFinish`, `R.presentBulb(…, target, vp)`).
+- Buddhabrot nur Bildschirmauflösung (siehe oben).
+- Schätzung: vor dem ersten Screenshot eines Geräts grob (gemessen Faktor 0,4–1,1 in 2D, 3D bis 2,7× zu vorsichtig), danach
+  gelernt.
+- Auf echten Handys nicht gemessen (Pixel-7-Emulation auf dem M1, WebKit-Emulation fürs iPhone); dort gelten 1024er-Kacheln und
+  ab 16,7 MP der streamende Weg.
+- Kodieren im Canvas-Weg: `convertToBlob` blockiert in WebKit kurz (bis ~0,5 s am Ende).
