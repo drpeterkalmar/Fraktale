@@ -405,6 +405,9 @@ root.FKScheduler = { create(ctx) {
     function governorUpdate(now, dt) {
         const on = S.governor;
         if (!on || !animating()) { GOV.g = Math.min(1, GOV.g + dt * 3); GOV.coarse = 0; return; }
+        // 6.8.1: kurz nach einer Größenänderung (Vollbild, Drehen) Wert halten – die neuen Ränder sind gleich gerechnet,
+        // ein Abbremsen wäre im Flug als Ruck zu sehen
+        if (now - (RC.resizeT || -1e9) < ctx.RESIZE_GOV_HOLD) return;
         const c = predictCam(0.1, false);
         const cov = coverage(orderLayers(now, c), c, { sig: contentSig(), gx: 10, gy: 20, quantile: 0.1 });
         // 10-%-Quantil der Schärfe (90 % des Bildes sind mindestens so scharf), Totzone ±10 % um die Schwelle

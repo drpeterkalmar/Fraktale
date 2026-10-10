@@ -105,10 +105,20 @@ function resize() {
     const w = Math.max(1, Math.round(cssW * dpr)), h = Math.max(1, Math.round(cssH * dpr));
     if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w; canvas.height = h;
+        // 6.8.1: Vollbild an/aus, Drehen hoch/quer: ein laufender Flug fliegt weiter. Die Puffer werden für die neue Größe
+        // gerechnet, die vorhandenen Ebenen tragen solange (Welt-Koordinaten). In den nächsten 0,6 s (RC.resizeT) hält die
+        // Tempo-Bremse ihren Wert (sonst bremste sie wegen der neuen Ränder kurz ab) und ein Flugschritt ist höchstens 1/30 s
+        // lang (der Browser lässt beim Umschalten Bilder aus – sonst spränge die Kamera)
+        RC.resizeT = performance.now();
         invalidate('resize');
     }
 }
 window.addEventListener('resize', () => { resize(); });
+// 6.8.1: Vollbild-Wechsel und Drehen kündigen sich an, bevor die Größe sich ändert (macOS/Android lassen beim Umschalten
+// Bilder aus) – ab hier gilt schon die Schonfrist von resize()
+function noteResize() { RC.resizeT = performance.now(); }
+window.addEventListener('orientationchange', () => noteResize());
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', () => noteResize());
 if (window.visualViewport) window.visualViewport.addEventListener('resize', () => resize());
 
 // ------------------------------------------------------------------ Kamera-Hilfen
@@ -297,7 +307,8 @@ const gestures = self.FKGestures.attach(canvas, {
     },
     // 6.8: HUD im Vollbild/Kino-Modus ausgeblendet -> ein Tipp holt es nur zurück (ui.js, API.tapHook), der Flug läuft weiter
     onTap(x, y) { if (API.tapHook && API.tapHook(x, y)) return; if (FLY.on) { pauseFly(); toast(t(FLY.paused ? 'fly_paused' : 'fly_on'), 1400); } else emit('tap'); },
-    onDoubleTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 3); else zoomAt(x, y, 3); },
+    // 6.8.1: HUD im Vollbild/Kino-Modus ausgeblendet -> Doppeltipp = Flug an/aus (ui.js, API.dblTapHook)
+    onDoubleTap(x, y) { if (API.dblTapHook && API.dblTapHook(x, y)) return; stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 3); else zoomAt(x, y, 3); },
     onTwoFingerTap(x, y) { stopFly(); if (V3.on) zoomAt(cssW / 2, cssH / 2, 1 / 3); else zoomAt(x, y, 1 / 3); },
     onOrbit(dx, dy, phase) {
         if (!V3.on) return;
@@ -424,6 +435,8 @@ function viewKey(cam) {
 
 // ------------------------------------------------------------------ Render-Orchestrierung
 const FADE_MS = 220, FADE_MOVE_MS = 150;
+const RESIZE_HOLD = 600;           // 6.8.1: ms nach einer Größenänderung (Vollbild, Drehen) – siehe resize()
+const RESIZE_GOV_HOLD = 1500;      // 6.8.1: so lange hält die Tempo-Bremse danach ihren Wert (neue Ränder werden gerechnet)
 const FEATHER = 12;
 const MAXL = self.FKShaders.NL;            // Ebenen im Display-Pass (8)
 const RC = { front: null, job: null, pjob: null, fading: false, previewDiv: { gpu: 3, cpu: 4 }, lastMoveT: 0, jobSeq: 0,
@@ -856,7 +869,7 @@ function frame(now) {
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
     if (FLY.on && !canFly()) stopFly();
-    if (FLY.on && !FLY.paused) flyUpdate(now, dt);
+    if (FLY.on && !FLY.paused) flyUpdate(now, now - (RC.resizeT || -1e9) < RESIZE_HOLD ? Math.min(dt, 1 / 30) : dt);
     const camChanged = camDirty;
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
@@ -1058,6 +1071,8 @@ const CTX = {
     get recompute() { return recompute; },
     get worldPerCss() { return worldPerCss; },
     get FADE_MOVE_MS() { return FADE_MOVE_MS; },
+    get RESIZE_HOLD() { return RESIZE_HOLD; },
+    get RESIZE_GOV_HOLD() { return RESIZE_GOV_HOLD; },
     get FADE_MS() { return FADE_MS; },
     get MAXL() { return MAXL; },
     get MAXL3() { return MAXL3; },
@@ -1129,9 +1144,9 @@ const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
-    invalidate, resize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
+    invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, fileName, zoomAt, presentNow,
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
-    RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, clearance,
+    RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, dblTapHook: null, clearance,
     // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel
     // einer gültigen Ebene, 0 = Lücke (kein Bild) – für „Nachladen hinter der Kamera“
     coverAt(pts) {

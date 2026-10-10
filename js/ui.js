@@ -515,6 +515,7 @@ $('btn-link').addEventListener('click', shareLink);
 const FS_API = !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
 function toggleFullscreen() {
     const d = document;
+    A.noteResize();                // 6.8.1: ein laufender Flug geht ohne Sprung durch den Wechsel
     if (!FS_API) { setCinema(!HUD.cine); return; }
     if (d.fullscreenElement) d.exitFullscreen && d.exitFullscreen();
     else d.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
@@ -561,7 +562,7 @@ function hudHide(force) {
     if (!force && busy) { HUD.peekT = setTimeout(hudHide, 1000); return; }
     document.body.classList.remove('hud-peek');
 }
-function setCinema(on) { HUD.cine = !!on; hudApply(); }
+function setCinema(on) { A.noteResize(); HUD.cine = !!on; hudApply(); }
 // Tipp auf das Bild: ausgeblendet -> nur zeigen (true = erledigt); sichtbar im Flug -> pausieren wie immer, Zeit neu
 A.tapHook = () => {
     if (!hudless()) return false;
@@ -569,7 +570,13 @@ A.tapHook = () => {
     if (A.FLY.on) hudPeek();
     return false;
 };
-const onFsChange = () => { HUD.fs = !!(document.fullscreenElement || document.webkitFullscreenElement); hudApply(); };
+// 6.8.1: Doppeltipp bei ausgeblendetem HUD = Flug an/aus (sonst wie bisher: hineinzoomen) – im Vollbild/Kino-Modus ohne Knopf
+A.dblTapHook = () => {
+    if (!hudless() || peeking() || !A.canFly()) return false;
+    if (A.FLY.on) A.stopFly(); else A.startFly();
+    return true;
+};
+const onFsChange = () => { A.noteResize(); HUD.fs = !!(document.fullscreenElement || document.webkitFullscreenElement); hudApply(); };
 document.addEventListener('fullscreenchange', onFsChange);
 document.addEventListener('webkitfullscreenchange', onFsChange);
 addEventListener('pointermove', (e) => {
@@ -614,6 +621,8 @@ $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 
 // ------------------------------------------------------------------ Tastatur (Desktop)
+const KEY = { space: false };
+window.addEventListener('keyup', (e) => { if ((e.key === ' ' || e.key === 'Spacebar') && KEY.space) { e.preventDefault(); KEY.space = false; } });
 window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -629,6 +638,14 @@ window.addEventListener('keydown', (e) => {
         if (kl === 'r') { A.reverseFly(); A.saveSettings(); return; }
         if (kl === 'u') { A.turnFly(); return; }
         if (k === 'ArrowUp' || k === 'ArrowDown') { e.preventDefault(); A.setFlySpeed(S.flySpeed + (k === 'ArrowUp' ? 0.1 : -0.1)); A.saveSettings(); return; }
+    }
+    // 6.8.1 Leertaste = Flug an/aus (im aktuellen Modus, auch im Vollbild bei ausgeblendetem HUD); ein fokussierter Knopf
+    // (z. B. Vollbild) wird dabei nicht mit ausgelöst
+    if (k === ' ' || k === 'Spacebar') {
+        e.preventDefault(); KEY.space = true;
+        if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+        if (A.FLY.on) A.stopFly(); else if (A.canFly()) A.startFly();
+        return;
     }
     const pan = (dx, dy) => { A.stopFly(); const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
     switch (k) {
