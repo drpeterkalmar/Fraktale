@@ -69,12 +69,14 @@ root.FKCapture = { create(ctx) {
             P.s = Math.max(vw / W, vh / H);
             P.zEff = 3 / (P.s * canvas.height);           // Zoom, bei dem der Bildschirm Pixel dieser Größe hätte
             const rcpu = S.renderer === 'cpu' || ctx.forceCPU, f = S.formula, z = P.zEff;
+            P.cf = ctx.cformula(); P.X = ctx.xparams(P.cf);          // 7.1: Rechen-Formel + Welt-Parameter
             if (f === 5) { P.dev = z <= ctx.NEWTON_GPU_MAX && !rcpu ? 'gpu' : 'cpu'; P.mode = 'direct'; }
+            else if (ctx.isExo(P.cf)) { P.dev = z <= (P.cf === 28 ? 600 : 2000) && !rcpu ? 'gpu' : 'cpu'; P.mode = 'direct'; }
             else if (z < ctx.DIRECT_MAX && !rcpu) { P.dev = 'gpu'; P.mode = 'direct'; }
             else if (rcpu || !ctx.gpuPerturbOK || z > ctx.GPU_MAX) { P.dev = 'cpu'; P.mode = z < ctx.DIRECT_MAX ? 'direct' : 'perturb'; }
             else { P.dev = 'gpu'; P.mode = 'perturb'; }
             P.maxIter = maxIterFor(S.cam.zoom);
-            P.de = deActive(); P.deMask = deMaskOn(); P.inn = innActive(); P.err = P.dev === 'gpu' && S.precise && f !== 5;
+            P.de = deActive(); P.deMask = deMaskOn(); P.inn = innActive(); P.err = P.dev === 'gpu' && S.precise && f !== 5 && !ctx.isExo(P.cf);
             P.julia = [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)];
         } else if (kind === '3d') {
             const f = H / canvas.height;
@@ -224,7 +226,7 @@ root.FKCapture = { create(ctx) {
                 if (!refUsable(true, true)) { if (!C.refAsked) { C.refAsked = true; requestRefFor(P.cam, null, true); } else if (!REF.pending && now - C.t0 > 30000) throw new Error('ref'); return false; }
                 const r = REF.cur, off = [HP.toNumber(P.cam.cx - r.refXb), HP.toNumber(P.cam.cy - r.refYb)];
                 const need = Math.hypot(off[0], off[1]) + P.s * Math.hypot(P.W, P.H) / 2;
-                if (P.formula !== 1 && r.bla32 && r.blaCmax < need && !C.blaAsked && !r.blaFixed) { C.blaAsked = true; requestBLA(need * 1.05); return false; }
+                if (P.cf !== 1 && r.bla32 && r.blaCmax < need && !C.blaAsked && !r.blaFixed) { C.blaAsked = true; requestBLA(need * 1.05); return false; }
                 P.refId = r.id; P.off = off;
                 P.useBLA = P.dev === 'gpu' ? !!(R.ref && R.ref.bla32 && R.ref.blaCmax >= need) : !!(r.bla64 && r.blaCmax >= need);
                 C.phase = 'tiles';
@@ -384,8 +386,8 @@ root.FKCapture = { create(ctx) {
             const bw = tile.w + 2 * m, bh = tile.h + 2 * m;
             // Puffermitte relativ zur Bildmitte in GL-Pixeln (ganz- oder halbzahlig)
             const pxoff = [tile.gx - m + bw / 2 - P.W / 2, tile.gy - m + bh / 2 - P.H / 2];
-            const job = { key: 'shot', stage: 1, kind: P.dev, mode: P.mode, formula: P.formula, maxIter: P.maxIter, view: P.cam, w: bw, h: bh, scale: P.s,
-                          julia: P.julia, de: P.de, inn: P.inn, err: P.err, pxoff, id: C.id };
+            const job = { key: 'shot', stage: 1, kind: P.dev, mode: P.mode, formula: P.cf, maxIter: P.maxIter, view: P.cam, w: bw, h: bh, scale: P.s,
+                          julia: P.julia, de: P.de, inn: P.inn, err: P.err, pxoff, id: C.id, X: P.X };
             ctx.styleJob(job);              // 7.1 Färbe-Stil wie am Bildschirm
             T.job = job; T.bw = bw; T.bh = bh;
             if (P.dev === 'gpu') {
@@ -468,13 +470,13 @@ root.FKCapture = { create(ctx) {
                 if (fx && (fx.retry.length || fx.sent < fx.chunks.length)) {
                     const k = fx.retry.length ? fx.retry.shift() : fx.sent++;
                     w.busy++;
-                    w.postMessage({ type: 'pixels', jobId: C.id, chunk: k, list: fx.chunks[k], refId: P.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.formula,
+                    w.postMessage({ type: 'pixels', jobId: C.id, chunk: k, list: fx.chunks[k], refId: P.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.cf, X: P.X,
                                     maxIter: P.maxIter, useBLA: !!(REF.cur && REF.cur.bla64) && P.useBLA, offX: P.mode === 'perturb' ? P.off[0] : HP.toNumber(P.cam.cx), offY: P.mode === 'perturb' ? P.off[1] : HP.toNumber(P.cam.cy),
                                     jx: P.julia[0], jy: P.julia[1], inn: P.inn });
                 } else if (job && job.tiles.length) {
                     const tl = job.tiles.shift();
                     w.busy++;
-                    w.postMessage({ type: 'tile', jobId: C.id, refId: job.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.formula, maxIter: P.maxIter, useBLA: job.useBLA,
+                    w.postMessage({ type: 'tile', jobId: C.id, refId: job.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.cf, X: P.X, maxIter: P.maxIter, useBLA: job.useBLA,
                                     de: P.de, inn: P.inn, st: job.st, stp: job.stp, cabs: job.cabs, offX: job.cpuOff[0], offY: job.cpuOff[1], jx: P.julia[0], jy: P.julia[1], x: tl.x + job.ox, y: tl.y + job.oy, w: tl.w, h: tl.h });
                 } else break;
             }

@@ -32,6 +32,7 @@ function tile(q) {
     // 6.1: Distanzschätzung (Code wie GPU) als zweiter Kanal; 7.1 Färbe-Stil: RGBA je Pixel (Distanz, Stil-Wert 16 bit, 0)
     const st = q.st | 0, c4 = st ? 4 : 1;
     C.stSetup(st, q.stp, q.cabs);
+    C.xpSetup(q.X);                       // 7.1 Welt-Parameter (Exoten, Newton-Polynom)
     const deS = q.de ? scale : 0, de = q.de || st ? new Uint8Array(w * h * c4) : null;
     for (let j = 0; j < h; j++) {
         const py = -((y + j) + 0.5 - bufH / 2) * scale;
@@ -58,6 +59,7 @@ function pixels(q) {
     if (perturb && (!ref || ref.id !== q.refId)) { self.postMessage({ type: 'pixels', jobId: q.jobId, chunk: q.chunk, missingRef: true, list }); return; }
     const useBLA = perturb && q.useBLA && ref.bla;
     C.stSetup(0);
+    C.xpSetup(q.X);
     for (let k = 0; k < n; k++) {
         const px = (list[2 * k] + 0.5 - bufW / 2) * scale, py = -(list[2 * k + 1] + 0.5 - bufH / 2) * scale;
         out[k] = perturb ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, 0, q.inn)

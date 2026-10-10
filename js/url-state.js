@@ -21,6 +21,7 @@ root.FKUrlState = { create(ctx) {
         if (S.alpine) p.set('al', S.valley[0]);
         const ou = outParam(); if (ou) p.set('ou', ou);
         const st = styleParam(); if (st) p.set('st', st);
+        const wp = wpParam(); if (wp) p.set('wp', wp);
         // 7.0 Mandelbulb: Kamera (Position, Gieren, Nicken), Exponent, Julia-c; Stil/Nebel/Tiefenunschärfe, wenn nicht Standard
         if (ctx.isRay() && ctx.BULB) {
             p.set('b', ctx.BULB.stateString());
@@ -35,10 +36,12 @@ root.FKUrlState = { create(ctx) {
         if (!h) return false;
         const p = new URLSearchParams(h);
         if (!p.has('x')) return false;
-        const m = Math.max(0, Math.min(9, parseInt(p.get('m') || '0', 10) || 0));
+        const m = Math.max(0, Math.min(ctx.MODE_KEYS.length - 1, parseInt(p.get('m') || '0', 10) || 0));
         S.formula = m;
+        applyWpParam(m, p.get('wp') || '');
         if (p.has('jx')) S.julia = { x: HP.fromString(p.get('jx')), y: HP.fromString(p.get('jy') || '0') };
         if (p.has('p')) S.palette = PAL.indexOf(p.get('p'));
+        else if (ctx.WORLD_PAL[m]) S.palette = PAL.indexOf((S.wpal || {})[m] || ctx.WORLD_PAL[m]);   // 7.1: Palette der Welt
         // der Link beschreibt das Bild vollständig: ohne sc = Schwarz, ohne al = kein Alpin-Look
         applySetColParam(p.get('sc') || '');
         S.alpine = p.has('al');
@@ -79,6 +82,25 @@ root.FKUrlState = { create(ctx) {
         else if (v === 'k') S.outMode = 'black';
         else S.outMode = 'pal';
     }
+    // 7.1 Welt-Parameter im Link: wp=<Schlüssel><Wert>_… nur die vom Standard abweichenden, z. B. wp=v1 (Celtic), wp=e3.5_m1
+    // (Multibrot), wp=sAABAB (Lyapunov), wp=cr0.285_ci0.01 (Phoenix); fehlt = Standard der Welt (alte Links unverändert)
+    function wpParam() {
+        const f = S.formula, d = ctx.WP_DEF[f], w = S.wp[f];
+        if (!d || !w) return '';
+        return Object.keys(d).filter(k => String(w[k]) !== String(d[k])).map(k => k + (typeof d[k] === 'number' ? +(+w[k]).toPrecision(8) : w[k])).join('_');
+    }
+    function applyWpParam(f, v) {
+        const d = ctx.WP_DEF[f];
+        if (!d) return;
+        const o = Object.assign({}, d);
+        for (const part of String(v).split('_')) {
+            const m = /^([a-z]+)(.+)$/.exec(part);
+            if (!m || !(m[1] in d)) continue;
+            if (typeof d[m[1]] === 'number') { const x = parseFloat(m[2].replace(',', '.')); if (isFinite(x)) o[m[1]] = x; }
+            else o[m[1]] = m[2];
+        }
+        S.wp[f] = o;
+    }
     // 7.1 Färbe-Stil im Link: st=<Stil>_<Stärke %>[_<Streifenzahl>] (Seide: Streifenzahl); fehlt = Standard (alte Links unverändert)
     function styleParam() { return S.style > 0 ? S.style + '_' + Math.round(S.stMix * 100) + (S.style === 1 ? '_' + S.stS : '') : ''; }
     function applyStyleParam(v) {
@@ -97,6 +119,6 @@ root.FKUrlState = { create(ctx) {
     }
 
     return { link() { ({ HP, PAL, S, isMoving, setCam } = ctx); },
-             readURL, setColParam, outParam, styleParam, stateURL, syncURL };
+             readURL, setColParam, outParam, styleParam, wpParam, applyWpParam, stateURL, syncURL };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

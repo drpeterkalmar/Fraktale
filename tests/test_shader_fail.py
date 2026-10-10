@@ -12,7 +12,8 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
       kein Toast
   (f) 6.7 TAA- und Bloom-Programm defekt (?taa=1) -> beide aus, 3D läuft ohne Toast
   (g) 7.0 Mandelbulb-Marsch-Shader defekt -> Toast, einfacher Mandelbulb wie bis 6.9 (Bild nicht leer), Drehen geht, Screenshot geht
-Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g]
+  (h) 7.1 Exoten-Shader (Lyapunov) defekt -> Toast, CPU-Rechenweg (f64), Bild fertig und nicht leer
+Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g,h]
 """
 import sys, os, time, json
 sys.path.insert(0, os.path.dirname(__file__))
@@ -210,8 +211,26 @@ def case_g(p):
     a.close()
 
 
+def case_h(p):
+    print('(h) 7.1 Exoten-Shader (Lyapunov) defekt -> CPU-Rechenweg')
+    a = open_app(p, [['#define F 28']])
+    pg = a.page
+    a.wait_done(60)
+    pg.evaluate("() => window.__fraktal.setMode(10)")
+    tx = wait_toast(pg, 30)
+    check('Grafikfehler' in tx, 'Toast: %r' % tx)
+    t, st = a.wait_done(180)
+    check(st['done'] and st['plan']['kind'] == 'cpu', 'fertig auf dem CPU-Rechenweg (%s)' % st['plan'])
+    spread = pg.evaluate("""() => { const A = window.__fraktal; A.snapshot(); const g = A.R.gl, c = A.R.canvas, w = 64, h = 64;
+        const px = new Uint8Array(w * h * 4); g.readPixels((c.width >> 1) - 32, (c.height >> 1) - 32, w, h, g.RGBA, g.UNSIGNED_BYTE, px);
+        let mn = 765, mx = 0; for (let i = 0; i < px.length; i += 4) { const l = px[i] + px[i + 1] + px[i + 2]; mn = Math.min(mn, l); mx = Math.max(mx, l); } return mx - mn; }""")
+    check(spread > 30, 'Bild nicht leer (Spanne %d)' % spread)
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h)]:
         if ONLY and k not in ONLY:
             continue
         try:

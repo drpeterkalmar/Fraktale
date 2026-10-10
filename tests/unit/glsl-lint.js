@@ -32,8 +32,9 @@ function preprocess(src) {
     const out = [], stack = [];   // stack: { active, taken, parentActive }
     const active = () => stack.every(f => f.active);
     const evalExpr = (e) => {
-        const js = e.replace(/defined\s*\(?\s*(\w+)\s*\)?/g, (m, n) => (n in defs ? '1' : '0'))
-            .replace(/\b[A-Za-z_]\w*\b/g, (n) => (n in defs ? '(' + defs[n] + ')' : '0'));
+        let js = e.replace(/defined\s*\(?\s*(\w+)\s*\)?/g, (m, n) => (n in defs ? '1' : '0'));
+        // (7.1: Makros, die auf Makros verweisen – z. B. #define DT (ERR == 1 || DE == 1) – mehrfach einsetzen)
+        for (let k = 0; k < 6 && /[A-Za-z_]/.test(js); k++) js = js.replace(/\b[A-Za-z_]\w*\b/g, (n) => (n in defs ? '(' + defs[n] + ')' : '0'));
         if (!/^[\d\s()+\-*/<>=!&|.]*$/.test(js)) throw new Error('Präprozessor-Ausdruck nicht auswertbar: ' + e);
         return !!Function('return (' + js + ');')();
     };
@@ -91,7 +92,9 @@ function decls(code, kw) {
 function definedFunctions(code) {
     const s = new Set(), re = /(?:^|[;}\n])\s*(?:highp\s+|mediump\s+|lowp\s+)?(\w+)\s+(\w+)\s*\([^;{]*\)\s*\{/g;
     let m;
-    while ((m = re.exec(code))) if (TYPES.has(m[1]) || m[1] === 'void') s.add(m[2]);
+    // (7.1: auch Strukturen als Rückgabetyp, z. B. InSt inStart(…) im Bunt-Kern)
+    const structs = new Set([...code.matchAll(/\bstruct\s+(\w+)/g)].map(x => x[1]));
+    while ((m = re.exec(code))) if (TYPES.has(m[1]) || m[1] === 'void' || structs.has(m[1])) s.add(m[2]);
     return s;
 }
 

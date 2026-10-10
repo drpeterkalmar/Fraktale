@@ -11,11 +11,12 @@ root.FKLayers = { create(ctx) {
     // Inhalt eines Bildes: was es zeigt (unabhängig von Ansicht/Auflösung). Ebenen mit anderem Inhalt
     // (andere Welt, anderes Julia-c, manuelle Iterationen) liegen ganz unten und werden ausgeblendet.
     // 7.1: Färbe-Stil (+ Streifendichte) gehört zum Inhalt – anderer Stil = neue Rechnung
-    function contentSig() { const st = stActive(); return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : '') + (innActive() ? '|in' : '') + (st ? '|st' + st + (st === 1 ? ':' + S.stS : '') : ''); }
+    // 7.1: Welt-Parameter (Rechen-Formel + Parameter, z. B. Burning-Ship-Variante, Exponent, Lyapunov-Folge) ebenso
+    function contentSig() { const st = stActive(); return S.formula + '|' + (S.formula === 1 ? S.julia.x + ',' + S.julia.y : '') + '|' + (S.iterManual ? S.iterValue : 'a') + (deActive() ? '|de' : '') + (innActive() ? '|in' : '') + (st ? '|st' + st + (st === 1 ? ':' + S.stS : '') : '') + '|f' + ctx.xsig(); }
     function makeFrame(job, now) {
         job.buf && (job.kept = true);
         return { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
-                 kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs,
+                 kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs, X: job.X,
                  sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de, inn: !!job.inn, st: job.st | 0 };
     }
     function addLayer(fr, now, moving) {

@@ -111,6 +111,8 @@ uniform vec4 u_stp;        // x: Streifendichte s (ganzzahlig, damit sin(s·arg 
 // erste Aufruf wirkte)
 #if F == 4
 const float ST_P = 3.0;
+#elif F == 23
+#define ST_P u_xp.x
 #else
 const float ST_P = 2.0;
 #endif
@@ -166,6 +168,7 @@ vec2 stEnc(vec3 A, vec2 z) {
 // ---------------------------------------------------------------- COMPUTE
 function computeFS(formula, mode, err, de, inn, st) {
     const F = formula | 0;
+    if (F >= 23) return exoticFS(F, de, st);      // 7.1 Exoten: nur direkt (f32), eigener Rechen-Shader
     const IN = inn && F !== 5 ? 1 : 0;
     const ST = F !== 5 ? (st | 0) : 0;
     const common = `#version 300 es
@@ -228,22 +231,34 @@ ${ST ? STYLE_CORE : ''}
     if (mode === 'direct') return common + `
 uniform vec2 u_center;     // Ansichtsmitte (f32 reicht bis Zoom ~1e3)
 uniform vec2 u_julia;
+#if F == 5
+// 7.1 Newton mit Polynomwahl: p(z) = Σ u_pc[k] z^k (reell, Grad ≤ 8), Wurzeln vorab in JS (Durand–Kerner). Ergebnis:
+// Wurzelindex·1000 + glatte Konvergenzzahl μ (statt flacher Felder): Konvergenz, sobald |z − r| < ε = 10⁻³; zwischen den
+// Schritten in log-Abstand interpoliert, μ = j + 1 − log(ε/e_j)/log(e_{j−1}/e_j) – stetig über die Schrittgrenzen. −1 = keine.
+uniform float u_pc[9];
+uniform int u_pdeg;
+uniform vec2 u_root[8];
+uniform int u_nroot;
 float newton(vec2 z) {
-    for (int j = 0; j < 80; j++) {
-        vec2 z2 = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y);
-        vec2 z3 = cmul(z, z2);
-        vec2 num = 2.0 * z3 + vec2(1.0, 0.0);
-        vec2 den = 3.0 * z2;
-        float d2 = dot(den, den);
+    float ep = 1e30;
+    for (int j = 0; j < 120; j++) {
+        vec2 pv = vec2(u_pc[u_pdeg], 0.0), dp = vec2(0.0);
+        for (int k = u_pdeg - 1; k >= 0; k--) { dp = cmul(dp, z) + pv; pv = cmul(pv, z) + vec2(u_pc[k], 0.0); }
+        float d2 = dot(dp, dp);
         if (d2 < 1e-30) break;
-        z = vec2(dot(num, den), num.y * den.x - num.x * den.y) / d2;
-        vec2 a = z - vec2(1.0, 0.0), b = z - vec2(-0.5, 0.8660254), c = z - vec2(-0.5, -0.8660254);
-        if (dot(a, a) < 1e-6) return float(j) + 1.0;
-        if (dot(b, b) < 1e-6) return float(j) + 1001.0;
-        if (dot(c, c) < 1e-6) return float(j) + 2001.0;
+        z -= vec2(dot(pv, dp), pv.y * dp.x - pv.x * dp.y) / d2;
+        float best = 1e30; int bi = 0;
+        for (int r = 0; r < u_nroot; r++) { vec2 a = z - u_root[r]; float e = dot(a, a); if (e < best) { best = e; bi = r; } }
+        float e = sqrt(best);
+        if (e < 1e-3) {
+            float f = ep < 1e29 && ep > e ? clamp(log(1e-3 / max(e, 1e-30)) / log(ep / max(e, 1e-30)), 0.0, 1.0) : 0.0;
+            return float(bi) * 1000.0 + min(float(j) + 1.0 - f, 998.0);
+        }
+        ep = e;
     }
     return -1.0;
 }
+#endif
 void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;   // (u_pxoff = 0: wie bisher; Kachel: dieselben p wie im ganzen Bild)
     vec2 pos = u_center + p * u_scale;
@@ -314,6 +329,12 @@ void main() {
         z = vec2(z.x * z.x - z.y * z.y, -2.0 * z.x * z.y) + c;
 #elif F == 4
         z = cmul(z, cmul(z, z)) + c;
+#elif F == 20
+        z = vec2(abs(z.x * z.x - z.y * z.y), 2.0 * z.x * z.y) + c;
+#elif F == 21
+        z = vec2(z.x * z.x - z.y * z.y, -2.0 * abs(z.x) * z.y) + c;
+#elif F == 22
+        z = vec2(abs(z.x * z.x - z.y * z.y), abs(2.0 * z.x * z.y)) + c;
 #else
         z = cmul(z, z) + c;
 #endif
@@ -365,6 +386,12 @@ void main() {
                 z = vec2(z.x * z.x - z.y * z.y, -2.0 * z.x * z.y) + c;
 #elif F == 4
                 z = cmul(z, cmul(z, z)) + c;
+#elif F == 20
+                z = vec2(abs(z.x * z.x - z.y * z.y), 2.0 * z.x * z.y) + c;
+#elif F == 21
+                z = vec2(z.x * z.x - z.y * z.y, -2.0 * abs(z.x) * z.y) + c;
+#elif F == 22
+                z = vec2(abs(z.x * z.x - z.y * z.y), abs(2.0 * z.x * z.y)) + c;
 #else
                 z = cmul(z, z) + c;
 #endif
@@ -585,6 +612,24 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
 #elif F == 3
         vec2 t = 2.0 * cmul(Z, dz) + cmul(dz, dz);
         dz = vec2(t.x, -t.y) + c;
+#elif F == 20
+        // 7.1 Celtic: x' = |x² − y²| + cx, y' = 2xy + cy
+        vec2 nd;
+        nd.x = diffabs(Z.x * Z.x - Z.y * Z.y, (2.0 * Z.x + dz.x) * dz.x - (2.0 * Z.y + dz.y) * dz.y);
+        nd.y = 2.0 * (Z.x * dz.y + Z.y * dz.x + dz.x * dz.y);
+        dz = nd + c;
+#elif F == 21
+        // 7.1 Senkrechtes Burning Ship: x' = x² − y² + cx, y' = −2|x|·y + cy
+        vec2 nd;
+        nd.x = (2.0 * Z.x + dz.x) * dz.x - (2.0 * Z.y + dz.y) * dz.y;
+        nd.y = -2.0 * (diffabs(Z.x, dz.x) * (Z.y + dz.y) + abs(Z.x) * dz.y);
+        dz = nd + c;
+#elif F == 22
+        // 7.1 Büffel: x' = |x² − y²| + cx, y' = |2xy| + cy
+        vec2 nd;
+        nd.x = diffabs(Z.x * Z.x - Z.y * Z.y, (2.0 * Z.x + dz.x) * dz.x - (2.0 * Z.y + dz.y) * dz.y);
+        nd.y = 2.0 * diffabs(Z.x * Z.y, Z.x * dz.y + Z.y * dz.x + dz.x * dz.y);
+        dz = nd + c;
 #elif F == 4
         vec2 t = 3.0 * cmul(Z, Z) + 3.0 * cmul(Z, dz) + cmul(dz, dz);
         dz = cmul(dz, t) + c;
@@ -645,6 +690,266 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
 }`;
 }
 
+// ---------------------------------------------------------------- 7.1 EXOTEN (nur direkt, f32; CPU-Gegenstück: fractal-core.js exoticPixel)
+// Gleiches Ausgabeformat wie computeFS: glatte Zahl (≥ 0) bzw. −1 (Menge), R = Distanzschätzung in Pufferpixeln, G/B = Stil.
+//  23 Multibrot z^P + c (P frei, auch gebrochen; Polarform, Hauptzweig)      u_xp.x = P
+//  24 Phoenix z' = z² + c + p·z_{n−1}                                         u_xp = (c, p), u_xq.x = 1: Mandel-Art (c = Pixel)
+//  25 Nova z' = z − R·(z³ − 1)/(3z²) + c                                      u_xp = (R, c.x, c.y, Julia-Art)
+//  26/27 Magnet I/II (Flucht bei |z| > 100, sonst Konvergenz gegen z = 1)
+//  28 Lyapunov (Markus–Lyapunov, logistische Abbildung mit Folge aus A/B)     u_xi = (Folge als Bits, Länge, Vorlauf)
+// Konvergenz (Nova, Magnet): Schrittweite bzw. Abstand e_n < ε, glatt μ = n − log(ε/e_n)/log(e_{n−1}/e_n) (stetig, für lineare
+// wie quadratische Konvergenz); Distanz dort e·|ln e| / |dz/dPixel| (Gegenstück zur Fluchtformel |z|·ln|z| / |dz/dPixel|).
+// Lyapunov: Ableitung von λ nach den Parametern läuft mit (Vorwärtsableitung), Distanz zum Rand λ = 0: |λ| / |∇λ| (Pixel).
+function exoticFS(F, de, st) {
+    const ST = F === 25 || F === 28 ? 0 : (st | 0);
+    return `#version 300 es
+#define F ${F}
+#define DE ${de ? 1 : 0}
+#define ST ${ST}
+${COMMON}
+uniform vec2 u_res;
+uniform vec2 u_pxoff;
+uniform float u_scale;
+uniform int u_maxIter;
+uniform vec2 u_center;
+uniform vec4 u_xp, u_xq;      // Welt-Parameter (js/app.js xparams)
+uniform ivec4 u_xi;
+layout(location = 0) out uint o_it;
+layout(location = 1) out vec4 o_de;
+vec2 cdiv(vec2 a, vec2 b) { return vec2(dot(a, b), a.y * b.x - a.x * b.y) / dot(b, b); }
+float encDE(vec2 z, vec2 Dt, float dex) {
+    float m = max(abs(Dt.x), abs(Dt.y));
+    if (!(m < 3.0e38)) return 1.0 / 255.0;
+    if (m == 0.0) return 1.0;
+    vec2 u = Dt / m;
+    float r = length(z);
+    float e = (log2(r * log(r)) - log2(m) - 0.5 * log2(dot(u, u)) - dex + 8.0) * 16.0;
+    return clamp(floor(e + 0.5), 1.0, 255.0) / 255.0;
+}
+// Distanz in Pufferpixeln direkt kodieren (wie encDE: (log2 d + 8)·16)
+float encPx(float d) {
+    if (!(d < 3.0e38)) return 1.0;
+    if (!(d > 0.0)) return 1.0 / 255.0;
+    return clamp(floor((log2(d) + 8.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
+}
+// Konvergenz: Distanz aus dem Gradienten der glatten Konvergenzzahl μ = n − A/B (A = ln(ε/e_n), B = ln(e_{n−1}/e_n));
+// gn, gp = Ableitung von ln(Abstand) nach dem Pixel (komplex, holomorph) für e_n bzw. e_{n−1}:
+// |∇μ| = |gn·B + A·(gp − gn)| / B², Distanz = 1/(ln2·|∇μ|) – dieselbe Beziehung wie bei der Flucht (μ = n − log2 ln|z|).
+// gn, gp sind um 2^dex skaliert (Ableitungen gegen Überlauf); B ≤ 0: Konvergenz im ersten Schritt -> keine Angabe (weit)
+float encMu(float A, float B, vec2 gn, vec2 gp, float dex) {
+    if (!(B > 1e-6)) return 1.0;
+    vec2 G = gn * B + A * (gp - gn);
+    float m = max(abs(G.x), abs(G.y));
+    if (!(m < 3.0e38)) return 1.0 / 255.0;
+    if (m == 0.0) return 1.0;
+    float l = log2(B * B / 0.6931472) - log2(m) - 0.5 * log2(dot(G / m, G / m)) - dex;
+    return clamp(floor((l + 8.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
+}
+${ST ? STYLE_CORE : ''}
+void main() {
+    vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;
+    vec2 pos = u_center + p * u_scale;
+    float result = -1.0;
+    o_de = vec4(0.0);
+    float dex = 0.0;
+#if F == 23
+    float P = u_xp.x, lnP = log(P);
+    vec2 z = vec2(0.0), c = pos, Dt = vec2(0.0);
+#if ST
+    vec3 sA = stInit(); float cabs = length(pos);
+#endif
+    for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zq = z;
+        float r2 = dot(z, z);
+        vec2 zp1 = vec2(0.0);                                   // z^(P−1), Hauptzweig
+        if (r2 > 0.0) { float a = (P - 1.0) * atan(z.y, z.x); zp1 = exp2((P - 1.0) * 0.5 * log2(r2)) * vec2(cos(a), sin(a)); }
+#if DE
+        Dt = P * cmul(zp1, Dt) + vec2(u_scale, 0.0);
+        if (max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; dex += 60.0; }
+#endif
+        z = cmul(zp1, z) + c;
+#if ST
+        stAdd(sA, z, zq, 1.0, cabs);
+#endif
+        if (dot(z, z) > 256.0) {
+            result = float(n) + 1.0 - log(0.5 * log2(dot(z, z))) / lnP;
+#if DE
+            o_de.r = encDE(z, Dt, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, z);
+#endif
+            break;
+        }
+    }
+#elif F == 24
+    bool mand = u_xq.x > 0.5;
+    vec2 c = mand ? pos : u_xp.xy, pk = u_xp.zw;
+    vec2 z = mand ? vec2(0.0) : vec2(-pos.y, pos.x), zo = vec2(0.0);     // Julia-Art um 90° gedreht: der Phönix steht aufrecht
+    vec2 Dt = mand ? vec2(0.0) : vec2(0.0, u_scale), Do = vec2(0.0);
+#if ST
+    vec3 sA = stInit(); float cabs = length(c);
+#endif
+    // (Werte um 2 verschoben: Flucht schon im ersten Schritt bliebe sonst negativ und erschiene als Menge)
+    if (dot(z, z) > 256.0) {
+        result = max(3.0 - log2(0.5 * log2(dot(z, z))), 0.0);
+#if DE
+        o_de.r = encDE(z, Dt, 0.0);
+#endif
+    } else for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zq = z;
+#if DE
+        vec2 Dn = 2.0 * cmul(z, Dt) + cmul(pk, Do);
+        if (mand) Dn.x += u_scale;
+        Do = Dt; Dt = Dn;
+        if (max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; Do *= 8.6736174e-19; dex += 60.0; }
+#endif
+        vec2 zn = cmul(z, z) + c + cmul(pk, zo);
+        zo = z; z = zn;
+#if ST
+        stAdd(sA, z, zq, 1.0, cabs);
+#endif
+        if (dot(z, z) > 256.0) {
+            result = float(n) + 3.0 - log2(0.5 * log2(dot(z, z)));
+#if DE
+            o_de.r = encDE(z, Dt, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, z);
+#endif
+            break;
+        }
+    }
+#elif F == 25
+    float R = u_xp.x;
+    bool jul = u_xp.w > 0.5;
+    vec2 c = jul ? u_xp.yz : pos;
+    vec2 z = jul ? pos : vec2(1.0, 0.0);
+    vec2 D = jul ? vec2(u_scale, 0.0) : vec2(0.0), Dp = D, wp = vec2(0.0), dwp = vec2(0.0);   // D = dz/dPixel; Schritt davor
+    float ep = 1e30;
+    const float EPS = 1e-4;
+    for (int n = 1; n <= u_maxIter; n++) {
+        vec2 z2 = cmul(z, z), z3 = cmul(z2, z), w = z3 - vec2(1.0, 0.0);
+        if (dot(z2, z2) < 1e-30) break;
+#if DE
+        Dp = D;
+        D = cmul(vec2(1.0 - R, 0.0) + R * cdiv(2.0 * w, 3.0 * z3), D);
+        if (!jul) D.x += u_scale;
+        if (max(abs(D.x), abs(D.y)) > 1e6) { D *= 8.6736174e-19; Dp *= 8.6736174e-19; dwp *= 8.6736174e-19; dex += 60.0; }
+#endif
+        vec2 zn = z - R * cdiv(w, 3.0 * z2) + c;
+        vec2 ws = zn - z;
+        float e = length(ws);
+        z = zn;
+        if (!(dot(z, z) < 1e20)) break;
+        if (e < EPS) {
+            float A = log(EPS / max(e, 1e-30)), B = ep < 1e29 ? log(ep / max(e, 1e-30)) : 0.0;
+            float f = B > 0.0 ? clamp(A / B, 0.0, 1.0) : 0.0;
+            float mu = max(float(n) - f, 0.0);
+            result = 12.0 * log2(1.0 + mu / 12.0);     // langsame Konvergenz gestaucht (sonst Moiré aus vielen Farbrunden je Pixel)
+#if DE
+            o_de.r = encMu(A, B, cdiv(D - Dp, ws), dot(wp, wp) > 0.0 ? cdiv(dwp, wp) : vec2(0.0), dex);
+#endif
+            break;
+        }
+        ep = e;
+#if DE
+        wp = ws; dwp = D - Dp;
+#endif
+    }
+#elif F == 26 || F == 27
+    vec2 c = pos, z = vec2(0.0), D = vec2(0.0), Dp = vec2(0.0), zp1 = vec2(-1.0, 0.0);
+    vec2 c1 = c - vec2(1.0, 0.0), c2 = c - vec2(2.0, 0.0);
+#if ST
+    vec3 sA = stInit(); float cabs = length(c);
+#endif
+    float ep = 1e30;
+    const float EPS = 1e-4;
+    for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zq = z;
+#if F == 26
+        vec2 A = cmul(z, z) + c1, B = 2.0 * z + c2;
+        vec2 Az = 2.0 * z, Bz = vec2(2.0, 0.0), Ac = vec2(1.0, 0.0);
+#else
+        vec2 cc = cmul(c1, c2);
+        vec2 A = cmul(z, cmul(z, z)) + 3.0 * cmul(c1, z) + cc;
+        vec2 B = 3.0 * cmul(z, z) + 3.0 * cmul(c2, z) + cc + vec2(1.0, 0.0);
+        vec2 Az = 3.0 * cmul(z, z) + 3.0 * c1, Bz = 6.0 * z + 3.0 * c2, Ac = 3.0 * z + 2.0 * c - vec2(3.0, 0.0);
+#endif
+        if (dot(B, B) < 1e-30) break;
+        vec2 q = cdiv(A, B);
+#if DE
+        vec2 B2 = cmul(B, B);
+        vec2 qz = cdiv(cmul(Az, B) - cmul(A, Bz), B2), qc = cdiv(cmul(Ac, B - A), B2);
+        Dp = D;
+        D = 2.0 * cmul(q, cmul(qz, D) + qc * u_scale);
+        if (max(abs(D.x), abs(D.y)) > 1e6) { D *= 8.6736174e-19; Dp *= 8.6736174e-19; dex += 60.0; }
+#endif
+        z = cmul(q, q);
+#if ST
+        stAdd(sA, z, zq, 1.0, cabs);
+#endif
+        if (dot(z, z) > 1e4) {                       // Flucht (|z| > 100)
+            result = float(n) + 1.0 - log2(log(dot(z, z)) / log(1e4));
+#if DE
+            o_de.r = encDE(z, D, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, z);
+#endif
+            break;
+        }
+        float e = length(z - vec2(1.0, 0.0));         // Konvergenz gegen z = 1
+        if (e < EPS) {
+            float A = log(EPS / max(e, 1e-30)), B = ep < 1e29 ? log(ep / max(e, 1e-30)) : 0.0;
+            float f = B > 0.0 ? clamp(A / B, 0.0, 1.0) : 0.0;
+            result = max(float(n) - f, 0.0);
+#if DE
+            o_de.r = encMu(A, B, cdiv(D, z - vec2(1.0, 0.0)), cdiv(Dp, zp1), dex);
+#endif
+            break;
+        }
+        ep = e;
+        zp1 = z - vec2(1.0, 0.0);
+    }
+#elif F == 28
+    float ra = pos.x, rb = pos.y;
+    int bits = u_xi.x, L = max(u_xi.y, 1), warm = u_xi.z;
+    int N = clamp(u_maxIter, 100, 4000);
+    float x = 0.5, dxa = 0.0, dxb = 0.0, lam = 0.0, la = 0.0, lb = 0.0;
+    int k = 0;
+    bool bad = false;
+    for (int i = 0; i < warm + N; i++) {
+        bool isB = ((bits >> k) & 1) == 1;
+        k = k + 1 == L ? 0 : k + 1;
+        float r = isB ? rb : ra;
+        float q = 1.0 - 2.0 * x, g = r * q;
+        if (i >= warm) {
+            lam += log(max(abs(g), 1e-30));
+            float iq = abs(q) > 1e-12 ? 1.0 / q : 0.0;
+            la += (isB ? 0.0 : 1.0 / r) - 2.0 * dxa * iq;
+            lb += (isB ? 1.0 / r : 0.0) - 2.0 * dxb * iq;
+        }
+        float h = x * (1.0 - x);
+        dxa = g * dxa + (isB ? 0.0 : h);
+        dxb = g * dxb + (isB ? h : 0.0);
+        if (max(abs(dxa), abs(dxb)) > 1e18) { dxa *= 1e-18; dxb *= 1e-18; bad = true; }
+        x = r * h;
+        if (!(abs(x) < 1e10)) { bad = true; lam = 1e10; break; }
+    }
+    lam /= float(N);
+    if (lam < 0.0) {
+        result = u_xp.x * (1.0 - exp(lam));          // ein weicher Verlauf: Rand (λ = 0) -> 0, superstabil (λ -> −∞) -> u_xp.x
+#if DE
+        float gl = length(vec2(la, lb)) / float(N) * u_scale;
+        o_de.r = bad ? 1.0 / 255.0 : encPx(-lam / max(gl, 1e-30));
+#endif
+    }
+#endif
+    o_it = floatBitsToUint(result);
+}`;
+}
+
 // ---------------------------------------------------------------- DISPLAY
 // Bis zu NL Iterationspuffer ("Ebenen"), von app.js nach Schärfe sortiert (schärfste oben). Jede Ebene
 // wird auf die aktuelle Kamera reprojiziert und mit Deckkraft = gefederte Abdeckung × Einblendung
@@ -672,12 +977,12 @@ const PAL_GLSL = `vec3 palette(float t) {
 
 vec3 exteriorColor(float v) {
     if (u_formula == 5) {
-        int root = int(v / 1000.0);
-        float it = mod(v, 1000.0);
-        float t = sqrt(it / float(u_maxIter)) * 3.0;
-        vec3 rc = root == 0 ? vec3(0.9, 0.2, 0.2) : (root == 1 ? vec3(0.2, 0.9, 0.2) : vec3(0.3, 0.4, 0.9));
-        vec3 col = vec3(1.0) - mix(rc, palette(t + u_cycle), 0.6);
-        return clamp(col * 0.9, 0.0, 1.0);
+        // 7.1 Newton: Wurzel -> Platz in der Palette (Goldener Schnitt: Nachbarn weit auseinander), Helligkeit nach der glatten
+        // Konvergenzzahl (schnell = hell, langsam = dunkel, dabei wandert der Ton) – statt flacher Felder. (Knapp gehalten: eine
+        // Palette-Abfrage, kein exp2 – sonst kostete der Anzeige-Pass mit 8 Ebenen in allen Welten +0,35 ms, gemessen)
+        float root = floor(v / 1000.0), it = mod(v, 1000.0);
+        float t = sqrt(it / float(u_maxIter)) * 3.0 * u_density;
+        return palette(root * 0.618034 + 0.08 + u_cycle + t * 0.12) * clamp(1.05 - t * 0.6, 0.1, 1.0);
     }
     if (u_banded == 1) v = floor(v);
     return palette(v * 0.08 * u_density + u_cycle);
@@ -720,6 +1025,7 @@ vec3 inCol(float v, vec3 vc) {
 
 // Iterationswert als Höhe fürs Relief (log staucht die Randzonen)
 float heightOf(float v) { return log2(1.0 + max(v, 0.0)); }
+float heightN(float v) { return u_formula == 5 ? log2(1.0 + mod(max(v, 0.0), 1000.0)) * 3.0 : heightOf(v); }   // 7.1 Newton: je Wurzel
 
 // Dekodierung: <= -3 markiert-außen (mu = -v-4), -2 markiert-innen, -1 innen
 float fetchV(usampler2D t, ivec2 c) {
@@ -781,7 +1087,13 @@ vec4 styleHeight(vec4 a) {
     return -max(a * 32.0 - 24.0 + 5.0, vec4(0.0)) * (0.12 * u_stMix);
 }
 `;
-const DISPLAY_FS = `#version 300 es
+const STYLE_STUB = `
+vec3 extC(float v, float a) { return exteriorColor(v); }
+vec4 styleHeight(vec4 a) { return vec4(0.0); }
+`;
+// 7.1: zwei Varianten – ohne Stil (STY 0: Code wie bis 7.0, gleich schnell) und mit Stil (STY 1); die App wählt je Bild
+function displayFS(sty) { return `#version 300 es
+#define STY ${sty ? 1 : 0}
 ${COMMON}
 ${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
 ${Array.from({ length: NL }, (_, i) => `uniform sampler2D u_d${i};`).join('\n')}
@@ -804,11 +1116,15 @@ uniform int u_particles, u_banded;
 uniform vec3 u_setCol;          // 6.2: Farbe der Menge (Schwarz = vec3(0, 0, 0.015) wie bis 6.1)
 uniform int u_outM;             // 6.9 Außen: 0 = Palette (wie bisher), 1 = Grenznah, 2 = Schwarz („Unendlichkeit schwarz“)
 uniform float u_outW;           // 6.9 Grenznah: Saumbreite in Zielpixeln (bei diesem Abstand zur Menge noch 1/4 Helligkeit)
-uniform int u_style;            // 7.1 Färbe-Stil (0 = Standard wie bis 7.0; Werte im G/B-Kanal des DE-Ziels, siehe STYLE_CORE)
+#if STY
+uniform int u_style;            // 7.1 Färbe-Stil (Werte im G/B-Kanal des DE-Ziels, siehe STYLE_CORE)
 uniform float u_stMix;          // 7.1 Stärke des Stils 0..1
 uniform float u_stG;            // 7.1 Kontrast der Mittelwert-Stile (Abweichung vom Mittel 0,5 × u_stG)
 uniform float u_acc[${NL}];     // 7.1 je Ebene: 1 = hat den Stil-Kanal (sonst Standard-Färbung, z. B. Ebenen von vor dem Umschalten)
 int g_st = 0;                   // Stil der gerade gefärbten Ebene
+#else
+const int g_st = 0;
+#endif
 out vec4 fragColor;
 // 6.9: Helligkeit der Außenfarbe dieses Bildpunkts (1 = Palette; je Pixel in sampleLayerN gesetzt). Grenznah: aus der
 // Distanzschätzung in Zielpixeln – dieselbe Saumbreite bei jedem Zoom, glatt (bilinear interpolierte Distanz, exp-Abfall)
@@ -821,10 +1137,10 @@ float rimShade(float d00, float d10, float d01, float d11, vec2 f, float pxPerTe
     return 1.0 - 0.5 * smoothstep(0.35, 0.8, sl) * (1.0 - smoothstep(1.25, 4.0, d));
 }
 
-${PAL_GLSL}${STYLE_GLSL}
+${PAL_GLSL}${sty ? STYLE_GLSL : STYLE_STUB}
 vec4 g_relA = vec4(0.0);        // 7.1: Stil-Werte der vier Texel (Relief: Streifen/Falten als Höhe)
 vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
-    float h00 = heightOf(v00), h10 = heightOf(v10), h01 = heightOf(v01), h11 = heightOf(v11);
+    float h00 = heightN(v00), h10 = heightN(v10), h01 = heightN(v01), h11 = heightN(v11);
     if (g_st > 0) { vec4 hs = styleHeight(g_relA); h00 += hs.x; h10 += hs.y; h01 += hs.z; h11 += hs.w; }
     vec2 g = vec2(mix(h10 - h00, h11 - h01, f.y), mix(h01 - h00, h11 - h10, f.x));
     g /= max(kx, 1e-6);                   // Gradient pro Texel -> pro Zielpixel normieren
@@ -848,7 +1164,7 @@ vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 v
     vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : extC(v01, g_relA.z) * g_outK;
     vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : extC(v11, g_relA.w) * g_outK;
     vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
-    if (u_relief > 0.0 && u_formula != 5 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
+    if (u_relief > 0.0 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
         col = relief(col, v00, v10, v01, v11, f, kx);
     return col;
 }
@@ -888,8 +1204,10 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
     ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
     float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
     float dm = 0.0, rim = 1.0;
+#if STY
     g_st = acc > 0.5 ? u_style : 0;
     if (g_st > 0) g_relA = vec4(fetchA(dtex, i0), fetchA(dtex, ivec2(i1.x, i0.y)), fetchA(dtex, ivec2(i0.x, i1.y)), fetchA(dtex, i1));
+#endif
     // 6.4: Mengenfarbe dieses Pixels = Innenfarben der Innentexel (bilinear); keine Innentexel -> Mengenfarbe (Saum)
     if (u_inMode > 0) {
         vec4 wq = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y) * (1.0 - step(0.0, vec4(v00, v10, v01, v11)));
@@ -947,7 +1265,7 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
         for (int i = 0; i < 4; i++) if (v[i] >= 0.0) c += wb[i] * extC(v[i], g_relA[i]);
         col = c / wo * g_outK;
     }
-    if (u_relief > 0.0 && u_formula != 5 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
+    if (u_relief > 0.0 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
     col = mix(col * rim, voidCol, max(dm, smoothstep(0.15, 0.85, inside)));
     return col;
 }
@@ -982,7 +1300,7 @@ void main() {
     // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
     vec3 acc = vec3(0.0);
     float T = 1.0;
-${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, u_acc[${i}], w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
+${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, ${sty ? `u_acc[${i}]` : '0.0'}, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
     col = acc + T * col;
     // Sättigung, Vignette, Gamma wie v4
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -991,7 +1309,8 @@ ${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float
     col *= 1.0 - dot(vv, vv) * 0.25;
     col = pow(max(col, vec3(0.0)), vec3(0.92));
     fragColor = vec4(col, 1.0);
-}`;
+}`; }
+const DISPLAY_FS = displayFS(false), DISPLAY_FS_ST = displayFS(true);
 
 // ---------------------------------------------------------------- MANDELBULB (3D, direkt Farbe)
 const BULB_FS = `#version 300 es
@@ -1132,5 +1451,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, DISPLAY_FS, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

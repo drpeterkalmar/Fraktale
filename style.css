@@ -174,6 +174,13 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: v
 /* 7.1 Look: Stil-Wahl als Raster (7 Stile, 4 je Zeile) */
 .seg-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
 .seg-grid button { height: 48px; min-width: 0; padding: 0 2px; }
+.seg-grid.c3 { grid-template-columns: repeat(3, 1fr); }
+.seg-grid.c2 { grid-template-columns: repeat(2, 1fr); }
+/* 7.1 Modus-Wähler in Gruppen */
+.mode-group { grid-column: 1 / -1; margin: 10px 2px 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); font-weight: 650; }
+.mode-group:first-child { margin-top: 0; }
+#wp-body .seg { margin-bottom: 10px; }
+#wp-body input.seq { width: 100%; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); color: #fff; padding: 0 12px; font-family: var(--mono); font-size: 16px; letter-spacing: .08em; box-sizing: border-box; }
 
 /* Farben */
 .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

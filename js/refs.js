@@ -65,7 +65,7 @@ root.FKRefs = { create(ctx) {
     function requestRefFor(tg, pfKey, want64 = true, nonce) {
         const s = 3 / (tg.zoom * ctx.cssH);
         const q = {
-            type: 'ref', id: 0, formula: S.formula,
+            type: 'ref', id: 0, formula: ctx.cformula(),
             cx: tg.cx.toString(), cy: tg.cy.toString(),
             jx: S.julia.x.toString(), jy: S.julia.y.toString(),
             zoom: tg.zoom, maxIter: S.iterManual ? S.iterValue : autoIter(tg.zoom * 16),
@@ -102,7 +102,7 @@ root.FKRefs = { create(ctx) {
     // taugt die aktuelle Referenz für diese Ansicht? strict: frisch genug für das finale Bild
     function refUsable(strict, want64) {
         const r = REF.cur;
-        if (!r || r.formula !== S.formula) return false;
+        if (!r || r.formula !== ctx.cformula()) return false;
         if (S.formula === 1 && (r.jx !== S.julia.x.toString() || r.jy !== S.julia.y.toString())) return false;
         if (want64 && !r.orbit64) return false;
         const [hw, hh] = viewHalf();

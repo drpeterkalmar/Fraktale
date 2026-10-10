@@ -19,7 +19,7 @@ with sync_playwright() as p:
     a.open(); pg = a.page
     pg.evaluate("() => document.body.classList.add('immersive')")
     pg.wait_for_timeout(800)
-    for i in range(10):
+    for i in range(pg.evaluate("() => window.__fraktal.MODE_KEYS.length")):
         if only and f'm{i}' not in only: continue
         pg.evaluate(f"() => window.__fraktal.setMode({i})")
         if i in (6, 8, 9):

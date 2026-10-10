@@ -1,0 +1,222 @@
+{
+ "A": {
+  "Lyapunov AB": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 267,
+   "maxd": 0.012,
+   "formula": 28,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 57.1,
+   "sec": 1.0
+  },
+  "Lyapunov Zirkon": {
+   "ok": 0.9833333333333333,
+   "inside": 0.9833333333333333,
+   "n": 300,
+   "both": 187,
+   "maxd": 0.028,
+   "formula": 28,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 69.1,
+   "sec": 1.0
+  },
+  "Phoenix Julia": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 292,
+   "maxd": 0.789,
+   "formula": 24,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 47.9,
+   "sec": 1.2
+  },
+  "Phoenix Mandel": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 260,
+   "maxd": 0,
+   "formula": 24,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 77.7,
+   "sec": 1.2
+  },
+  "Nova Mandel": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 297,
+   "maxd": 0.039,
+   "formula": 25,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 53.9,
+   "sec": 1.5
+  },
+  "Nova Julia": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 300,
+   "maxd": 0.945,
+   "formula": 25,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 58.9,
+   "sec": 1.3
+  },
+  "Magnet I": {
+   "ok": 0.98,
+   "inside": 1,
+   "n": 300,
+   "both": 218,
+   "maxd": 12.765,
+   "formula": 26,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 72.8,
+   "sec": 1.0
+  },
+  "Magnet II": {
+   "ok": 0.9966666666666667,
+   "inside": 1,
+   "n": 300,
+   "both": 216,
+   "maxd": 2.693,
+   "formula": 27,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 53.0,
+   "sec": 1.2
+  },
+  "Multibrot 3,5": {
+   "ok": 0.9933333333333333,
+   "inside": 1,
+   "n": 300,
+   "both": 186,
+   "maxd": 80.019,
+   "formula": 23,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 40.4,
+   "sec": 1.4
+  },
+  "Multibrot 5": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 154,
+   "maxd": 0.008,
+   "formula": 23,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 40.7,
+   "sec": 1.3
+  },
+  "Newton z³−1": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 300,
+   "maxd": 0.017,
+   "formula": 5,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 35.7,
+   "sec": 1.3
+  },
+  "Newton z³−2z+2": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 299,
+   "maxd": 0.002,
+   "formula": 5,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 29.4,
+   "sec": 1.3
+  },
+  "Newton z⁸+15z⁴−16": {
+   "ok": 0.9933333333333333,
+   "inside": 1,
+   "n": 300,
+   "both": 300,
+   "maxd": 0.08,
+   "formula": 5,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 45.5,
+   "sec": 1.2
+  },
+  "Celtic": {
+   "ok": 0.9933333333333333,
+   "inside": 0.9933333333333333,
+   "n": 300,
+   "both": 267,
+   "maxd": 0.011,
+   "formula": 20,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 50.6,
+   "sec": 1.6
+  },
+  "Senkrecht": {
+   "ok": 1,
+   "inside": 1,
+   "n": 300,
+   "both": 261,
+   "maxd": 0,
+   "formula": 21,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 52.2,
+   "sec": 1.4
+  },
+  "Büffel": {
+   "ok": 0.9933333333333333,
+   "inside": 1,
+   "n": 300,
+   "both": 239,
+   "maxd": 108.117,
+   "formula": 22,
+   "kind": "gpu",
+   "mode": "direct",
+   "std": 53.2,
+   "sec": 1.5
+  }
+ },
+ "B": {
+  "Celtic": {
+   "good": 0.47,
+   "ok": 0.9468085106382979,
+   "n": 400,
+   "kind": "gpu",
+   "mode": "perturb",
+   "sec": 1.7
+  },
+  "Senkrecht": {
+   "good": 0.69,
+   "ok": 1,
+   "n": 400,
+   "kind": "gpu",
+   "mode": "perturb",
+   "sec": 1.7
+  },
+  "Büffel": {
+   "good": 0.5375,
+   "ok": 0.958139534883721,
+   "n": 400,
+   "kind": "gpu",
+   "mode": "perturb",
+   "sec": 1.7
+  }
+ }
+}

@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.0';
+const APP_VERSION = '7.1.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -22,12 +22,72 @@ const DIRECT_MAX = 1000;        // bis hier direkte f32-Iteration auf der GPU (P
 const GPU_MAX = 1e30;           // f32-Perturbation (Deltas bis ~1e-35 darstellbar)
 const DEEP_MAX = 1e290;         // CPU-f64-Perturbation
 const NEWTON_GPU_MAX = 3000;
-const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6, 1e7, 1e7];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
-const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot', 'mandelbox', 'menger'];
+const EXO_GPU_MAX = 2000;       // 7.1 Exoten (direkt in f32)
+const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6, 1e7, 1e7, 1e12, 1e13, 1e13, 1e13];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
+const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot', 'mandelbox', 'menger', 'lyapunov', 'phoenix', 'nova', 'magnet'];
+// 7.1: Welten-Gruppen im Modus-Wähler
+const MODE_GROUPS = [['grp_classic', [0, 1, 2, 3, 4, 5]], ['grp_exotic', [10, 11, 12, 13]], ['grp_3d', [6, 8, 9]], ['grp_light', [7]]];
 // 7.0: Strahlen-Welten (3D-Fraktale per Raymarching, js/bulb.js): Mandelbulb, Mandelbox, Menger-Schwamm
 const RAY = [6, 8, 9];
 const isRay = (f) => RAY.includes(f === undefined ? S.formula : f);
-const MODE_HOME = [['-0.5', '0', 1], ['0', '0', 1], ['-0.5', '-0.5', 1], ['-0.3', '0', 1], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1], ['-0.5', '0', 1], ['0', '0', 1], ['0', '0', 1]];
+// 7.1: Rechen-Formel aus Welt + Parametern (Burning-Ship-Familie 20–22, Multibrot frei 23, Phoenix 24, Nova 25, Magnet 26/27,
+// Lyapunov 28 – siehe js/shaders.js exoticFS, js/fractal-core.js exoticPixel). Multibrot mit Exponent 3 bzw. 2 = z³ bzw.
+// Mandelbrot mit Deep Zoom (Perturbation + BLA); gebrochene Exponenten und Morph nur direkt (f32, dann CPU f64)
+function cformula(f) {
+    f = f === undefined ? S.formula : f;
+    const w = S.wp[f] || {};
+    switch (f) {
+        case 2: return [2, 20, 21, 22][w.v | 0] || 2;
+        case 4: { const e = +w.e || 3; return w.m ? 23 : e === 3 ? 4 : e === 2 ? 0 : 23; }
+        case 10: return 28;
+        case 11: return 24;
+        case 12: return 25;
+        case 13: return w.v ? 27 : 26;
+    }
+    return f;
+}
+const isExo = (cf) => cf >= 23;                                    // nur direkt gerechnet
+const hasSetW = (f) => f < 5 || (f >= 10 && f <= 13);              // 2D-Welten mit „Menge“ (Außen, Menge glatt)
+const is2dW = (f) => !RAY.includes(f) && f !== 7;                  // 2D-Welten mit Iterationspuffer
+const MODE_HOME = [['-0.5', '0', 1], ['0', '0', 1], ['-0.5', '-0.5', 1], ['-0.3', '0', 1], ['0', '0', 1], ['0', '0', 1], ['0', '0', 1], ['-0.5', '0', 1], ['0', '0', 1], ['0', '0', 1],
+                   ['3', '3', 1.5], ['0', '0', 0.45, [4.6, 2.4]], ['-0.3', '0', 0.8], ['1.2', '0', 0.55]];
+// 7.1: Startzoom passend zum Seitenverhältnis, wenn die Welt eine Ausdehnung [Breite, Höhe] angibt (Phoenix: breit)
+function homeZoom(f) { const h = MODE_HOME[f]; if (!h[3]) return h[2]; return 3 / Math.max(h[3][1], h[3][0] * cssH / Math.max(1, cssW)); }
+// 7.1 Welt-Parameter (Exoten, Burning-Ship-Familie, Multibrot, Newton-Polynom): Standard je Welt; die aktuellen Werte stehen in S.wp,
+// gehören zum Bildinhalt (contentSig), zum Link (wp=) und zu „Ansicht merken“
+const WP_DEF = {
+    2: { v: 0 },                                       // Burning Ship: 0 Schiff, 1 Celtic, 2 senkrecht, 3 Büffel
+    4: { e: 3, m: 0 },                                 // Multibrot: Exponent 2–8 (3 = z³ mit Deep Zoom), Morph an/aus
+    5: { p: 0 },                                       // Newton: Polynom (fractal-core.js NEWTON_POLYS)
+    10: { s: 'AB' },                                   // Lyapunov: Folge aus A/B
+    11: { v: 0, cr: 0.5667, ci: 0, pr: -0.5, pi: 0 },  // Phoenix: 0 Julia-Art, 1 Mandel-Art; c, p
+    12: { v: 0, r: 1, cr: -0.2, ci: 0.4 },             // Nova: 0 Mandel-Art (c = Pixel), 1 Julia-Art; Relaxation R; c
+    13: { v: 0 },                                      // Magnet: 0 Typ I, 1 Typ II
+};
+// 7.1 Sehenswürdigkeiten je Welt (kuratiert per tools/scout.js + Sichtprüfung, Bilder tests/shots/v71): Name = t('sight_' + k),
+// Vorschaubild assets/sights/<k>.jpg; wp = Welt-Parameter, pal = Palette, mit der der Ort gedacht ist (nur beim Anfliegen aus der Liste)
+const SIGHTS = {
+    10: [{ k: 'lya_zircon', cx: '3.7', cy: '2.95', zoom: 3.2, wp: { s: 'BBBBBBAAAAAA' } },
+         { k: 'lya_aabab', cx: '3.3', cy: '3.3', zoom: 2.5, wp: { s: 'AABAB' } },
+         { k: 'lya_abbab', cx: '3.3', cy: '3.4', zoom: 2, wp: { s: 'ABBAB' } },
+         { k: 'lya_bbabaa', cx: '3.3', cy: '3.3', zoom: 2, wp: { s: 'BBABAA' } },
+         { k: 'lya_ab', cx: '3.1', cy: '3.6', zoom: 3, wp: { s: 'AB' } }],
+    11: [{ k: 'phx_federn', cx: '0.78125', cy: '0.520833', zoom: 7.2 },
+         { k: 'phx_fluegel', cx: '0.885417', cy: '0.3125', zoom: 7.2 },
+         { k: 'phx_locken', cx: '0.690104', cy: '0.546875', zoom: 28.8 },
+         { k: 'phx_spirale', cx: '0.950521', cy: '0.494792', zoom: 28.8 }],
+    12: [{ k: 'nova_insel', cx: '-0.2372396', cy: '0.3255208', zoom: 57.6 },
+         { k: 'nova_kette', cx: '-0.3023438', cy: '0.2473958', zoom: 57.6 },
+         { k: 'nova_tief', cx: '-0.3690755', cy: '0.0488281', zoom: 230.4 },
+         { k: 'nova_julia', cx: '0', cy: '0', zoom: 1, wp: { v: 1 } }],
+    13: [{ k: 'mag_riff', cx: '0.0947088068', cy: '-1.0600142045', zoom: 140.8, wp: { v: 0 } },
+         { k: 'mag_seepferd', cx: '-0.1742897727', cy: '-0.7883522727', zoom: 35.2, wp: { v: 0 } },
+         { k: 'mag_spiralen', cx: '1.3384943182', cy: '-0.5326704545', zoom: 35.2, wp: { v: 1 } },
+         { k: 'mag_perlen', cx: '1.2745738636', cy: '-0.2769886364', zoom: 35.2, wp: { v: 1 } }],
+};
+for (const f in SIGHTS) for (const s of SIGHTS[f]) { s.formula = +f; s.key = 'sight_' + s.k; }
+// Standardpalette je neuer Welt (die klassischen Welten teilen sich die gewählte Palette wie bisher)
+const WORLD_PAL = { 10: 'gold', 11: 'ice', 12: 'cosmic', 13: 'aurora' };
 
 function autoIter(zoom) { const l = Math.log10(zoom + 1); return Math.min(30000, Math.max(300, Math.floor(l * l * 50))); }
 
@@ -45,6 +105,7 @@ const S = {
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
     outMode: 'pal', edgeW: 16,                                              // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
     style: 0, stMix: 0.85, stS: 5,                                          // 7.1: Färbe-Stil (0 Standard … 6 Stängel), Stärke, Streifendichte
+    wp: {}, wpal: {},                                                       // 7.1: Welt-Parameter, Palette je Welt
     bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false,             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
@@ -62,7 +123,7 @@ function deActive() { return (S.deOn || S.outMode === 'edge') && S.formula !== 5
 function deMaskOn() { return S.deOn && S.formula !== 5; }
 // 6.9 Außen: 0 Palette, 1 Grenznah, 2 Schwarz – in den 2D-Welten mit Menge und (7.0) im Mandelbulb (Hintergrund: Verlauf /
 // Leuchten nahe der Oberfläche / schwarz); nicht Newton, Buddhabrot
-function outActive() { return S.formula < 5 || isRay() ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
+function outActive() { return hasSetW(S.formula) || isRay() ? ({ edge: 1, black: 2 }[S.outMode] || 0) : 0; }
 function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
 // 7.1 Färbe-Stil: wirkt in den 2D-Welten mit Fluchtzeit (Mandelbrot, Julia, Burning Ship, Tricorn, z³) – nicht Newton,
 // 3D-Fraktale, Buddhabrot. Rechen-Variante + Puffer mit Stil-Kanal (js/renderer.js), Parameter: Streifendichte, Kreisradius
@@ -70,7 +131,42 @@ function aaFrames() { return S.aa ? (S.quality === 'eco' ? 4 : 8) : 0; }
 // (Mess-Regler ?stk=, ?stf=, ?stg=)
 // gewählt: Seide K = 10, Kontrast 3 (K = 24 wirkte im Deep Zoom flau, K = 4 unruhig); Dreieck K = 6, Kontrast 2,5
 const ST_TUNE = { K: [0, +Q.get('stk') || 10, +Q.get('stk') || 6, 0, 0, 0, 0], F: +Q.get('stf') || 0.32, G: [1, +Q.get('stg') || 3, +Q.get('stg') || 2.5, 1, 1, 1, 1] };
-function stActive() { return S.style > 0 && S.style <= 6 && S.formula < 5 ? S.style | 0 : 0; }
+function stActive() { return S.style > 0 && S.style <= 6 && styleOK() ? S.style | 0 : 0; }
+// 7.1: Stile in den Welten mit Fluchtzeit – klassisch (außer Newton), Burning-Ship-Familie, Multibrot, Phoenix, Magnet
+function styleOK(f) { f = f === undefined ? S.formula : f; return f < 5 || f === 11 || f === 13; }
+// Welt-Parameter für Rechen-Shader (u_xp, u_xq, u_xi, Newton-Polynom) und CPU-Worker (fractal-core.js xpSetup)
+const polyCache = {};
+function xparams(cf) {
+    const w = S.wp[S.formula] || {};
+    if (cf === 5) { const i = (S.wp[5] || {}).p | 0; return { poly: polyCache[i] || (polyCache[i] = self.FKCore.newtonPoly(i)) }; }
+    if (cf === 23) return { xp: [mexpNow(), 0, 0, 0] };
+    if (cf === 24) return { xp: [+w.cr, +w.ci, +w.pr, +w.pi], xq: [w.v ? 1 : 0, 0, 0, 0] };
+    if (cf === 25) return { xp: [+w.r || 1, +w.cr, +w.ci, w.v ? 1 : 0] };
+    if (cf === 28) { const q = lyaSeq(w.s); return { xp: [8, 0, 0, 0], xi: [q.bits, q.len, 100, 0] }; }
+    return null;
+}
+// Lyapunov-Folge: nur A/B, 1–24 Zeichen (Bits: B = 1)
+function lyaSeq(s) {
+    s = String(s || 'AB').toUpperCase().replace(/[^AB]/g, '').slice(0, 24) || 'AB';
+    let bits = 0;
+    for (let i = 0; i < s.length; i++) if (s[i] === 'B') bits |= 1 << i;
+    return { s, bits, len: s.length };
+}
+// Multibrot-Exponent jetzt (Morph: schwingt weich zwischen 2 und 6, eine Runde in ~50 s)
+// (das Bild folgt so schnell, wie gerechnet wird: der Exponent geht erst weiter, wenn eine Vorschau für den aktuellen steht)
+const MORPH = { ph: 0, e: 3 };
+function mexpNow() { const w = S.wp[4] || {}; return w.m ? MORPH.e : Math.max(2, Math.min(8, +w.e || 3)); }
+function morphStep(now, dt) {
+    const w = S.wp[4];
+    if (S.formula !== 4 || !w || !w.m) return;
+    const f = RC.front;
+    if (f && f.sig !== contentSig() && f.preview !== false && now - (MORPH.t || 0) < 400) return;    // Bild zum Exponenten fehlt noch
+    MORPH.t = now;
+    MORPH.ph += Math.min(dt, 0.05) * 2 * Math.PI / 50;
+    MORPH.e = +(4 - 2 * Math.cos(MORPH.ph)).toFixed(4);
+    lastParamT = now; camDirty = true;
+}
+function xsig() { const cf = cformula(); const X = cf === 5 ? { p: (S.wp[5] || {}).p | 0 } : xparams(cf); return cf + (X ? ':' + JSON.stringify(X) : ''); }
 function styleJob(job) {
     job.st = stActive();
     if (job.st) {
@@ -79,6 +175,7 @@ function styleJob(job) {
     }
     return job;
 }
+for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f]);
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
 
@@ -86,8 +183,9 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
             if (s[k] !== undefined) S[k] = s[k];
+        for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f], S.wp[f] || {});
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
     } catch (e) { /* ignorieren */ }
     if (!TRANSLATIONS[S.lang]) S.lang = 'de';
@@ -95,7 +193,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
     o.paletteId = PAL.list[S.palette].id;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
@@ -151,13 +249,15 @@ if (window.visualViewport) window.visualViewport.addEventListener('resize', () =
 
 // ------------------------------------------------------------------ Kamera-Hilfen
 const worldPerCss = (zoom) => 3 / (zoom * cssH);
-function clampZoom(z) { return Math.min(MAX_ZOOM[S.formula], Math.max(0.2, z)); }
+// 7.1: Grenze je Welt; direkt gerechnete Exoten (f64 auf der CPU) bis 10¹³, Lyapunov 10¹²
+function maxZoom() { const cf = cformula(); return cf === 28 ? 1e12 : isExo(cf) ? 1e13 : MAX_ZOOM[S.formula]; }
+function clampZoom(z) { return Math.min(maxZoom(), Math.max(0.2, z)); }
 // Bildschirmpunkt (CSS px) -> Weltoffset zur Kameramitte (double)
 function screenOffset(x, y, zoom) { const s = worldPerCss(zoom); return [(x - cssW / 2) * s, -(y - cssH / 2) * s]; }
 function setCam(cx, cy, zoom) {
     const z = clampZoom(zoom);
-    if (z !== zoom && zoom > MAX_ZOOM[S.formula] && !setCam._warned) { setCam._warned = true; toast(t('max_depth')); }
-    if (zoom < MAX_ZOOM[S.formula]) setCam._warned = false;
+    if (z !== zoom && zoom > maxZoom() && !setCam._warned) { setCam._warned = true; toast(t('max_depth')); }
+    if (zoom < maxZoom()) setCam._warned = false;
     S.cam = { cx, cy, zoom: z };
     camDirty = true;
 }
@@ -175,10 +275,10 @@ function anchoredCam(c0, ax0, ay0, ax, ay, scale) {
 let inertia = null, flight = null, wheelAnim = null;
 let gestureBase = null;
 
-function stopAnims() { inertia = null; flight = null; wheelAnim = null; }
+function stopAnims() { inertia = null; flight = null; wheelAnim = null; if (ROUND.list) stopRound(); }
 
 function flyTo(cx, cy, zoom, opts = {}) {
-    stopAnims();
+    inertia = null; flight = null; wheelAnim = null;      // (wie stopAnims, ohne einen laufenden Rundgang zu beenden)
     const a = S.cam;
     zoom = clampZoom(zoom);
     if (opts.anchor) { cx = a.cx; cy = a.cy; }
@@ -402,30 +502,55 @@ function zoomAt(x, y, f) {
 }
 
 // ------------------------------------------------------------------ Tour (Auto-Zoom zu einem Ort)
-function startTour(p) {
-    stopAnims();
+// 7.1: ein Ort trägt die Welt-Parameter (Variante, Exponent, Folge …) – beim Anfliegen übernehmen
+function applyPlaceWP(p) { if (p && p.wp && WP_DEF[p.formula || 0]) { S.wp[p.formula || 0] = Object.assign({}, WP_DEF[p.formula || 0], p.wp); invalidate(); emit('wp'); } }
+function startTour(p, onDone) {
+    inertia = null; flight = null; wheelAnim = null;          // (nicht stopAnims: ein Rundgang startet seine erste Tour hiermit)
     if (isRay(p.formula)) { setMode(p.formula, true); if (p.b) BULB.tourTo(p.b, 7); return; }
     setMode(p.formula || 0, true);
+    applyPlaceWP(p);
+    if (p.pal) S.palette = PAL.indexOf(p.pal);
     if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
     const home = MODE_HOME[S.formula];
-    setCam(HP.fromString(home[0]), HP.fromString(home[1]), home[2]);
+    setCam(HP.fromString(home[0]), HP.fromString(home[1]), homeZoom(S.formula));
     S.iterManual = false;
     const b = { cx: HP.fromString(p.cx), cy: HP.fromString(p.cy), zoom: +p.zoom };
     // (der Referenzorbit wird per refTarget() gleich fürs Ziel angefordert: das Ziel liegt in jeder Ansicht der Fahrt)
     setTimeout(() => {
-        flyTo(b.cx, b.cy, b.zoom, { perDecade: 1.1, maxDur: 40 });
+        flyTo(b.cx, b.cy, b.zoom, { perDecade: 1.1, maxDur: 40, onDone });
     }, 250);
 }
 
 // ------------------------------------------------------------------ Modus / Parameter
+// 7.1 Rundgang: alle Sehenswürdigkeiten einer Welt nacheinander – Tour zum ersten Ort, dort ~4 s Pause, dann Flug zum
+// nächsten (hinaus und wieder hinein). Jede Geste/Taste beendet ihn (stopAnims setzt flight = null -> Token stimmt nicht mehr).
+const ROUND = { list: null, i: 0, tok: 0, t: 0 };
+function startRound(list) {
+    if (!list || !list.length) return;
+    ROUND.list = list; ROUND.i = 0; ROUND.tok++;
+    roundGo(ROUND.tok, true);
+}
+function roundGo(tok, first) {
+    if (tok !== ROUND.tok || !ROUND.list) return;
+    const p = ROUND.list[ROUND.i];
+    const done = () => { if (tok !== ROUND.tok) return; emit({ toast: t(p.key), ms: 2600 }); ROUND.t = setTimeout(() => { if (tok !== ROUND.tok || flight || isMoving(performance.now())) { if (tok === ROUND.tok && !flight) ROUND.list = null; return; } ROUND.i = (ROUND.i + 1) % ROUND.list.length; roundGo(tok, false); }, 4200); };
+    if (first) startTour(p, done);
+    else {
+        if (p.wp) applyPlaceWP(p);
+        if (p.pal) S.palette = PAL.indexOf(p.pal);
+        flyTo(HP.fromString(p.cx), HP.fromString(p.cy), +p.zoom, { perDecade: 0.9, maxDur: 30, onDone: done });
+    }
+}
+function stopRound() { ROUND.tok++; ROUND.list = null; clearTimeout(ROUND.t); }
 function setMode(m, keepView) {
     if (m === S.formula && keepView) return;
     const prev = S.formula;
     S.formula = m;
+    if (m !== prev) worldPalette(prev, m);
     if (!keepView) {
         const h = MODE_HOME[m];
         stopAnims();
-        setCam(HP.fromString(h[0]), HP.fromString(h[1]), h[2]);
+        setCam(HP.fromString(h[0]), HP.fromString(h[1]), homeZoom(m));
         S.iterManual = false;
     } else setCam(S.cam.cx, S.cam.cy, S.cam.zoom);
     if (m !== prev) { markFramesForeign(); buddhaReset(); if (FLY.on && (isRay(m) || isRay(prev))) stopFly(); }   // 7.0: Mandelbulb hat einen eigenen Flug
@@ -434,6 +559,23 @@ function setMode(m, keepView) {
     emit('mode');
 }
 function setJulia(x, y) { S.julia = { x, y }; invalidate('julia'); emit('julia'); lastParamT = performance.now(); }
+// 7.1 Palette je Welt: die neuen Welten (WORLD_PAL) merken sich ihre eigene Palette (Standard = kuratierte Palette), die
+// klassischen Welten teilen sich eine (Schlüssel 'c') – Wechsel zurück stellt die vorige wieder her
+function worldPalette(prev, m) {
+    const key = (f) => WORLD_PAL[f] ? String(f) : 'c';
+    S.wpal = S.wpal || {};
+    S.wpal[key(prev)] = PAL.list[S.palette].id;
+    const id = S.wpal[key(m)] || WORLD_PAL[m];
+    if (id) S.palette = PAL.indexOf(id);
+}
+// 7.1 Welt-Parameter setzen (Teilobjekt, z. B. { v: 1 }); live = beim Ziehen eines Reglers (Vorschau wie beim c-Pad)
+function setWP(f, o, live) {
+    S.wp[f] = Object.assign({}, WP_DEF[f] || {}, S.wp[f] || {}, o);
+    if (f === S.formula) { setCam(S.cam.cx, S.cam.cy, S.cam.zoom); invalidate('wp'); }
+    lastParamT = performance.now();
+    if (!live) saveSettings();
+    emit('wp');
+}
 let lastParamT = 0;
 function currentMaxIter() { return S.iterManual ? S.iterValue : autoIter(S.cam.zoom); }
 function changeIter(f) {
@@ -450,6 +592,9 @@ function plan() {
     if (f === 7) return { kind: 'buddha' };
     const rcpu = S.renderer === 'cpu' || forceCPU;
     if (f === 5) return z <= NEWTON_GPU_MAX && !rcpu ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
+    // 7.1 Exoten: f32 direkt bis EXO_GPU_MAX (Lyapunov: Koordinaten um 3 -> früher grob), darüber CPU f64 direkt
+    const cf = cformula();
+    if (isExo(cf)) return z <= (cf === 28 ? 600 : EXO_GPU_MAX) && !rcpu ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
     const cpu = rcpu || !gpuPerturbOK;
     if (z < DIRECT_MAX && !rcpu) return { kind: 'gpu', mode: 'direct' };
     if (cpu || z > GPU_MAX) {
@@ -498,7 +643,7 @@ function cancelJob() {
 }
 function cancelPrefetch() { if (RC.pjob) { R.cancelJob(RC.pjob); RC.pjob = null; } }
 // 6.4 Bunte Menge: Innen-Information mitrechnen (eigene Rechen-Variante; Außenwerte bitgleich). Nicht bei Newton.
-function innActive() { return S.setCol === 'bunt' && S.formula !== 5 && !innBlocked; }
+function innActive() { return S.setCol === 'bunt' && (S.formula < 5 || S.formula === 2) && !isExo(cformula()) && !innBlocked; }
 // P1-2 Rückfall bei defekten Rechen-Shadern (nur für die Sitzung, nichts wird gespeichert): Bunt-Variante defekt ->
 // Menge schwarz; Perturbation defekt -> CPU-Perturbation (gpuPerturbOK); direkte Variante defekt -> CPU-Rechenweg
 let innBlocked = false, forceCPU = false;
@@ -903,6 +1048,7 @@ function frame(now) {
     S.time %= 86400;
     if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
     updateAnims(now, dt);
+    morphStep(now, dt);
     if (isBulb()) BULB.update(now, dt);
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
@@ -941,7 +1087,7 @@ function frame(now) {
     if ((!RC.cap || RC.capHold) && !RC.freeze) { try { schedule(now); } catch (e) { reportOnce(e); } }      // P1-2: ein Fehler friert die Schleife nicht ein
     const tP = performance.now();
     try { present(now, camChanged); } catch (e) { reportOnce(e); }
-    if (!GW.firstPic && (RC.layers.length || S.formula >= 6)) gwFirstPicture();
+    if (!GW.firstPic && (RC.layers.length || !is2dW(S.formula))) gwFirstPicture();
     if (PROF) { const tE = performance.now(); if (tE - js0 > 25) PROF.push({ t: Math.round(now), pre: +(tS - js0).toFixed(1), sched: +(tP - tS).toFixed(1), present: +(tE - tP).toFixed(1), job: RC.job ? RC.job.key.slice(-12) : '', n: RC.layers.length }); }
     stats.frames++;
     if (now - stats.fpsT > 1000) { stats.fps = Math.round(stats.frames * 1000 / (now - stats.fpsT)); stats.frames = 0; stats.fpsT = now; }
@@ -1134,11 +1280,16 @@ const CTX = {
     get deActive() { return deActive; },
     get deMaskOn() { return deMaskOn; },
     get stActive() { return stActive; },
+    get cformula() { return cformula; },
+    get xparams() { return xparams; },
+    get xsig() { return xsig; },
+    get isExo() { return isExo; },
     get styleJob() { return styleJob; },
     get smooth01() { return smooth01; },
     get viewKey() { return viewKey; },
     get GOV() { return GOV; },
     get MODE_HOME() { return MODE_HOME; },
+    get homeZoom() { return homeZoom; },
     get Q() { return Q; },
     get T3() { return T3; },
     get camDirty() { return camDirty; }, set camDirty(v) { camDirty = v; },
@@ -1187,6 +1338,9 @@ const CTX = {
     get pauseFly() { return pauseFly; },
     get fmtZoom() { return fmtZoom; },
     get MODE_KEYS() { return MODE_KEYS; },
+    get WP_DEF() { return WP_DEF; },
+    get WORLD_PAL() { return WORLD_PAL; },
+    get applyPlaceWP() { return applyPlaceWP; },
     get invalidate() { return invalidate; },
     get isDone() { return isDone; },
     get BULB() { return BULB; },
@@ -1196,7 +1350,7 @@ const CTX = {
     get RM() { return RM; },
 };
 const M_UrlState = self.FKUrlState.create(CTX);
-const { readURL, setColParam, outParam, styleParam, stateURL, syncURL } = M_UrlState;
+const { readURL, setColParam, outParam, styleParam, wpParam, applyWpParam, stateURL, syncURL } = M_UrlState;
 const M_CpuPool = self.FKCpuPool.create(CTX);
 const { cancelFix, cpuBroadcast, cpuFeed, cpuPool, cpuSendRef, cpuWorkers, recompute, startFix } = M_CpuPool;
 const M_Refs = self.FKRefs.create(CTX);
@@ -1227,6 +1381,7 @@ function isDone() { const f = RC.front, now = performance.now(); return !!f && f
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, stActive,
+    MODE_GROUPS, WP_DEF, cformula, xparams, setWP, styleOK, hasSetW, is2dW, maxZoom, lyaSeq, mexpNow, SIGHTS, startRound, stopRound, ROUND,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, captureShot, fileName, zoomAt, presentNow,
@@ -1272,9 +1427,10 @@ const API = {
         return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
             const ms = qs.map(q => gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); qs.forEach(q => gl.deleteQuery(q)); res({ min: +Math.min(...ms).toFixed(2), max: +Math.max(...ms).toFixed(2), scale: T3.scale }); }; poll(); });
     },
-    goHome() { if (isBulb()) { stopFly(); BULB.goHome(); return; } const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
+    goHome() { if (isBulb()) { stopFly(); BULB.goHome(); return; } const h = MODE_HOME[S.formula]; S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), homeZoom(S.formula)); emit('iter'); },
     goTo(p) {
         if ((p.formula || 0) !== S.formula) setMode(p.formula || 0, true);
+        applyPlaceWP(p);
         if (isRay(p.formula)) { if (p.b) BULB.tourTo(p.b, 1.2); return; }
         if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
         S.iterManual = !!p.iter; if (p.iter) S.iterValue = p.iter;
@@ -1286,7 +1442,7 @@ const API = {
         return { cx: HP.toString(S.cam.cx, d), cy: HP.toString(S.cam.cy, d), zoom: S.cam.zoom, formula: S.formula,
                  jx: S.formula === 1 ? HP.toString(S.julia.x, 12) : undefined, jy: S.formula === 1 ? HP.toString(S.julia.y, 12) : undefined,
                  iter: S.iterManual ? S.iterValue : undefined, palette: PAL.list[S.palette].id, setCol: setColParam() || undefined, alpine: S.alpine ? S.valley : undefined, out: outParam() || undefined, style: styleParam() || undefined,
-                 b: isBulb() ? BULB.stateString() : undefined };
+                 b: isBulb() ? BULB.stateString() : undefined, wp: WP_DEF[S.formula] ? Object.assign({}, S.wp[S.formula]) : undefined };
     },
     isMoving: () => isMoving(performance.now()),
     // Test (6.5.2): Grafik-Wächter – '' | 'wait' | 'lost' | 'stuck', erstes Bild gezeichnet?
@@ -1327,8 +1483,8 @@ const API = {
         for (let i = 0; i < 5; i++) qs.push(['present', timeIt(() => presentNow())]);
         for (const d of divs) {
             const w = Math.ceil(canvas.width * 1.2 / d), h = Math.ceil(canvas.height * 1.2 / d);
-            const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
-                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: deActive() };
+            const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: cformula(), maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
+                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: deActive(), X: xparams(cformula()) };
             styleJob(job);
             if (d === 1) { job.w = canvas.width; job.h = canvas.height; }
             R.beginJob(job);
@@ -1353,8 +1509,8 @@ const API = {
         if (p.kind !== 'gpu') return null;
         for (const d of divs) for (let r = 0; r < reps; r++) {
             const w = d === 1 ? canvas.width : Math.ceil(canvas.width * 1.2 / d), h = d === 1 ? canvas.height : Math.ceil(canvas.height * 1.2 / d);
-            const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: S.formula, maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
-                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: de === undefined ? deActive() : !!de };
+            const job = { key: 'bench', stage: d, kind: 'gpu', mode: p.mode, formula: cformula(), maxIter: currentMaxIter(), view: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom },
+                          w, h, scale: 3 / (S.cam.zoom * canvas.height) * d, julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], err: d === 1 && S.precise, de: de === undefined ? deActive() : !!de, X: xparams(cformula()) };
             styleJob(job);
             const sync = (b) => { gl.bindFramebuffer(gl.READ_FRAMEBUFFER, b ? b.fbo : null); gl.readPixels(0, 0, 1, 1, b ? gl.RGBA_INTEGER : gl.RGBA, b ? gl.UNSIGNED_INT : gl.UNSIGNED_BYTE, b ? new Uint32Array(4) : new Uint8Array(4)); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); };
             sync(null);                                   // gl.finish blockiert in Chrome nicht – readPixels schon

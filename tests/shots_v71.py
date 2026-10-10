@@ -38,7 +38,7 @@ def book(p, quer, cases, wait=150, js=None):
         a.page.goto('about:blank')
         a.open(h)
         if len(c) > 3 and c[3]:
-            a.page.evaluate(c[3])
+            a.page.evaluate(c[3]); time.sleep(0.3)
         out.append(shot(a, nm + sfx, wait=wait))
         if a.errors: print('  Fehler:', a.errors[:3]); a.errors.clear()
     a.close()
@@ -109,6 +109,17 @@ def tune(p, quer):
         for k, g in [(24, 4), (10, 3), (6, 2), (4, 1.5)]:
             for nm, h in [('seep', 'm=0&x=-0.7453&y=0.1127&z=180&p=neon'), ('tief', 'm=0&' + SEA + '&z=3e9&p=neon')]:
                 cases.append((f'T_st{st[0]}_k{k}_g{g}_{nm}', h + '&st=' + st, f'nosw&noanim&stk={k}&stg={g}'))
+    book(p, quer, cases)
+
+
+
+def explore(p, quer):
+    """Freie Liste aus der Umgebung: FK_CASES = Zeilen 'name|hash|query|js'"""
+    cases = []
+    for c in os.environ.get('FK_CASES', '').split('\n'):
+        if not c.strip(): continue
+        parts = c.split('|')
+        cases.append((parts[0], parts[1], parts[2] if len(parts) > 2 and parts[2] else 'nosw&noanim', parts[3] if len(parts) > 3 else None))
     book(p, quer, cases)
 
 

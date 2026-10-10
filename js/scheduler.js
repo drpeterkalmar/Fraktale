@@ -36,13 +36,14 @@ root.FKScheduler = { create(ctx) {
         const bw0 = V3.on ? side : w0, bh0 = V3.on ? side : h0;
         const w = opts.w || Math.max(8, Math.ceil(bw0 * over / div)), h = opts.h || Math.max(8, Math.ceil(bh0 * over / div));
         const scale = opts.scale || 3 / (view.zoom * h0) * div * f3;   // Welt pro Pufferpixel
-        const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: S.formula, maxIter: maxIterFor(view.zoom),
+        const cf = ctx.cformula();                 // 7.1: Rechen-Formel (Welt + Parameter)
+        const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: cf, maxIter: maxIterFor(view.zoom), X: ctx.xparams(cf),
                       view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
                       julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive(), inn: innActive() };
         ctx.styleJob(job);                         // 7.1 Färbe-Stil (Rechen-Variante, Puffer mit Stil-Kanal)
         if (opts.prefetch) RC.pjob = job; else RC.job = job;
         if (p.kind === 'gpu') {
-            job.err = div === 1 && !opts.prefetch && !opts.preview && S.precise && S.formula !== 5;     // finale Stufe mit Fehlerschätzung
+            job.err = div === 1 && !opts.prefetch && !opts.preview && S.precise && S.formula !== 5 && !ctx.isExo(cf);     // finale Stufe mit Fehlerschätzung
             R.beginJob(job);
         } else {
             cpuPool();
@@ -90,7 +91,7 @@ root.FKScheduler = { create(ctx) {
             }
             RC.estFull = t * job.stage * job.stage / (job.w * job.h) * (canvas.width * canvas.height);
             // P2-7: die finale Variante (mit Fehlerschätzung) schon übersetzen lassen, solange die Vorschau steht
-            if (k === 'gpu') R.prewarmCompute({ formula: job.formula, mode: job.mode, err: S.precise && job.formula !== 5, de: job.de, inn: job.inn, st: job.st });
+            if (k === 'gpu') R.prewarmCompute({ formula: job.formula, mode: job.mode, err: S.precise && job.formula !== 5 && !ctx.isExo(job.formula), de: job.de, inn: job.inn, st: job.st });
         } else {
             stats.lastJobMs = fr.ms;
             stats.gpuFullMs = fr.ms;
@@ -205,7 +206,7 @@ root.FKScheduler = { create(ctx) {
         if (job && job.key !== key) {
             // Veraltete Jobs: Vorschauen dürfen fertig werden, solange sie die Ansicht noch großteils
             // treffen (sie füllen Lücken); Verfeinerungen nur, wenn fast fertig und noch nah dran.
-            const stale = job.kind !== p.kind || job.formula !== S.formula || job.sig !== sig || job.mode !== p.mode;
+            const stale = job.kind !== p.kind || job.formula !== ctx.cformula() || job.sig !== sig || job.mode !== p.mode;
             const d = farFrom(job.view, S.cam);
             const vis = visibleFrac(job, S.cam);
             const prog = jobProgress(job);

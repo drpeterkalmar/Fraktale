@@ -8,6 +8,7 @@
 const HP = root.FKHP;
 const SH = root.FKShaders;
 const TEXW = 2048;
+const POLY0 = root.FKCore ? root.FKCore.newtonPoly(0) : { c: [-1, 0, 0, 1], deg: 3, roots: [[1, 0], [-0.5, 0.8660254], [-0.5, -0.8660254]] };
 
 function create(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false,
@@ -316,6 +317,15 @@ function create(canvas) {
         gl.uniform1i(L.u_maxIter, job.maxIter);
         if (L.u_stp) { const p = job.stp || [5, 1, 24, 0.32]; gl.uniform4f(L.u_stp, p[0], p[1], p[2], p[3]); }     // 7.1 Stil: Streifendichte, Kreisradius, Fenster, Vergessen
         if (L.u_cabs) gl.uniform1f(L.u_cabs, job.formula === 1 ? Math.hypot(job.julia[0], job.julia[1]) : Math.hypot(HP.toNumber(job.view.cx), HP.toNumber(job.view.cy)));
+        // 7.1 Welt-Parameter der Exoten (exoticFS) und Newton-Polynom (Koeffizienten, Wurzeln)
+        const X = job.X;
+        if (L.u_xp) { const a = X && X.xp || [0, 0, 0, 0], b = X && X.xq || [0, 0, 0, 0], c = X && X.xi || [0, 1, 0, 0]; gl.uniform4f(L.u_xp, a[0], a[1], a[2], a[3]); gl.uniform4f(L.u_xq, b[0], b[1], b[2], b[3]); gl.uniform4i(L.u_xi, c[0] | 0, c[1] | 0, c[2] | 0, c[3] | 0); }
+        if (L.u_pc) {
+            const P = X && X.poly || POLY0;
+            const pc = new Float32Array(9); P.c.forEach((v, i) => { pc[i] = v; });
+            const rt = new Float32Array(16); P.roots.forEach((r, i) => { if (i < 8) { rt[2 * i] = r[0]; rt[2 * i + 1] = r[1]; } });
+            gl.uniform1fv(L.u_pc, pc); gl.uniform1i(L.u_pdeg, P.deg); gl.uniform2fv(L.u_root, rt); gl.uniform1i(L.u_nroot, Math.min(8, P.roots.length));
+        }
         if (job.mode === 'direct') {
             gl.uniform2f(L.u_center, HP.toNumber(job.view.cx), HP.toNumber(job.view.cy));
             if (L.u_julia) gl.uniform2f(L.u_julia, job.julia[0], job.julia[1]);
@@ -469,7 +479,9 @@ function create(canvas) {
     R.present = function (layers, cam, look, target, opts) {
         opts = opts || {};
         const tw = target ? target.w : canvas.width, th = target ? target.h : canvas.height;
-        const pr = program('display', SH.DISPLAY_FS);
+        // 7.1: Anzeige mit Stil nur, wenn ein Stil gewählt ist und eine Ebene den Stil-Kanal hat (sonst Variante wie bis 7.0)
+        const sty = !!look.style && (layers || []).some(l => l && l.buf && l.buf.acc);
+        const pr = sty ? program('displayS', SH.DISPLAY_FS_ST) : program('display', SH.DISPLAY_FS);
         const L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
@@ -508,10 +520,12 @@ function create(canvas) {
         gl.uniform1i(L.u_particles, look.particles ? 1 : 0);
         gl.uniform1i(L.u_banded, look.banded ? 1 : 0);
         // 7.1 Färbe-Stil: je Ebene nur, wenn sie den Stil-Kanal hat (u_acc; sonst Standard – z. B. Ebenen von vor dem Umschalten)
-        gl.uniform1i(L.u_style, look.style || 0);
-        gl.uniform1fv(L.u_acc, accBuf);
-        gl.uniform1f(L.u_stMix, look.stMix === undefined ? 1 : look.stMix);
-        gl.uniform1f(L.u_stG, look.stG || 1);
+        if (sty) {
+            gl.uniform1i(L.u_style, look.style || 0);
+            gl.uniform1fv(L.u_acc, accBuf);
+            gl.uniform1f(L.u_stMix, look.stMix === undefined ? 1 : look.stMix);
+            gl.uniform1f(L.u_stG, look.stG || 1);
+        }
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         if (target) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     };

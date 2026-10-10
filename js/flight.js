@@ -79,9 +79,10 @@ root.FKFlight = { create(ctx) {
         stopAnims();
         if (place) {
             setMode(place.formula || 0, true);
+            ctx.applyPlaceWP(place);          // 7.1 Welt-Parameter des Orts
             if (place.jx) setJulia(HP.fromString(place.jx), HP.fromString(place.jy));
             const home = MODE_HOME[S.formula];
-            setCam(HP.fromString(home[0]), HP.fromString(home[1]), home[2]);
+            setCam(HP.fromString(home[0]), HP.fromString(home[1]), ctx.homeZoom(S.formula));
             S.iterManual = false;
             const T = { cx: HP.fromString(place.cx), cy: HP.fromString(place.cy), zoom: +place.zoom };
             const u = 1.5 / S.cam.zoom;

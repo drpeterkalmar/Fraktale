@@ -82,6 +82,7 @@ def main():
         a = App(p).open(); pg = a.page
         outm = lambda m: pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.outMode = '{m}'; A.S.edgeW = 16; A.invalidate(); }}")
         sty = lambda v: pg.evaluate(f"() => {{ const A = window.__fraktal; A.S.style = {v}; A.S.stMix = 0.85; A.S.stS = 5; A.invalidate(); }}")
+        wp = lambda f, o: pg.evaluate(f"() => {{ window.__fraktal.setWP({f}, {o}); }}")
         cases = [
             ('Mandelbrot tief (GPU-Perturbation)', lambda: a.set_view(DEEP[0], DEEP[1], 3e9), {}, 640, 360, 128, ('gpu', 'perturb')),
             ('Mandelbrot 10³⁴ (CPU-Perturbation)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
@@ -95,6 +96,10 @@ def main():
             ('Seide 10³⁴ (CPU)', lambda: a.set_view(DEEP[0], DEEP[1], 1e34), {}, 320, 180, 96, ('cpu', 'perturb')),
             ('Kreuz-Falle Julia', lambda: (sty(5), a.set_view('0', '0', 1.5, formula=1)), {}, 640, 360, 128, ('gpu', 'direct')),
             ('Newton', lambda: (outm('pal'), sty(0), a.set_view('0', '0', 1.2, formula=5)), {}, 640, 360, 128, ('gpu', 'direct')),
+            # 7.1 neue Welten: Exoten (eigener Rechen-Shader, Welt-Parameter je Kachel) und Burning-Ship-Variante (Perturbation)
+            ('Lyapunov (Zirkon)', lambda: (wp(10, "{ s: 'BBBBBBAAAAAA' }"), a.set_view('3.7', '2.95', 3.2, formula=10)), {}, 640, 360, 128, ('gpu', 'direct')),
+            ('Magnet II', lambda: (wp(13, '{ v: 1 }'), a.set_view('1.27457', '-0.27699', 35, formula=13)), {}, 640, 360, 128, ('gpu', 'direct')),
+            ('Celtic 10⁴ (GPU-Perturbation)', lambda: (wp(2, '{ v: 1 }'), a.set_view('-0.7667760849', '0.84677696228', 1.5e4, formula=2)), {}, 640, 360, 128, ('gpu', 'perturb')),
         ]
         res['naehte'] = {}
         for name, setup, extra, W, H, tl, devmode in cases:

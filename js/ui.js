@@ -16,7 +16,7 @@ function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(n => { n.textContent = t(n.dataset.i18n); });
     document.querySelectorAll('[data-i18n-title]').forEach(n => { n.title = t(n.dataset.i18nTitle); n.setAttribute('aria-label', t(n.dataset.i18nTitle)); });
     $('sheet-close').setAttribute('aria-label', t('close') !== 'close' ? t('close') : '×');
-    buildModes(); buildUserPlaces();
+    buildModes(); buildUserPlaces(); buildSights();
     hudUpdate(true);
 }
 
@@ -212,9 +212,10 @@ A.on((w) => {
         else if (hudless()) hudHide(true);         // 6.8: Vollbild/Kino-Modus – Tipp auf das Bild blendet die Bedienung wieder aus
         else setChrome(!S.chrome);
     } else if (w === 'frame') hudUpdate(false);
-    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); syncSet(); syncLook(); }
+    else if (w === 'mode') { buildModes(); updateJuliaPanel(); hudUpdate(true); minimapBase = null; sync3d(); syncShot(); syncSet(); syncLook(); buildSights(); }
     else if (w === 'julia') { updateJuliaPanel(); }
     else if (w === 'bulb') syncBulb();
+    else if (w === 'wp') { syncLook(); syncSet(); }
     else if (w === 'iter') hudUpdate(true);
     else if (w === 'settings') syncControls();
     else if (w === '3d' || w === 'fly') { sync3d(); if (w === '3d') syncShot(); }
@@ -223,16 +224,83 @@ A.on((w) => {
 });
 
 // ------------------------------------------------------------------ Welten
+// 7.1: Welten in Gruppen (Klassiker, Exoten, 3D, Lichtbilder) mit Überschrift
 function buildModes() {
     const g = $('mode-grid');
     g.innerHTML = '';
     const names = MODE_NAMES();
-    A.MODE_KEYS.forEach((k, i) => {
-        const b = el('button', 'mode-card' + (i === S.formula ? ' on' : ''));
-        b.innerHTML = `<span class="thumb" style="background-image:url('assets/modes/${i}.jpg${V}')"></span><span class="name">${cap(names[i])}</span><span class="formula">${t('f_' + k)}</span>`;
-        b.addEventListener('click', () => { if (i !== S.formula) crossfade(650); A.setMode(i); buildModes(); });
-        g.appendChild(b);
+    for (const [gk, list] of A.MODE_GROUPS) {
+        g.appendChild(el('h4', 'mode-group', t(gk)));
+        for (const i of list) {
+            const k = A.MODE_KEYS[i];
+            const b = el('button', 'mode-card' + (i === S.formula ? ' on' : ''));
+            b.innerHTML = `<span class="thumb" style="background-image:url('assets/modes/${i}.jpg${V}')"></span><span class="name">${cap(names[i])}</span><span class="formula">${t('f_' + k)}</span>`;
+            b.addEventListener('click', () => { if (i !== S.formula) crossfade(650); A.setMode(i); buildModes(); });
+            g.appendChild(b);
+        }
+    }
+}
+// 7.1 Parameter der Welt: Burning-Ship-Familie, Multibrot (Exponent, Morph), Newton (Polynom), Lyapunov (Folge), Phoenix,
+// Nova, Magnet. Änderungen rechnen sofort neu (wie das c-Pad); Regler live, gespeichert beim Loslassen
+const LYA_SEQ = ['AB', 'AABAB', 'BBBBBBAAAAAA', 'AABB', 'ABBAB', 'BBABAA'];
+const NEWTON_NAMES = ['z³ − 1', 'z⁴ − 1', 'z⁵ − 1', 'z³ − 2z + 2', 'z⁶ + z³ − 1', 'z⁸ + 15z⁴ − 16'];
+function wpSeg(key, opts, cls) {
+    const w = S.wp[S.formula] || {};
+    return `<div class="seg seg-grid ${cls || ''}" data-wp="${key}">${opts.map(([v, lbl]) => `<button data-v="${v}" class="${String(w[key]) === String(v) ? 'on' : ''}">${lbl}</button>`).join('')}</div>`;
+}
+function wpSlider(key, lbl, min, max, step) {
+    const w = S.wp[S.formula] || {};
+    return `<label class="slider"><span>${lbl}</span><input type="range" data-wps="${key}" min="${min}" max="${max}" step="${step}" value="${w[key]}"><output>${(+w[key]).toFixed(step < 0.01 ? 4 : 2)}</output></label>`;
+}
+function wpToggle(key, lbl) {
+    const w = S.wp[S.formula] || {};
+    return `<label class="toggle"><span>${lbl}</span><input type="checkbox" data-wpt="${key}" ${w[key] ? 'checked' : ''}><i></i></label>`;
+}
+let wpBuilt = -1;
+function syncWP(force) {
+    const f = S.formula, P = $('wp-panel');
+    const has = A.WP_DEF[f] !== undefined;
+    P.hidden = !has;
+    if (!has) { wpBuilt = -1; return; }
+    if (wpBuilt === f && !force) return;
+    wpBuilt = f;
+    $('wp-title').textContent = cap(MODE_NAMES()[f]);
+    const w = S.wp[f] || {};
+    let h = '';
+    if (f === 2) h = wpSeg('v', [[0, t('bs_ship')], [1, 'Celtic'], [2, t('bs_perp')], [3, t('bs_buffalo')]]);
+    else if (f === 4) h = wpSlider('e', t('m_exp'), 2, 8, 0.01) + wpToggle('m', t('m_morph'));
+    else if (f === 5) h = wpSeg('p', NEWTON_NAMES.map((n, i) => [i, n]), 'c3');
+    else if (f === 10) h = wpSeg('s', LYA_SEQ.map(q => [q, q.length > 6 ? q.slice(0, 6) + '…' : q]), 'c3') + `<input class="seq" id="wp-seq" maxlength="24" autocomplete="off" spellcheck="false" value="${A.lyaSeq(w.s).s}" aria-label="${t('lya_seq')}">`;
+    else if (f === 11) h = wpSeg('v', [[0, 'Julia'], [1, 'Mandel']], 'c2') + wpSlider('cr', 'c (Re)', -1, 1, 0.0001) + wpSlider('ci', 'c (Im)', -1, 1, 0.0001) + wpSlider('pr', 'p (Re)', -1, 1, 0.0001) + wpSlider('pi', 'p (Im)', -1, 1, 0.0001);
+    else if (f === 12) h = wpSeg('v', [[0, 'Mandel'], [1, 'Julia']], 'c2') + wpSlider('r', t('nova_r'), 0.2, 2, 0.01) + (w.v ? wpSlider('cr', 'c (Re)', -1.5, 1.5, 0.0001) + wpSlider('ci', 'c (Im)', -1.5, 1.5, 0.0001) : '');
+    else if (f === 13) h = wpSeg('v', [[0, 'Magnet I'], [1, 'Magnet II']], 'c2');
+    $('wp-body').innerHTML = h;
+    $('wp-hint').textContent = t('wp_hint_' + f);
+    $('wp-body').querySelectorAll('[data-wp] button').forEach(b => b.addEventListener('click', () => {
+        const key = b.parentNode.dataset.wp, v = key === 's' ? b.dataset.v : +b.dataset.v;
+        if (String((S.wp[f] || {})[key]) === String(v)) return;
+        crossfade(420);
+        A.setWP(f, { [key]: v });
+        syncWP(true);
+    }));
+    $('wp-body').querySelectorAll('input[data-wps]').forEach(r => {
+        r.addEventListener('input', () => {
+            let v = +r.value;
+            if (r.dataset.wps === 'e' && Math.abs(v - Math.round(v)) < 0.04) v = Math.round(v);     // Exponent rastet bei ganzen Zahlen ein
+            A.setWP(f, { [r.dataset.wps]: v }, true);
+            r.nextElementSibling.textContent = v.toFixed(+r.step < 0.01 ? 4 : 2);
+        });
+        r.addEventListener('change', () => A.saveSettings());
     });
+    $('wp-body').querySelectorAll('input[data-wpt]').forEach(c => c.addEventListener('change', () => { A.setWP(f, { [c.dataset.wpt]: c.checked ? 1 : 0 }); syncWP(true); }));
+    const sq = $('wp-seq');
+    if (sq) {
+        sq.addEventListener('input', () => {
+            const q = A.lyaSeq(sq.value);
+            if (/^[ABab]+$/.test(sq.value) && q.s !== A.lyaSeq((S.wp[10] || {}).s).s) A.setWP(10, { s: q.s }, true);
+        });
+        sq.addEventListener('change', () => { sq.value = A.lyaSeq(sq.value).s; A.setWP(10, { s: sq.value }); syncWP(true); });
+    }
 }
 // 7.0 Mandelbulb-Panel (Welten-Tab): Exponent, Atmen, Stil, Julia-Bulb, Nebel, Tiefenunschärfe
 function syncBulb() {
@@ -268,7 +336,7 @@ $('s-bfog').addEventListener('change', () => A.saveSettings());
 $('s-bdof').addEventListener('input', (e) => { S.bulbDof = +e.target.value; A.RC.dirty = true; syncBulb(); });
 $('s-bdof').addEventListener('change', () => A.saveSettings());
 function updateJuliaPanel() {
-    syncBulb();
+    syncBulb(); syncWP();
     $('julia-panel').hidden = S.formula !== 1;
     $('jx').textContent = HP.toString(S.julia.x, 5).replace('-', '−');
     $('jy').textContent = HP.toString(S.julia.y, 5).replace('-', '−');
@@ -338,7 +406,7 @@ function mandelImage(ctx, w, h, box, tint) {
 const mm = $('minimap-canvas');
 let minimapBase = null;
 function drawMinimap() {
-    $('minimap').hidden = !S.minimap || S.formula >= 6;
+    $('minimap').hidden = !S.minimap || !A.is2dW(S.formula);
     if ($('minimap').hidden) return;
     const ctx = mm.getContext('2d');
     const w = mm.width, h = mm.height;
@@ -399,7 +467,7 @@ function syncSet() {
     $('set-color-custom').hidden = S.setCol !== 'custom';
     $('set-color-custom').value = S.setHex;
     // 6.9 Außen: Palette / Grenznah (+ Saumbreite) / Schwarz – nur in den 2D-Welten mit Menge
-    const outOK = S.formula < 5 || A.isRay();
+    const outOK = A.hasSetW(S.formula) || A.isRay();
     document.querySelectorAll('#seg-out button').forEach(b => { b.classList.toggle('on', b.dataset.v === S.outMode); b.disabled = !outOK; });
     $('seg-out').classList.toggle('dim', !outOK);
     $('l-edgew').hidden = S.outMode !== 'edge' || !outOK;
@@ -428,14 +496,14 @@ document.querySelectorAll('#seg-out button').forEach(b => b.addEventListener('cl
     if (S.outMode === v) return;
     crossfade(420);
     S.outMode = v;
-    if (v === 'black' && S.formula < 5 && setTooDark()) { outPrevSet = S.setCol; S.setCol = 'bunt'; toast(t('out_auto_bunt'), 3200); }
+    if (v === 'black' && A.hasSetW(S.formula) && setTooDark()) { outPrevSet = S.setCol; S.setCol = 'bunt'; toast(t('out_auto_bunt'), 3200); }
     else if (v !== 'black' && outPrevSet && S.setCol === 'bunt') { S.setCol = outPrevSet; outPrevSet = null; }
     A.saveSettings(); A.invalidate(); syncSet();
 }));
 // 7.1 Look: Färbe-Stil (Standard, Seide = Streifen-Mittel, Dreieck-Mittel, Fallen Punkt/Kreis/Kreuz, Pickover-Stängel),
 // Stärke, Streifenzahl (nur Seide). Gilt in den 2D-Welten mit Fluchtzeit; sonst gesperrt mit Hinweis
 function syncLook() {
-    const ok = S.formula < 5;
+    const ok = A.styleOK();
     document.querySelectorAll('#seg-style button').forEach(b => { b.classList.toggle('on', +b.dataset.v === (S.style | 0)); b.disabled = !ok; });
     $('seg-style').classList.toggle('dim', !ok);
     $('l-stmix').hidden = !ok || !S.style;
@@ -539,12 +607,24 @@ function placeCard(p, opts) {
         <span class="meta"><span class="name"></span><span class="zoom mono">${A.fmtZoom(+p.zoom, 'sci')}</span></span></button>
         <div class="place-actions"><button class="chip tour">▶ ${t('tour')}</button>${A.canFly(p.formula || 0) ? `<button class="chip fly">✈ ${t('fly_place')}</button>` : ''}${opts.onDelete ? `<button class="chip del" aria-label="${t('delete')}">✕</button>` : ''}</div>`;
     c.querySelector('.name').textContent = name;
-    c.querySelector('.place-main').addEventListener('click', () => { A.goTo(p); if (innerWidth < 700) closeSheet(); });
-    c.querySelector('.tour').addEventListener('click', () => { A.startTour(p); closeSheet(); });
+    c.querySelector('.place-main').addEventListener('click', () => { A.stopRound(); A.goTo(p); if (innerWidth < 700) closeSheet(); });
+    c.querySelector('.tour').addEventListener('click', () => { A.stopRound(); A.startTour(p); closeSheet(); });
     const fb = c.querySelector('.fly');
     if (fb) fb.addEventListener('click', () => { A.startFly(p); closeSheet(); });     // 6.6: im aktuellen Modus (2D oder 3D)
     if (opts.onDelete) c.querySelector('.del').addEventListener('click', opts.onDelete);
     return c;
+}
+// 7.1 Sehenswürdigkeiten der aktuellen Welt (kuratiert, js/app.js SIGHTS) mit ▶ Tour, ✈ Flug und ▶ Rundgang durch alle
+function buildSights() {
+    const box = $('sights');
+    box.innerHTML = '';
+    const list = A.SIGHTS[S.formula];
+    if (!list || !list.length) return;
+    box.appendChild(el('h3', '', t('sights_title') + ' · ' + cap(MODE_NAMES()[S.formula])));
+    const rb = el('button', 'wide-btn round-btn', `<span aria-hidden="true">▶</span><span>${t('round_all')}</span>`);
+    rb.addEventListener('click', () => { A.startRound(list); closeSheet(); toast(t('round_hint'), 3000); });
+    box.appendChild(rb);
+    list.forEach(p => box.appendChild(placeCard(p, { thumb: `assets/sights/${p.k}.jpg${V}` })));
 }
 function loadPlaces() { try { return JSON.parse(localStorage.getItem('fraktal_v5_places') || '[]'); } catch (e) { return []; } }
 function savePlaces(a) { try { localStorage.setItem('fraktal_v5_places', JSON.stringify(a)); } catch (e) { toast('Speicher voll'); } }
