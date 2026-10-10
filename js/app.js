@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.3';
+const APP_VERSION = '7.1.4';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -76,6 +76,7 @@ function homeOf(f) {
 // 7.1 Welt-Parameter (Exoten, Burning-Ship-Familie, Multibrot, Newton-Polynom): Standard je Welt; die aktuellen Werte stehen in S.wp,
 // gehören zum Bildinhalt (contentSig), zum Link (wp=) und zu „Ansicht merken“
 const WP_DEF = {
+    1: { m: 0 },                                       // Julia: Morph (c fährt am Rand der Mandelbrot-Menge entlang)
     2: { v: 0 },                                       // Burning Ship: 0 Schiff, 1 Celtic, 2 senkrecht, 3 Büffel
     4: { e: 3, m: 0 },                                 // Multibrot: Exponent 2–8 (3 = z³ mit Deep Zoom), Morph an/aus
     7: { v: 0 },                                       // Buddhabrot: 0 Buddhabrot, 1 Nebulabrot (R/G/B = 2000/200/40), 2 Anti-Buddhabrot
@@ -491,12 +492,23 @@ const gestures = self.FKGestures.attach(canvas, {
         V3.tilt = Math.max(0, Math.min(MAX_TILT, gestureBase.tilt - dy * 0.006));
         RC.dirty = true;
     },
+    // 7.1 Julia-Lupe: Langdruck im Mandelbrot zeigt über dem Finger die Julia-Menge für c = dieser Punkt, live beim Ziehen;
+    // Loslassen öffnet die Julia-Welt genau dort (bis 7.0 sofort beim Langdruck)
     onLongPress(x, y) {
         if (isBulb() && !FLY.on) { BULB.G.longPress(x, y); return; }
         if (S.formula !== 0 || V3.on || FLY.on) return;
-        const [ox, oy] = screenOffset(x, y, S.cam.zoom);
-        const jx = S.cam.cx + HP.fromNumber(ox), jy = S.cam.cy + HP.fromNumber(oy);
+        stopAnims();
         if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
+        lupeAt(x, y);
+        if (LUPE.bad) { LUPE.on = false; setJulia(LUPE.cx, LUPE.cy); setMode(1); toast(t('julia_here') + ': ' + fmtC(LUPE.cx, LUPE.cy)); return; }
+        return 'hold';
+    },
+    onHoldMove(x, y) { if (LUPE.on) lupeAt(x, y); },
+    onHoldEnd(x, y, cancel) {
+        if (!LUPE.on) return;
+        LUPE.on = false; RC.dirty = true;
+        if (cancel) return;
+        const jx = LUPE.cx, jy = LUPE.cy;
         setJulia(jx, jy);
         setMode(1);
         toast(t('julia_here') + ': ' + fmtC(jx, jy));
@@ -521,6 +533,47 @@ const gestures = self.FKGestures.attach(canvas, {
         if (S.rectMode) { S.rectMode = false; emit('settings'); }
     }
 });
+// 7.1 Julia-Lupe: Kreis (Durchmesser ~40 % der kürzeren Seite, höchstens 220 CSS-px) über dem Finger; c = Weltpunkt unter dem Finger
+const LUPE = { on: false, bad: false, x: 0, y: 0, cx: 0n, cy: 0n };
+function lupeAt(x, y) {
+    const [ox, oy] = screenOffset(x, y, S.cam.zoom);
+    LUPE.cx = S.cam.cx + HP.fromNumber(ox); LUPE.cy = S.cam.cy + HP.fromNumber(oy);
+    LUPE.x = x; LUPE.y = y; LUPE.on = true;
+    RC.dirty = true;
+    emit('lupe');
+}
+function drawLupe() {
+    if (!LUPE.on) return;
+    const r = Math.min(110, Math.min(cssW, cssH) * 0.2);
+    // über dem Finger (sonst verdeckt er sie); oben nicht genug Platz -> darunter
+    let lx = Math.max(r + 8, Math.min(cssW - r - 8, LUPE.x)), ly = LUPE.y - r - 56;
+    if (ly < r + 8) ly = LUPE.y + r + 56;
+    // Shader defekt (fremder Treiber): keine Vorschau, Langdruck öffnet die Julia-Menge wieder sofort wie bis 7.1.3
+    try { R.presentLupe([lx * dpr, (cssH - ly) * dpr, r * dpr], [HP.toNumber(LUPE.cx), HP.toNumber(LUPE.cy)], look(), [LUPE.x * dpr, (cssH - LUPE.y) * dpr]); }
+    catch (e) { if (!e.shaderKey) throw e; LUPE.bad = true; toast(t('shader_fallback'), 4500); }
+}
+// 7.1 Julia-Morph: c fährt am Rand der Hauptkardioide entlang (1,2 % außerhalb: dort sind die Julia-Mengen am feinsten),
+// Tempo und Richtung vom Tempo-Regler (wie der Flug, auch rückwärts); weiter erst, wenn das Bild zum aktuellen c steht
+const JM = { th: 0, t: 0, on: false };
+const cardioid = (th) => [(Math.cos(th) / 2 - Math.cos(2 * th) / 4) * 1.012 + 0.003, (Math.sin(th) / 2 - Math.sin(2 * th) / 4) * 1.012];
+function jmorphStart() {
+    let best = 1e9;
+    const jx = HP.toNumber(S.julia.x), jy = HP.toNumber(S.julia.y);
+    for (let k = 0; k < 720; k++) { const th = k * Math.PI / 360, c = cardioid(th), d = Math.hypot(c[0] - jx, c[1] - jy); if (d < best) { best = d; JM.th = th; } }
+}
+function jmorphStep(now, dt) {
+    const w = S.wp[1];
+    if (S.formula !== 1 || !w || !w.m || RM.matches) return;
+    if (!JM.on) { jmorphStart(); JM.on = true; }
+    const f = RC.front;
+    if (f && f.sig !== contentSig() && now - (JM.t || 0) < 400) return;
+    JM.t = now;
+    JM.th += Math.min(dt, 0.05) * 0.2 * S.flySpeed;            // Tempo 0,5 -> eine Runde in ~1 min
+    const c = cardioid(JM.th);
+    S.julia = { x: HP.fromNumber(+c[0].toFixed(9)), y: HP.fromNumber(+c[1].toFixed(9)) };
+    invalidate('julia'); emit('julia');
+    lastParamT = now;
+}
 // 6.6 Gesten im 2D-Flug: ein Finger schiebt das Bild (der Flug taucht weiter, der Zoompunkt liegt danach auf einer neuen
 // Stelle), zwei Finger beenden den Flug und zoomen ab hier normal weiter. true = Geste erledigt
 function gesture2dFly(b, ax0, ay0, ax, ay, scale, n) {
@@ -600,7 +653,7 @@ function setMode(m, keepView) {
     invalidate('mode');
     emit('mode');
 }
-function setJulia(x, y) { S.julia = { x, y }; invalidate('julia'); emit('julia'); lastParamT = performance.now(); }
+function setJulia(x, y) { S.julia = { x, y }; JM.on = false; invalidate('julia'); emit('julia'); lastParamT = performance.now(); }
 // 7.1 Palette je Welt: die neuen Welten (WORLD_PAL) merken sich ihre eigene Palette (Standard = kuratierte Palette), die
 // klassischen Welten teilen sich eine (Schlüssel 'c') – Wechsel zurück stellt die vorige wieder her
 function worldPalette(prev, m) {
@@ -646,6 +699,7 @@ function setWP(f, o, live) {
     S.wp[f] = Object.assign({}, WP_DEF[f] || {}, S.wp[f] || {}, o);
     if (f === S.formula) { setCam(S.cam.cx, S.cam.cy, S.cam.zoom); invalidate('wp'); }
     if (f === 7) buddhaReset();
+    if (f === 1) JM.on = false;                      // Morph setzt beim nächsten Schritt am nächsten Randpunkt zum aktuellen c an
     lastParamT = performance.now();
     if (!live) saveSettings();
     emit('wp');
@@ -792,10 +846,11 @@ function present(now, camChanged) {
     const wasFading = RC.fading;
     const a = presentArgs(now);
     probe2d(now, a.list);
-    const anim = S.anim || RC.fading || wasFading;
+    const anim = S.anim || RC.fading || wasFading || LUPE.on;
     if (!camChanged && !anim && !RC.dirty) return;
     RC.dirty = false;
     R.present(a.list, S.cam, look(), null, a.opts);
+    drawLupe();
     if (FS.on) frameStatsRecord(now, a.list);
 }
 
@@ -1142,6 +1197,7 @@ function frame(now) {
     if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
     updateAnims(now, dt);
     morphStep(now, dt);
+    jmorphStep(now, dt);
     if (isBulb()) BULB.update(now, dt);
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
@@ -1483,7 +1539,7 @@ function isDone() { const f = RC.front, now = performance.now(); return !!f && f
 const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, stActive,
     MODE_GROUPS, WP_DEF, cformula, xparams, setWP, styleOK, hasSetW, is2dW, maxZoom, lyaSeq, mexpNow, SIGHTS, startRound, stopRound, ROUND,
-    isDens, DENS, homeOf, flameRandom, flameMutate,
+    isDens, DENS, homeOf, flameRandom, flameMutate, LUPE, lupeAt, jmorphStart, JM,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, captureShot, fileName, zoomAt, presentNow,

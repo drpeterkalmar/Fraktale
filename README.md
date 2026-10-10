@@ -18,7 +18,7 @@ Ein Mandelbrot- und Fraktal-Explorer, der auch auf einem Mittelklasse-Android-Ha
 | Zwei Finger spreizen/zusammenziehen | zoomen; der Punkt unter den Fingern bleibt stehen |
 | Doppeltipp | hineinzoomen ×3 an dieser Stelle |
 | Zwei-Finger-Tipp | herauszoomen ÷3 |
-| Lange drücken (Mandelbrot) | Julia-Menge genau für diesen Punkt öffnen |
+| Lange drücken (Mandelbrot) | **Julia-Lupe** (7.1): Vorschau der Julia-Menge über dem Finger, beim Ziehen live; Loslassen öffnet die Julia-Menge genau für diesen Punkt |
 | Einmal tippen | Bedienelemente aus-/einblenden (Vollbild-Genuss); schließt offene Menüs. Im Vollbild/Kino-Modus: Bedienung für 3 s zeigen |
 | Unten: **Welten · Farben · Orte · Teilen · Mehr** | Bottom-Sheet mit allen Einstellungen (Griff ziehen: groß/zu) |
 
@@ -95,6 +95,8 @@ Desktop: rechte Maustaste ziehen = drehen/neigen, Shift+Pfeile = drehen/neigen, 
 - **Link/„Ansicht merken“:** `wp=` mit den Parametern der Welt (z. B. `wp=v1` Celtic, `wp=e3.5_m1` Multibrot, `wp=sAABAB` Lyapunov); ein gemerkter Ort und eine Tour stellen sie wieder her. Alte Links unverändert.
 - Look-Stile (Seide …) gelten auch für Burning-Ship-Familie, Multibrot, Phoenix und Magnet; Außen (Grenznah/Schwarz) für alle Exoten.
 
+**🔍 Julia-Lupe und Julia-Morph (seit 7.1):** Im Mandelbrot lange drücken und dann ziehen – über dem Finger erscheint eine runde Lupe mit der Julia-Menge für genau den Punkt unter dem Finger, live bei jeder Bewegung (das Bild verschiebt sich dabei nicht); Loslassen öffnet diese Julia-Menge. In der Julia-Welt fährt **Julia-Morph** (Schalter im Parameter-Feld) c knapp außerhalb der Hauptkardioide am Mandelbrot-Rand entlang: die Julia-Menge verwandelt sich fließend von Seepferdchen über Spiralen zu Dendriten. Das Tempo ist derselbe Regler wie beim Flug, negativ = rückwärts. Im Link als `wp=m1`.
+
 **🧊 Weitere 3D-Fraktale (seit 7.1):** mit derselben Technik wie der Mandelbulb (Licht, Schatten, AO, Stile, Ruhebild, ✈ Flug, Orte, Screenshot in Kacheln): **Quaternionen-Julia** (q² + c mit vierdimensionalen Zahlen, 3D-Schnitt; vier Regler für c und „c wandert“ – die Form fließt), **Kaleidoskop-IFS** (nach Knighty: falten, drehen, skalieren – Kristalle, Felsen, Tempel; Regler Skalierung und zwei Winkel) und **Apollonian** (Kugel-Inversionen in der wiederholten Zelle: ein unendlicher Schaum, die Kamera fliegt darin; Regler Stärke). Je Welt drei Sehenswürdigkeiten (Drache, Spirale, Wolke · Kristall, Fels, Tempel · Kugelhallen, Bögen, tiefe Gänge). Parameter im Link (`b=`).
 
 **🔥 Lichtbilder (seit 7.1):** Bilder, die aus Spuren entstehen – wie oft eine Bahn durch jedes Pixel läuft (Histogramm, füllt sich in Bruchteilen einer Sekunde und wird mit der Zeit feiner):
@@ -159,6 +161,11 @@ Details, Methode und Grenzfälle: `V5_BERICHT.md`. Tests laufen lokal mit `pytho
 Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 -m http.server 8000` und http://localhost:8000 öffnen. Kein Build-Schritt nötig.
 
 ## 📜 Änderungen
+
+**Version 7.1.4** – Julia-Lupe und Julia-Morph (Etappe 5 von 7.1)
+- Langdruck im Mandelbrot öffnet die **Julia-Lupe**: Vorschau der Julia-Menge über dem Finger (eigener kleiner Shader, 300 Schritte je Pixel, App-Palette), folgt dem Finger live, das Bild bleibt stehen; Loslassen öffnet die Julia-Welt an diesem c (bis 7.1.3: sofort beim Langdruck).
+- **Julia-Morph**: c fährt am Rand der Hauptkardioide entlang (1,2 % außerhalb), setzt am nächsten Randpunkt zum aktuellen c an, wartet auf das Bild wie der Multibrot-Morph; Tempo/Richtung = Flug-Tempo-Regler (auch rückwärts), im Link `wp=m1`.
+- Geprüft (`tests/test_v71.py` J, `tests/unit/gestures.test.js`): Lupe folgt, kein Verschieben, Loslassen öffnet Julia am richtigen c; Morph vorwärts/rückwärts auf dem Rand, Link, Aus = Stillstand.
 
 **Version 7.1.3** – Weitere 3D-Fraktale: Quaternionen-Julia, Kaleidoskop-IFS, Apollonian (Etappe 4 von 7.1)
 - Drei neue Welten in der Gruppe 3D mit Licht, Flug, Ruhebild, Orten (9 Sehenswürdigkeiten) und Screenshot in Kacheln (Naht Kaleidoskop-IFS bitgleich); Distanzschätzung je Art in GLSL und f64-JS (Antippen, Zoom, Kollision, Flug).

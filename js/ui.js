@@ -267,7 +267,8 @@ function syncWP(force) {
     $('wp-title').textContent = cap(MODE_NAMES()[f]);
     const w = S.wp[f] || {};
     let h = '';
-    if (f === 2) h = wpSeg('v', [[0, t('bs_ship')], [1, 'Celtic'], [2, t('bs_perp')], [3, t('bs_buffalo')]]);
+    if (f === 1) h = wpToggle('m', t('jm_morph')) + (w.m ? `<label class="slider"><span>${t('jm_speed')}</span><input type="range" id="jm-speed" min="-1.5" max="1.5" step="0.05" value="${S.flySpeed}"><output>${(+S.flySpeed).toFixed(2)}</output></label>` : '');
+    else if (f === 2) h = wpSeg('v', [[0, t('bs_ship')], [1, 'Celtic'], [2, t('bs_perp')], [3, t('bs_buffalo')]]);
     else if (f === 4) h = wpSlider('e', t('m_exp'), 2, 8, 0.01) + wpToggle('m', t('m_morph'));
     else if (f === 5) h = wpSeg('p', NEWTON_NAMES.map((n, i) => [i, n]), 'c3');
     else if (f === 10) h = wpSeg('s', LYA_SEQ.map(q => [q, q.length > 6 ? q.slice(0, 6) + '…' : q]), 'c3') + `<input class="seq" id="wp-seq" maxlength="24" autocomplete="off" spellcheck="false" value="${A.lyaSeq(w.s).s}" aria-label="${t('lya_seq')}">`;
@@ -311,6 +312,12 @@ function syncWP(force) {
         r.addEventListener('change', () => A.saveSettings());
     });
     $('wp-body').querySelectorAll('input[data-wpt]').forEach(c => c.addEventListener('change', () => { A.setWP(f, { [c.dataset.wpt]: c.checked ? 1 : 0 }); syncWP(true); }));
+    // 7.1 Julia-Morph: Tempo = derselbe Wert wie der Flug-Tempo-Regler (negativ = rückwärts am Rand entlang)
+    const js_ = $('jm-speed');
+    if (js_) {
+        js_.addEventListener('input', () => { S.flySpeed = Math.abs(+js_.value) < 0.05 ? 0 : +js_.value; js_.nextElementSibling.textContent = S.flySpeed.toFixed(2); });
+        js_.addEventListener('change', () => A.saveSettings());
+    }
     const sq = $('wp-seq');
     if (sq) {
         sq.addEventListener('input', () => {

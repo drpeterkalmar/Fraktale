@@ -606,6 +606,23 @@ function create(canvas) {
         gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
+    // 7.1 Julia-Lupe: Julia-Menge für c direkt im Kreis (lp = Mitte x, y und Radius in Zielpixeln), Palette wie im Bild;
+    // Rahmen + dünner Strich zum Finger (fp)
+    R.presentLupe = function (lp, c, look, fp) {
+        const pr = program('lupe', SH.LUPE_FS), L = pr.loc;
+        gl.useProgram(pr.p);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.enable(gl.SCISSOR_TEST);
+        const x0 = Math.min(lp[0] - lp[2], fp[0]) - 4, x1 = Math.max(lp[0] + lp[2], fp[0]) + 4, y0 = Math.min(lp[1] - lp[2], fp[1]) - 4, y1 = Math.max(lp[1] + lp[2], fp[1]) + 4;
+        gl.scissor(Math.floor(x0), Math.floor(y0), Math.ceil(x1 - x0), Math.ceil(y1 - y0));
+        gl.uniform3f(L.u_lp, lp[0], lp[1], lp[2]); gl.uniform2f(L.u_c, c[0], c[1]); gl.uniform2f(L.u_fp, fp[0], fp[1]);
+        setPalette(L, look);
+        gl.uniform1f(L.u_density, look.density);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.BLEND); gl.disable(gl.SCISSOR_TEST);
+    };
     // 7.1 Nebulabrot: Histogramm mit 4 Werten je Pixel (R/G/B = Iterationsgrenzen 2000/200/20), je Kanal log-normiert
     let rgbTex = null, rgbW = 0, rgbH = 0;
     R.presentBuddhaRGB = function (hist, w, h, max, look) {

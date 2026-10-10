@@ -11,6 +11,7 @@ function attach(el, h) {
     let samples = [];            // [{t, ax, ay, ls}] für Trägheit
     let downT = 0, downPos = null, moved = 0, maxPts = 0, multiT = 0;
     let lastTap = null, tapTimer = 0, longTimer = 0, rect = null;
+    let hold = false;          // 7.1: nach einem Langdruck, der 'hold' meldet (Julia-Lupe), gehen Bewegungen an onHoldMove
 
     const now = () => performance.now();
     const anchor = () => {
@@ -48,7 +49,7 @@ function attach(el, h) {
             clearLong();
             longTimer = setTimeout(() => {
                 longTimer = 0;
-                if (pts.size === 1 && moved < 10) { h.onLongPress && h.onLongPress(downPos.x, downPos.y); downPos = null; }
+                if (pts.size === 1 && moved < 10) { const r = h.onLongPress && h.onLongPress(downPos.x, downPos.y); if (r === 'hold') hold = true; downPos = null; }
             }, 550);
         } else {
             maxPts = Math.max(maxPts, pts.size);
@@ -63,6 +64,7 @@ function attach(el, h) {
         const p = pts.get(e.pointerId);
         if (!p) return;
         p.x = e.clientX; p.y = e.clientY;
+        if (hold) { h.onHoldMove && h.onHoldMove(e.clientX, e.clientY); return; }
         if (rect) { rect.x1 = e.clientX; rect.y1 = e.clientY; h.onRect && h.onRect(rect, false); return; }
         // Bewegung jedes Zeigers von SEINEM Ablagepunkt (bis 6.5.2 vom ersten Finger aus gemessen: ein pointermove des
         // zweiten Fingers an Ort zählte als 100 px Bewegung, der Zwei-Finger-Tipp ging verloren)
@@ -84,6 +86,7 @@ function attach(el, h) {
         if (!pts.has(e.pointerId)) return;
         pts.delete(e.pointerId);
         clearLong();
+        if (hold) { if (!pts.size) { hold = false; base = null; h.onHoldEnd && h.onHoldEnd(e.clientX, e.clientY, e.type === 'pointercancel'); } return; }
         if (rect) { if (!pts.size) { h.onRect && h.onRect(rect, true); rect = null; } return; }
         const t = now();
         if (pts.size > 0) { rebase(); return; }            // Pinch -> Pan mit restlichem Finger

@@ -1407,6 +1407,55 @@ void main() {
     fragColor = vec4(pow(max(col, vec3(0.0)), vec3(0.92)), 1.0);
 }`;
 
+// 7.1 Julia-Lupe: Julia-Menge z² + c direkt je Pixel im Kreis (300 Schritte, glatte Färbung mit der App-Palette)
+const LUPE_FS = `#version 300 es
+${COMMON}
+uniform vec3 u_lp;          // Mitte (Pixel), Radius (Pixel)
+uniform vec2 u_c, u_fp;     // c, Fingerpunkt (Pixel)
+uniform vec3 u_palA, u_palB, u_palC, u_palD;
+uniform int u_palCustom;
+uniform vec3 u_custom[6];
+uniform float u_cycle, u_density;
+uniform vec3 u_setCol;
+out vec4 o;
+vec3 palette(float t) {
+    t = fract(t);
+    if (u_palCustom == 1) {
+        t *= 6.0; int s = int(t); float f = t - float(s);
+        vec3 a = u_custom[0], b = u_custom[1];
+        if (s == 1) { a = u_custom[1]; b = u_custom[2]; } else if (s == 2) { a = u_custom[2]; b = u_custom[3]; }
+        else if (s == 3) { a = u_custom[3]; b = u_custom[4]; } else if (s == 4) { a = u_custom[4]; b = u_custom[5]; }
+        else if (s >= 5) { a = u_custom[5]; b = u_custom[0]; }
+        return mix(a, b, f);
+    }
+    return u_palA + u_palB * cos(6.28318 * (u_palC * t + u_palD));
+}
+float segDist(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h); }
+void main() {
+    vec2 d = gl_FragCoord.xy - u_lp.xy;
+    float r = length(d);
+    // Strich vom Kreis zum Finger
+    vec2 dir = normalize(u_fp - u_lp.xy);
+    float ls = segDist(gl_FragCoord.xy, u_lp.xy + dir * u_lp.z, u_fp);
+    if (r > u_lp.z + 2.0) {
+        float a = (1.0 - smoothstep(0.8, 2.2, ls)) * 0.8;
+        float dot_ = 1.0 - smoothstep(3.0, 5.0, length(gl_FragCoord.xy - u_fp));
+        if (max(a, dot_) <= 0.0) discard;
+        o = vec4(vec3(1.0), max(a, dot_ * 0.9));
+        return;
+    }
+    vec2 z = d / u_lp.z * 1.65;
+    float mu = -1.0;
+    for (int n = 0; n < 300; n++) {
+        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + u_c;
+        if (dot(z, z) > 256.0) { mu = float(n) + 1.0 - log2(0.5 * log2(dot(z, z))); break; }
+    }
+    vec3 col = mu < 0.0 ? u_setCol : palette(mu * 0.08 * u_density + u_cycle);
+    float rim = smoothstep(u_lp.z - 3.0, u_lp.z - 0.5, r);
+    col = mix(col, vec3(1.0), rim * 0.9);
+    o = vec4(col, 1.0 - smoothstep(u_lp.z + 0.5, u_lp.z + 2.0, r));
+}`;
+
 // 7.1 Nebulabrot: R/G/B aus drei Iterationsgrenzen, je Kanal log-normiert (Spitze -> 1), leichtes Gamma
 const BUDDHA_RGB_FS = `#version 300 es
 ${COMMON}
@@ -1466,5 +1515,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

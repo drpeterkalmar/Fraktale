@@ -12,6 +12,8 @@
   H  Lichtbilder: erstes ansehnliches Bild < 1 s, Link mit eigener Flamme, Mutieren, Screenshot in Kacheln, Nebulabrot/Anti,
      CPU-Rückfall (?dens=cpu)
   I  3D-Welten (Quaternionen-Julia, Kaleidoskop-IFS, Apollonian): Ruhebild, Link mit Parametern, Tour, Flug
+  J  Julia-Lupe (Langdruck + Ziehen im Mandelbrot: Vorschau folgt, Bild verschiebt sich nicht, Loslassen öffnet Julia an c) und
+     Julia-Morph (c wandert am Kardioidenrand, rückwärts mit negativem Tempo, Link wp=m1)
 Aufruf: python3 tests/test_v71.py [--only=A,B,…]   (Server: python3 tools/serve.py 8472)
 """
 import sys, os, time, json
@@ -308,8 +310,62 @@ def case_I(p):
     a.close()
 
 
+def case_J(p):
+    print('J  Julia-Lupe und Julia-Morph')
+    a = App(p).open(); pg = a.page
+    pg.goto('about:blank'); a.open('m=0&x=-0.5&y=0&z=1')
+    time.sleep(1.5)
+    W, H = pg.evaluate("() => [innerWidth, innerHeight]")
+    cam0 = pg.evaluate("() => { const S = window.__fraktal.S; return [String(S.cam.cx), String(S.cam.cy), S.cam.zoom]; }")
+    x0, y0 = W * 0.5, H * 0.62
+    pg.mouse.move(x0, y0); pg.mouse.down(); time.sleep(0.8)
+    on = pg.evaluate("() => window.__fraktal.LUPE.on")
+    check(on, 'Langdruck im Mandelbrot öffnet die Lupe')
+    for k in range(12):
+        pg.mouse.move(x0 + k * 4, y0 - k * 6); time.sleep(0.03)
+    time.sleep(0.3)
+    L = pg.evaluate("() => { const A = window.__fraktal, L = A.LUPE; return [L.on, A.HP.toNumber(L.cx), A.HP.toNumber(L.cy), L.x, L.y]; }")
+    cam1 = pg.evaluate("() => { const S = window.__fraktal.S; return [String(S.cam.cx), String(S.cam.cy), S.cam.zoom]; }")
+    check(L[0] and abs(L[3] - (x0 + 44)) < 1 and abs(L[4] - (y0 - 66)) < 1, f'Lupe folgt dem Finger ({L[3]:.0f}, {L[4]:.0f})')
+    check(cam1 == cam0, 'Bild verschiebt sich beim Ziehen mit Lupe nicht')
+    os.makedirs(os.path.join(os.path.dirname(__file__), 'shots', 'v71'), exist_ok=True)
+    png = os.path.join(os.path.dirname(__file__), 'shots', 'v71', 'lupe_hoch.png')
+    pg.screenshot(path=png)
+    # Pixel im Kreis über dem Finger: farbig und anders als ohne Lupe (Julia statt Mandelbrot)
+    from PIL import Image, ImageStat
+    im = Image.open(png).convert('L'); d = im.width / W; r = min(110, min(W, H) * 0.2)
+    ly = L[4] - r - 56; box = [int((L[3] - r * 0.7) * d), int((ly - r * 0.7) * d), int((L[3] + r * 0.7) * d), int((ly + r * 0.7) * d)]
+    sd = ImageStat.Stat(im.crop(box)).stddev[0]
+    check(sd > 5, f'Lupe zeigt Struktur (Streuung {sd:.0f})')
+    pg.mouse.up(); time.sleep(1.0)
+    st = pg.evaluate("() => { const A = window.__fraktal; return [A.S.formula, A.HP.toNumber(A.S.julia.x), A.HP.toNumber(A.S.julia.y), A.LUPE.on]; }")
+    check(st[0] == 1 and abs(st[1] - L[1]) < 1e-9 and abs(st[2] - L[2]) < 1e-9 and not st[3], f'Loslassen öffnet Julia bei c = {st[1]:.4f}{st[2]:+.4f}i')
+    # Morph
+    pg.goto('about:blank'); a.open('m=1&x=0&y=0&z=1&jx=-0.75&jy=0.1&wp=m1')
+    time.sleep(0.5)
+    pg.evaluate("() => { window.__fraktal.S.flySpeed = 1; }")
+    c0 = pg.evaluate("() => { const A = window.__fraktal; return [A.HP.toNumber(A.S.julia.x), A.HP.toNumber(A.S.julia.y), A.JM.th]; }")
+    time.sleep(4)
+    c1 = pg.evaluate("() => { const A = window.__fraktal; return [A.HP.toNumber(A.S.julia.x), A.HP.toNumber(A.S.julia.y), A.JM.th]; }")
+    import math
+    def card(th): return ((math.cos(th) / 2 - math.cos(2 * th) / 4) * 1.012 + 0.003, (math.sin(th) / 2 - math.sin(2 * th) / 4) * 1.012)
+    cc = card(c1[2])
+    check(c1[2] > c0[2] + 0.2 and abs(cc[0] - c1[0]) < 1e-6 and abs(cc[1] - c1[1]) < 1e-6, f'Morph: c wandert am Rand (θ {c0[2]:.2f} -> {c1[2]:.2f}, c = {c1[0]:.3f}{c1[1]:+.3f}i)')
+    fs = pg.evaluate("() => window.__fraktal.layerInfo().layers.length")
+    pg.evaluate("() => { window.__fraktal.S.flySpeed = -1; }"); time.sleep(3)
+    c2 = pg.evaluate("() => window.__fraktal.JM.th")
+    check(c2 < c1[2] - 0.1, f'negatives Tempo: rückwärts (θ {c1[2]:.2f} -> {c2:.2f})')
+    u = pg.evaluate("() => window.__fraktal.stateURL()")
+    check('wp=m1' in u, 'Link trägt den Morph (wp=m1)')
+    pg.evaluate("() => window.__fraktal.setWP(1, { m: 0 })"); time.sleep(0.3)
+    t1 = pg.evaluate("() => window.__fraktal.JM.th"); time.sleep(1)
+    check(pg.evaluate("() => window.__fraktal.JM.th") == t1, 'Morph aus: c bleibt stehen')
+    check(not a.errors, f'keine Fehler {a.errors[:2]}')
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H), ('I', case_I)]:
+    for k, fn in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H), ('I', case_I), ('J', case_J)]:
         if ONLY and k not in ONLY:
             continue
         try:

@@ -58,6 +58,25 @@ test('Langdruck (550 ms)', () => {
     assert.deepEqual(G.calls.find(c => c[0] === 'longpress').slice(1), [150, 250]);
 });
 
+test('7.1 Langdruck mit Halten (Julia-Lupe): Bewegungen gehen an onHoldMove statt zu verschieben, Loslassen an onHoldEnd', () => {
+    const T = fakeTime(), H = {}, calls = [];
+    try {
+        const el = { addEventListener: (type, fn) => { H[type] = fn; }, setPointerCapture() {} };
+        const rec = (name, r) => (...a) => { calls.push([name, ...a]); return r; };
+        self.FKGestures.attach(el, { onStart: rec('start'), onTransform: rec('transform'), onEnd: rec('end'), onTap: rec('tap'), onLongPress: rec('longpress', 'hold'),
+                                     onHoldMove: rec('holdmove'), onHoldEnd: rec('holdend'), onWheel: rec('wheel') });
+        const ev = (type, x, y) => H[type]({ type, pointerId: 1, clientX: x, clientY: y, pointerType: 'touch', button: 0, shiftKey: false });
+        ev('pointerdown', 100, 100); T.advance(600);
+        ev('pointermove', 130, 80); ev('pointermove', 160, 60); ev('pointerup', 160, 60); T.advance(600);
+        const n = calls.map(c => c[0]);
+        assert.deepEqual(n.filter(x => x !== 'start'), ['longpress', 'holdmove', 'holdmove', 'holdend']);
+        assert.deepEqual(calls.find(c => c[0] === 'holdend').slice(1), [160, 60, false]);
+        // danach wieder normale Gesten
+        ev('pointerdown', 50, 50); T.advance(80); ev('pointerup', 50, 50); T.advance(600);
+        assert.equal(calls[calls.length - 1][0], 'tap');
+    } finally { T.restore(); }
+});
+
 test('Zwei-Finger-Tipp ohne pointermove', () => {
     const G = run(G => { G.down(1, 100, 200).at(20).down(2, 200, 200).at(120).up(2, 200, 200).at(130).up(1, 100, 200).at(800); });
     assert.deepEqual(G.names(), ['twofingertap']);

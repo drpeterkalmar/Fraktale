@@ -14,6 +14,7 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
   (g) 7.0 Mandelbulb-Marsch-Shader defekt -> Toast, einfacher Mandelbulb wie bis 6.9 (Bild nicht leer), Drehen geht, Screenshot geht
   (h) 7.1 Exoten-Shader (Lyapunov) defekt -> Toast, CPU-Rechenweg (f64), Bild fertig und nicht leer
   (i) 7.1 Lichtbilder-Wander-Shader defekt -> Toast, Flamme auf dem Prozessor, Bild nicht leer
+  (j) 7.1 Julia-Lupe defekt -> Toast, Loslassen öffnet trotzdem die Julia-Menge, nächster Langdruck öffnet sie sofort (wie bis 7.1.3)
 Aufruf: python3 tests/test_shader_fail.py [--only=a,b,c,d,e,f,g,h,i]
 """
 import sys, os, time, json
@@ -249,8 +250,29 @@ def case_i(p):
     a.close()
 
 
+def case_j(p):
+    print('(j) 7.1 Julia-Lupe: Shader defekt -> ohne Vorschau, Julia öffnet wie bisher')
+    a = open_app(p, [['uniform vec3 u_lp;']])
+    pg = a.page
+    a.wait_done(60)
+    W, H = pg.evaluate("() => [innerWidth, innerHeight]")
+    pg.mouse.move(W * 0.5, H * 0.6); pg.mouse.down(); time.sleep(0.9)
+    tx = wait_toast(pg, 10)
+    check('Grafikfehler' in tx, 'Toast: %r' % tx)
+    pg.mouse.up(); time.sleep(0.8)
+    check(pg.evaluate("() => window.__fraktal.S.formula") == 1, 'Loslassen öffnet die Julia-Menge')
+    pg.evaluate("() => window.__fraktal.setMode(0)"); time.sleep(1)
+    pg.mouse.move(W * 0.4, H * 0.5); pg.mouse.down(); time.sleep(0.9)
+    st = pg.evaluate("() => [window.__fraktal.S.formula, window.__fraktal.LUPE.on]")
+    pg.mouse.up(); time.sleep(0.3)
+    check(st == [1, False], 'zweiter Langdruck: Julia sofort, keine Lupe %s' % st)
+    a.wait_done(60)
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i), ('j', case_j)]:
         if ONLY and k not in ONLY:
             continue
         try:
