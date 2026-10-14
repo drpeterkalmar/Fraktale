@@ -85,9 +85,12 @@ def main():
         need(abs(z2 - z1) / z1 < 1e-6, 'Pause hält an')
         pg.evaluate("() => window.__fraktal.pauseFly(false)")
         # Vollbild-/Größenwechsel im Flug
-        pg.set_viewport_size({'width': 915, 'height': 412}); time.sleep(1.5)
-        f2 = pg.evaluate("() => ({ on: window.__fraktal.FLY.on, z: window.__fraktal.BULB.info().zoom })")
-        need(f2['on'] and f2['z'] > f['z'], f"Drehen/Vollbild: Flug läuft weiter (Zoom {f2['z']:.3g})")
+        pg.set_viewport_size({'width': 915, 'height': 412}); time.sleep(1.0)
+        # (7.1.6: der Bulb-Zoom schwankt im Flug mit der Oberfläche – geprüft wird, dass die Kamera weiterfliegt)
+        p1 = pg.evaluate("() => window.__fraktal.BULB.B.pos.slice()"); time.sleep(0.5)
+        f2 = pg.evaluate("() => ({ on: window.__fraktal.FLY.on, paused: window.__fraktal.FLY.paused, z: window.__fraktal.BULB.info().zoom, p: window.__fraktal.BULB.B.pos })")
+        mv = sum((x - y) ** 2 for x, y in zip(p1, f2['p'])) ** 0.5
+        need(f2['on'] and not f2['paused'] and mv > 1e-6, f"Drehen/Vollbild: Flug läuft weiter (Zoom {f2['z']:.3g}, Weg in 0,5 s {mv:.2e})")
         pg.set_viewport_size({'width': 412, 'height': 915}); time.sleep(1.0)
         pg.evaluate("() => window.__fraktal.reverseFly()")
         t0 = time.time()

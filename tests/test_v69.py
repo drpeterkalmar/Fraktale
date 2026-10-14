@@ -32,7 +32,8 @@ def main():
     with sync_playwright() as p:
         a = App(p).open(); pg = a.page
         S = lambda k: pg.evaluate(f"() => window.__fraktal.S.{k}")
-        need(S('outMode') == 'pal' and abs(S('speed') - 0.15) < 1e-9, f"Standard: Außen Palette, Tempo 0,15 ({S('outMode')}, {S('speed')})")
+        # 7.1.6: Standards nach Peter – Außen grenznah (Saum 100 px), Farbtempo 0,05 (1 Umlauf in 20 s); bis 7.1.5 Palette/0,15
+        need(S('outMode') == 'edge' and S('edgeW') == 100 and abs(S('speed') - 0.05) < 1e-9, f"Standard: Außen grenznah 100 px, Tempo 0,05 ({S('outMode')}, {S('edgeW')}, {S('speed')})")
         # Links
         for h, want in (('m=0&x=-0.5&y=0&z=1', ('pal', None)), ('m=0&x=-0.5&y=0&z=1&ou=e30', ('edge', 30)), ('m=0&x=-0.5&y=0&z=1&sc=b2&ou=k', ('black', None))):
             pg.goto('about:blank'); a.open(h); got = (S('outMode'), S('edgeW') if want[1] else None)

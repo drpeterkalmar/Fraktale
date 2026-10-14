@@ -76,7 +76,7 @@ root.FKCapture = { create(ctx) {
             else if (rcpu || !ctx.gpuPerturbOK || z > ctx.GPU_MAX) { P.dev = 'cpu'; P.mode = z < ctx.DIRECT_MAX ? 'direct' : 'perturb'; }
             else { P.dev = 'gpu'; P.mode = 'perturb'; }
             P.maxIter = maxIterFor(S.cam.zoom);
-            P.de = deActive(); P.deMask = deMaskOn(); P.inn = innActive(); P.err = P.dev === 'gpu' && S.precise && f !== 5 && !ctx.isExo(P.cf);
+            P.de = deActive(); P.deMask = deMaskOn(); P.inn = innActive() && !(P.dev === 'cpu' && z > ctx.GPU_MAX); P.err = P.dev === 'gpu' && S.precise && f !== 5 && !ctx.isExo(P.cf);
             P.julia = [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)];
         } else if (kind === 'dens') {
             // 7.1 Lichtbilder: je Kachel ein eigenes Histogramm in Kachelgröße, so viele Punkte je Pixel wie das Bildschirmbild

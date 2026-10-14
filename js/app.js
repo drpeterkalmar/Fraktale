@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.5';
+const APP_VERSION = '7.1.6';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -180,17 +180,20 @@ const S = {
     formula: 0,
     julia: { x: HP.fromString('-0.8'), y: HP.fromString('0.156') },
     iterManual: false, iterValue: 300,
-    palette: 0, density: 1, anim: true, speed: 0.15, relief: false, reliefStrength: 0.7, banded: false, particles: true,
-    cycle: 0, time: 0,
+    // 7.1.6 Standards nach Peter (10.10.2026): Palette Eis, Menge bunt (Inseln), Außen grenznah mit Saum 100 px, Farbtempo
+    // 1 Umlauf in 20 s (bis 7.1.5: 6,7 s); wer schon Einstellungen hat, bekommt sie einmal per Migration (SETTINGS_V)
+    palette: Math.max(0, PAL.indexOf('ice')), density: 1, anim: true, speed: 0.05, relief: false, reliefStrength: 0.7, banded: false, particles: true,
+    cycle: 0, time: 0, ctime: 0,                                            // ctime: Farbzeit (Leuchten/Pulsieren) im Farbtempo
     quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.5,
     deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
-    setCol: 'black', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
+    setCol: 'bunt', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
-    outMode: 'pal', edgeW: 16,                                              // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
+    outMode: 'edge', edgeW: 100,                                             // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
     style: 0, stMix: 0.85, stS: 5,                                          // 7.1: Färbe-Stil (0 Standard … 6 Stängel), Stärke, Streifendichte
     wp: {}, wpal: {},                                                       // 7.1: Welt-Parameter, Palette je Welt
     bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false,             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
+    fsStart: true, startWorld: 'random',                                    // 7.1.6: Vollbild beim ersten Tipp; Startwelt Zufall/'last'
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
     chrome: true,
 };
@@ -262,22 +265,35 @@ for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f]);
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
 
+const SETTINGS_V = 2;          // 7.1.6: Version der Standards (Migration in loadSettings)
+let SETTINGS_MIGRATED = false;
 function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld'])
             if (s[k] !== undefined) S[k] = s[k];
         for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f], S.wp[f] || {});
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
+        // 7.1.6: neue Standards einmalig übernehmen (nur diese Felder; danach gelten wieder die eigenen Änderungen)
+        if (Object.keys(s).length && (s.sv | 0) < SETTINGS_V) {
+            S.palette = Math.max(0, PAL.indexOf('ice')); S.wpal = Object.assign({}, S.wpal, { c: 'ice' });
+            S.setCol = 'bunt'; S.inMode = 1; S.outMode = 'edge'; S.edgeW = 100; S.speed = 0.05;
+            SETTINGS_MIGRATED = true;
+        }
     } catch (e) { /* ignorieren */ }
     if (!TRANSLATIONS[S.lang]) S.lang = 'de';
     try { if (!localStorage.getItem('fraktal_v5_settings')) S.minimap = window.innerWidth >= 900; } catch (e) {}
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel']) o[k] = S[k];
-    o.paletteId = PAL.list[S.palette].id;
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld']) o[k] = S[k];
+    // 7.1.6: paletteId = Palette der Klassiker (bis 7.1.5 die gerade gezeigte – nach einem Start in einer neuen Welt bekamen
+    // die Klassiker deren Palette); die Palette der aktuellen Welt steht in wpal
+    S.wpal = Object.assign({}, S.wpal, { [palKey(S.formula)]: PAL.list[S.palette].id });
+    o.wpal = S.wpal;
+    o.paletteId = S.wpal.c || PAL.list[S.palette].id;
+    o.sv = SETTINGS_V;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -298,6 +314,15 @@ function fatal() {
 if (!R) { fatal(); return; }
 // 6.5.2 „Einfache Grafik“ (Knopf des Start-Wächters): diese Sitzung CPU-Rechenweg + Auflösung „Akku“, ohne GPU-Selbsttest
 let SIMPLE = false;
+// 7.1.6 Reload = Neustart (Peter 10.10.2026): Ein Seiten-Reload setzt Ansicht und Sitzung zurück – die Adresszeile (laufend
+// mitgeschrieben, fürs Teilen) zählt dann nicht, sessionStorage wird verworfen. Ein frisch geöffneter Link (Navigation
+// 'navigate') zeigt weiter seine Ansicht. Mit „Startwelt: Wie zuletzt“ stellt der Reload die letzte Ansicht her wie bisher.
+const NAV_RELOAD = (() => {
+    try { const e = performance.getEntriesByType('navigation')[0]; if (e && e.type) return e.type === 'reload'; } catch (e) {}
+    try { return !!performance.navigation && performance.navigation.type === 1; } catch (e) { return false; }
+})();
+const RELOAD_RESET = NAV_RELOAD && (() => { try { return JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}').startWorld !== 'last'; } catch (e) { return true; } })();
+if (RELOAD_RESET) { try { sessionStorage.clear(); } catch (e) {} }
 try { SIMPLE = sessionStorage.getItem('fk_simple') === '1'; } catch (e) {}
 let gpuPerturbOK = SIMPLE ? false : R.selfTest();
 if (!R.displayOK()) { fatal(); return; }
@@ -697,8 +722,9 @@ function setMode(m, keepView) {
 function setJulia(x, y) { S.julia = { x, y }; JM.on = false; invalidate('julia'); emit('julia'); lastParamT = performance.now(); }
 // 7.1 Palette je Welt: die neuen Welten (WORLD_PAL) merken sich ihre eigene Palette (Standard = kuratierte Palette), die
 // klassischen Welten teilen sich eine (Schlüssel 'c') – Wechsel zurück stellt die vorige wieder her
+const palKey = (f) => WORLD_PAL[f] ? String(f) : 'c';
 function worldPalette(prev, m) {
-    const key = (f) => WORLD_PAL[f] ? String(f) : 'c';
+    const key = palKey;
     S.wpal = S.wpal || {};
     S.wpal[key(prev)] = PAL.list[S.palette].id;
     const id = S.wpal[key(m)] || WORLD_PAL[m];
@@ -813,7 +839,13 @@ function cancelJob() {
 }
 function cancelPrefetch() { if (RC.pjob) { R.cancelJob(RC.pjob); RC.pjob = null; } }
 // 6.4 Bunte Menge: Innen-Information mitrechnen (eigene Rechen-Variante; Außenwerte bitgleich). Nicht bei Newton.
-function innActive() { return S.setCol === 'bunt' && (S.formula < 5 || S.formula === 2) && !isExo(cformula()) && !innBlocked; }
+// 7.1.6: nicht jenseits der GPU-Tiefe (10³⁰, dort rechnet nur der Prozessor mit Perturbation): Innenpunkte überspringen
+// mit BLA Tausende Schritte, die Zyklussuche für die Innenfarbe muss jeden gehen – gemessen bei 10³⁴: 147 s statt 1,4 s je
+// Bild. Die Menge zeigt dort ihre Grundfarbe (seit 7.1.6 ist Bunt der Standard). Der gewählte Rechenweg CPU behält Bunt.
+function innActive() {
+    if (!(S.setCol === 'bunt' && (S.formula < 5 || S.formula === 2) && !isExo(cformula()) && !innBlocked)) return false;
+    return !(S.cam.zoom > GPU_MAX && plan().kind === 'cpu');
+}
 // P1-2 Rückfall bei defekten Rechen-Shadern (nur für die Sitzung, nichts wird gespeichert): Bunt-Variante defekt ->
 // Menge schwarz; Perturbation defekt -> CPU-Perturbation (gpuPerturbOK); direkte Variante defekt -> CPU-Rechenweg
 let innBlocked = false, forceCPU = false;
@@ -848,7 +880,7 @@ function animating() { return !!inertia || !!flight || !!wheelAnim || (FLY.on &&
 function look() {
     const p = PAL.list[S.palette];
     return { formula: S.formula, maxIter: RC.front ? RC.front.maxIter : currentMaxIter(), pal: p, custom: PAL.customFlat(), dust: S.formula === 2 || S.formula === 3,
-             cycle: S.cycle, density: S.density, time: S.time, relief: S.relief ? S.reliefStrength : 0,
+             cycle: S.cycle, density: S.density, time: S.time, ctime: S.ctime % 86400, relief: S.relief ? S.reliefStrength : 0,
              particles: S.particles && S.anim, banded: S.banded,
              setCol: PAL.setRGB(S.setCol, S.setHex, p), alpine: S.alpine ? (['forest', 'lake', 'meadow'].indexOf(S.valley) + 1 || 1) : 0,
              inner: innActive() ? (S.inMode === 2 ? 2 : 1) : 0,
@@ -1232,7 +1264,7 @@ function frame(now) {
     lastT = now;
     if (document.hidden || R.lost || NOFIRST) return;
     S.time += dt;
-    if (S.anim) S.cycle += dt * S.speed;
+    if (S.anim) { S.cycle += dt * S.speed; S.ctime += dt * S.speed / 0.15; }   // 7.1.6: Leuchten/Pulsieren im Farbtempo (0,15 = Tempo bis 7.1.5)
     // P3-6: Zähler begrenzen (f32 im Shader: nach ~1 Tag Dauerbetrieb nur noch 10⁻³ Auflösung -> Farbbänder). Farbzyklus
     // mit Periode 1000: alle Paletten sind darin exakt periodisch (Frequenzen 0,4/0,5/0,7/1/2; der 3D-Himmel nutzt sie ohne
     // fract) – 1024 hätte dort bei jedem Umlauf einen Farbsprung gegeben. Zeit: einmal pro 24 h ein kleiner Phasensprung
@@ -1418,11 +1450,54 @@ function buddhaRedraw() { if (!BUD.hist) return; if (BUD.rgb) R.presentBuddhaRGB
 function fileName(W, H) { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.toExponential(1).replace('+', '')}${W ? `_${W}x${H}` : ''}_${Date.now()}.png`; }
 
 // ------------------------------------------------------------------ Start
+// 7.1.6 Zufalls-Startwelt (Peter 10.10.2026): bei jedem Start ohne Link eine zufällige Welt (alle 19, nie dieselbe wie beim
+// letzten Start) mit ihrer Startansicht oder einem zufälligen Tour-Ort. Schwere Welten (3D, Lichtbilder, Buddhabrot) nur,
+// wenn das Gerät sie flüssig schafft: nicht im einfachen Modus/Sparmodus und nicht auf schwachen Handys (≤ 4 Kerne bzw.
+// ≤ 3 GB Speicher). Die Wahl steht in START (Test, Bericht).
+const START = { how: '', world: -1, sight: null };
+function heavyOK() {
+    if (SIMPLE || S.quality === 'eco' || S.renderer === 'cpu') return false;
+    const mob = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
+    const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 8;
+    return !(mob && (cores <= 4 || mem <= 3));
+}
+function randomStart() {
+    let last = -1;
+    try { last = parseInt(localStorage.getItem('fraktal_lastStart'), 10); } catch (e) {}
+    const heavy = new Set([...RAY, ...DENS_W, 7]), ok = heavyOK();
+    const pool = MODE_KEYS.map((_, i) => i).filter(i => i !== last && (ok || !heavy.has(i)));
+    const w = pool[Math.floor(Math.random() * pool.length)];
+    try { localStorage.setItem('fraktal_lastStart', String(w)); } catch (e) {}
+    setMode(w);
+    // Startansicht oder (halbe Chance) ein zufälliger Tour-Ort der Welt
+    const list = SIGHTS[w] || [];
+    const p = list.length && Math.random() < 0.5 ? list[Math.floor(Math.random() * list.length)] : null;
+    if (p) {
+        applyPlaceWP(p);
+        if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
+        if (isRay(w)) { if (p.b) BULB.applyState(p.b); }
+        else { const h = isDens(w) ? homeOf(w) : null; setCam(HP.fromString(h ? h[0] : p.cx), HP.fromString(h ? h[1] : p.cy), h ? h[2] : +p.zoom); }
+    }
+    START.world = w; START.sight = p ? p.k : null;
+}
 function init() {
     loadSettings();
+    if (SETTINGS_MIGRATED) saveSettings();
     if (SIMPLE) { SIMPLE = { renderer: S.renderer, quality: S.quality }; S.renderer = 'cpu'; S.quality = 'eco'; }
-    const fromURL = readURL();
-    if (!fromURL) setCam(HP.fromString('-0.5'), 0n, 1);
+    resize();
+    if (RELOAD_RESET) {
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+        for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f]);       // Welt-Parameter der Sitzung verwerfen
+    }
+    let fromURL = !RELOAD_RESET && readURL();
+    if (!fromURL && S.startWorld === 'last' && !navigator.webdriver) { let h = ''; try { h = localStorage.getItem('fraktal_last') || ''; } catch (e) {} if (h) fromURL = readURL(h); }
+    START.how = fromURL ? 'url' : RELOAD_RESET ? 'reset' : 'new';
+    if (!fromURL) {
+        // Tests (Playwright: navigator.webdriver) starten wie bisher im Mandelbrot – außer mit ?startworld=random
+        let tr = false; try { tr = localStorage.getItem('fk_test_startworld') === 'random'; } catch (e) {}
+        if (S.startWorld === 'random' && (!navigator.webdriver || Q.get('startworld') === 'random' || tr)) randomStart();
+        else setCam(HP.fromString('-0.5'), 0n, 1);
+    }
     if (Q.get('renderer')) S.renderer = Q.get('renderer');
     if (Q.has('noanim')) S.anim = false;
     if (Q.has('nobla')) R.noBLA = true;
@@ -1558,7 +1633,7 @@ const { REF, ensureRef, refUsable, requestRefFor, requestBLA } = M_Refs;
 const M_Layers = self.FKLayers.create(CTX);
 const { addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers } = M_Layers;
 const M_Flight = self.FKFlight.create(CTX);
-const { FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, trailAt, turnFly, clearance } = M_Flight;
+const { FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, stopFlySoft, toggleFly, trailAt, turnFly, clearance } = M_Flight;
 const M_Scheduler = self.FKScheduler.create(CTX);
 const { governorUpdate, schedule } = M_Scheduler;
 const M_Capture = self.FKCapture.create(CTX);
@@ -1584,12 +1659,12 @@ function isDone() { const f = RC.front, now = performance.now(); return !!f && f
 const API = {
     APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, stActive,
     MODE_GROUPS, WP_DEF, cformula, xparams, setWP, styleOK, hasSetW, is2dW, maxZoom, lyaSeq, mexpNow, SIGHTS, startRound, stopRound, ROUND,
-    isDens, DENS, homeOf, flameRandom, flameMutate, LUPE, lupeAt, jmorphStart, JM,
+    isDens, DENS, homeOf, flameRandom, flameMutate, LUPE, lupeAt, jmorphStart, JM, START, NAV_RELOAD, SETTINGS_V,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
     setMode, setJulia, changeIter, setIterAuto, currentMaxIter, autoIter, flyTo, startTour, setCam, stopAnims,
     invalidate, resize, noteResize, saveSettings, plan, stateURL, captureBlob, captureShot, fileName, zoomAt, presentNow,
     shot: { plan: (o) => M_Capture.plan(o), size: (o) => M_Capture.shotSize(o), cancel: () => M_Capture.cancel(), busy: () => M_Capture.busy(), supports: (r) => M_Capture.supports(r), kind: () => M_Capture.kindNow(), devSize: () => M_Capture.devSize() },
-    V3, FLY, GOV, set3d, can3d, startFly, stopFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
+    V3, FLY, GOV, set3d, can3d, startFly, stopFly, stopFlySoft, toggleFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
     RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, dblTapHook: null, clearance,
     BULB, isRay,
     // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel

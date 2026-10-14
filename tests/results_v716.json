@@ -1,0 +1,14 @@
+{
+ "G_2D": {
+  "t_reach_ms": 1835,
+  "sp_250ms": 0.033,
+  "max_rate_jump_rel": 0.044,
+  "dips": 0
+ },
+ "G_3D": {
+  "t_reach_ms": 1831,
+  "sp_250ms": 0.022,
+  "max_rate_jump_rel": 0.042,
+  "dips": 0
+ }
+}

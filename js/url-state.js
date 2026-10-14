@@ -21,6 +21,7 @@ root.FKUrlState = { create(ctx) {
         if (S.alpine) p.set('al', S.valley[0]);
         const ou = outParam(); if (ou) p.set('ou', ou);
         const st = styleParam(); if (st) p.set('st', st);
+        if (Math.abs(S.speed - 0.05) > 1e-4) p.set('ft', +(1 / Math.max(S.speed, 1e-4)).toPrecision(3));     // 7.1.6 Farbtempo: Sekunden je Umlauf
         const wp = wpParam(); if (wp) p.set('wp', wp);
         // 7.0 Mandelbulb: Kamera (Position, Gieren, Nicken), Exponent, Julia-c; Stil/Nebel/Tiefenunschärfe, wenn nicht Standard
         if (ctx.isRay() && ctx.BULB) {
@@ -31,8 +32,8 @@ root.FKUrlState = { create(ctx) {
         }
         return location.origin + location.pathname + '#' + p.toString();
     }
-    function readURL() {
-        const h = location.hash.replace(/^#/, '');
+    function readURL(hash) {
+        const h = (hash !== undefined ? hash : location.hash).replace(/^#/, '');
         if (!h) return false;
         const p = new URLSearchParams(h);
         if (!p.has('x')) return false;
@@ -48,6 +49,7 @@ root.FKUrlState = { create(ctx) {
         if (S.alpine) S.valley = { f: 'forest', l: 'lake', m: 'meadow' }[p.get('al')] || 'forest';
         applyOutParam(p.get('ou') || '');
         applyStyleParam(p.get('st') || '');
+        if (p.has('ft')) { const T = parseFloat(p.get('ft')); if (T > 0) S.speed = Math.max(0.002, Math.min(0.8, 1 / T)); }
         // Iterationen wie beim Knopf (changeIter) auf 50 … 500 000 begrenzen: ein Link mit it=99999999 erzeugte GPU-Häppchen
         // von Minuten (Windows-Watchdog -> Kontextverlust)
         if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
@@ -78,7 +80,7 @@ root.FKUrlState = { create(ctx) {
     function outParam() { return S.outMode === 'edge' ? 'e' + Math.round(S.edgeW) : S.outMode === 'black' ? 'k' : ''; }
     function applyOutParam(v) {
         const m = /^e(\d{1,3})$/.exec(v);
-        if (m) { S.outMode = 'edge'; S.edgeW = Math.max(2, Math.min(80, +m[1])); }
+        if (m) { S.outMode = 'edge'; S.edgeW = Math.max(2, Math.min(300, +m[1])); }      // 7.1.6: bis 300 px (bis 7.1.5: 80)
         else if (v === 'k') S.outMode = 'black';
         else S.outMode = 'pal';
     }
@@ -118,7 +120,10 @@ root.FKUrlState = { create(ctx) {
         if (now - urlT < 700 || isMoving(now)) return;
         urlT = now;
         const u = stateURL();
-        if (u !== urlKey) { urlKey = u; try { history.replaceState(null, '', u); } catch (e) {} }
+        if (u !== urlKey) {
+            urlKey = u; try { history.replaceState(null, '', u); } catch (e) {}
+            try { localStorage.setItem('fraktal_last', u.slice(u.indexOf('#'))); } catch (e) {}    // 7.1.6: für „Startwelt: Wie zuletzt“
+        }
     }
 
     return { link() { ({ HP, PAL, S, isMoving, setCam } = ctx); },

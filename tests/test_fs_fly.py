@@ -177,7 +177,7 @@ def main():
             # ---------------- Steuerung im Vollbild bei ausgeblendetem HUD
             pg.click('#btn-fullscreen'); time.sleep(3.2)                  # (Hinweis beim ersten Eintritt ist schon gezeigt)
             s0 = state(pg)
-            pg.keyboard.press(' '); time.sleep(0.3); s1 = state(pg)
+            pg.keyboard.press(' '); time.sleep(1.3); s1 = state(pg)          # 7.1.6: Anhalten rollt ~1 s aus
             pg.keyboard.press(' '); time.sleep(1.5); s2 = state(pg)
             need(s0['hudless'] and not s0['peek'] and s0['on'] and not s1['on'] and s2['on'] and not s2['paused'] and s2['hudless'],
                  f'{tag}: Leertaste im Vollbild ohne HUD: Flug aus, wieder an ({s0["on"]} → {s1["on"]} → {s2["on"]}, HUD aus {s2["hudless"] and not s2["peek"]})')
@@ -191,7 +191,7 @@ def main():
             need(not sp['peek'], f'{tag}: Tasten holen das HUD nicht zurück ({sp})')
             # Doppeltipp = Flug aus/an, einfacher Tipp = HUD zeigen (Flug läuft weiter)
             Wn, Hn = pg.evaluate("() => [innerWidth, innerHeight]")
-            dtap(cdp, Wn * 0.5, Hn * 0.45); time.sleep(0.6)
+            dtap(cdp, Wn * 0.5, Hn * 0.45); time.sleep(1.4)          # 7.1.6: weich ausrollen
             d1 = state(pg)
             dtap(cdp, Wn * 0.5, Hn * 0.45); time.sleep(1.0)
             d2 = state(pg)

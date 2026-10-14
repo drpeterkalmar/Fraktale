@@ -37,7 +37,7 @@ function encDE(zx, zy, dx, dy, dex) {
     if (!(m < Infinity)) return 1;
     if (m === 0) return 255;
     const r = Math.sqrt(zx * zx + zy * zy);
-    const e = (Math.log2(r * Math.log(r)) - Math.log2(m) - 0.5 * Math.log2((dx / m) * (dx / m) + (dy / m) * (dy / m)) - dex + 8) * 16;
+    const e = (Math.log2(r * Math.log(r)) - Math.log2(m) - 0.5 * Math.log2((dx / m) * (dx / m) + (dy / m) * (dy / m)) - dex + 6) * 16;   // 7.1.6: Offset 6 (1/64 … ~980 px)
     return Math.max(1, Math.min(255, Math.floor(e + 0.5)));
 }
 const TWO_M512 = Math.pow(2, -512), TWO_512 = Math.pow(2, 512);
@@ -318,10 +318,10 @@ function deMu(A, B, gnx, gny, gpx, gpy, dex) {
     if (!(m < Infinity)) return 1;
     if (m === 0) return 255;
     const l = Math.log2(B * B / Math.LN2) - Math.log2(m) - dex;
-    return Math.max(1, Math.min(255, Math.floor((l + 8) * 16 + 0.5)));
+    return Math.max(1, Math.min(255, Math.floor((l + 6) * 16 + 0.5)));
 }
 const cdivx = (ax, ay, bx, by) => { const d = bx * bx + by * by; return d > 0 ? [(ax * bx + ay * by) / d, (ay * bx - ax * by) / d] : [0, 0]; };
-function dePx(d) { if (!(d < Infinity)) return 255; if (!(d > 0)) return 1; return Math.max(1, Math.min(255, Math.floor((Math.log2(d) + 8) * 16 + 0.5))); }
+function dePx(d) { if (!(d < Infinity)) return 255; if (!(d > 0)) return 1; return Math.max(1, Math.min(255, Math.floor((Math.log2(d) + 6) * 16 + 0.5))); }
 function exoticPixel(F, px, py, maxIter, deS) {
     const X = XP.xp, st = STA.st;
     let dex = 0;

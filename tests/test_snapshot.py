@@ -21,6 +21,8 @@ from e2e_lib import App
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+LEGACY_LOOK = """try { localStorage.setItem('fraktal_v5_settings', JSON.stringify({ sv: 2, paletteId: 'neon', setCol: 'black', inMode: 1,
+    outMode: 'pal', edgeW: 16, speed: 0.15, wpal: { c: 'neon' } })); } catch (e) {}"""
 SNAP = os.path.join(HERE, 'snapshots')
 UPDATE = '--update' in sys.argv
 ONLY = next((a.split('=', 1)[1].split(',') for a in sys.argv if a.startswith('--only=')), None)
@@ -35,7 +37,7 @@ JS_FRONT = """async () => {
   // 2D-Anzeige (Display-Shader): nur die exakte Ebene, feste Zeit, Optionen wie presentArgs – im selben Task gelesen
   let canvasSha = null;
   if (!A.V3.on) {
-    const gl = R.gl, lk = Object.assign(A.look(), { time: 100 }), dpr = gl.drawingBufferWidth / innerWidth;
+    const gl = R.gl, lk = Object.assign(A.look(), { time: 100, ctime: 100 }), dpr = gl.drawingBufferWidth / innerWidth;
     R.present([Object.assign(f, { alpha: 1 })], A.S.cam, lk, null, { feather: 12 * dpr, recon: true, de: A.deActive() ? [0.25, 1.25] : null });
     const px = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
     gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, px);
@@ -69,7 +71,10 @@ JS_3D = """async () => {
 
 def capture(p, name):
     q = 'nosw&noanim' + ('&renderer=cpu' if name == 'sea1e9cpu' else '')
-    a = App(p, query=q).open()
+    a = App(p, query=q)
+    # 7.1.6: Optik wie bis 7.1.5 festhalten (Standards sind seitdem Eis/bunt/grenznah) – das Gitter prüft den Rechenweg
+    a.page.add_init_script(LEGACY_LOOK)
+    a.open()
     pg = a.page
     if name != 'ganz':
         a.set_view(SEA[0], SEA[1], 1e9)

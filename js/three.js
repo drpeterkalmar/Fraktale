@@ -516,7 +516,7 @@ void main() {
     // Menge (See) trägt Farbe. Nicht im Alpin-Look (färbt nach Höhe).
     float outK = 1.0;
     if (u_outM == 2) outK = 0.0;
-    else if (u_outM == 1) { float dpx = exp2(dSet * 16.0 - 8.0); outK = exp2(-2.0 * dpx / u_outW) * (1.0 - smoothstep(120.0, 240.0, dpx)); }
+    else if (u_outM == 1) { float dpx = exp2(dSet * 16.0 - 6.0); outK = exp2(-2.0 * dpx / u_outW) * (1.0 - smoothstep(400.0, 960.0, dpx)); }
     vec3 outDark = vec3(0.028, 0.03, 0.038);
     if (u_outM > 0 && u_alpine == 0) alb = mix(outDark, alb, outK);
 #if INC
@@ -896,7 +896,7 @@ void main() {
             h += log2(1.0 + (u_formula == 5 ? mod(v, 1000.0) : v));
             float d = fetchDE(u_srcD, c, v);
             b += 1.0 - smoothstep(0.25, 1.25, d);
-            a += clamp((log2(d) + 8.0) * 0.0625, 0.0, 1.0);   // 6.9: Randabstand in Pufferpixeln, log2 auf 0..1 (1/256 … 256)
+            a += clamp((log2(d) + 6.0) * 0.0625, 0.0, 1.0);   // 6.9: Randabstand in Pufferpixeln, log2 auf 0..1 (7.1.6: 1/64 … 1024)
         }
     }
     h *= 0.25; g *= 0.25; b *= 0.25; a *= 0.25;
@@ -931,8 +931,8 @@ ${SWITCH(k => `r = texelFetch(u_i${k}, c, 0).r; d = texelFetch(u_d${k}, c, 0).r;
     if (v < 0.0 && v > -3.0) code = 1u;
     else {
         float e = d * 255.0;
-        if (e >= 254.5) code = 255u;          // Distanz über dem Kodierbereich (> 245 Pufferpixel): weit weg
-        else if (e >= 0.5) code = uint(clamp((log2(exp2(e * 0.0625 - 8.0) * ls.w) + 12.0) * 16.0 + 2.0, 2.0, 254.0));
+        if (e >= 254.5) code = 255u;          // Distanz über dem Kodierbereich (> ~980 Pufferpixel): weit weg
+        else if (e >= 0.5) code = uint(clamp((log2(exp2(e * 0.0625 - 6.0) * ls.w) + 12.0) * 16.0 + 2.0, 2.0, 254.0));
     }
     return (r & 0xFFFFFF00u) | code;
 }

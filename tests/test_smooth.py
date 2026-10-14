@@ -67,7 +67,7 @@ def de_accuracy(pg, n=300):
         if d is None or not (0.02 < d < 150): continue
         c = int(codes[j, i])
         if c == 0: zero += 1; continue
-        errs.append(abs(math.log2(2 ** (c / 16 - 8) / d)))
+        errs.append(abs(math.log2(2 ** (c / 16 - 6) / d)))
         if len(errs) >= n: break
     return {'n': len(errs), 'median': round(float(np.median(errs)), 3), 'p90': round(float(np.percentile(errs, 90)), 3), 'noCode': zero}
 

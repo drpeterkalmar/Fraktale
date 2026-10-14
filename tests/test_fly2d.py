@@ -114,14 +114,14 @@ def main():
         res['to2d'] = [s3, s4]
         need(s3['on'] and not s3['d3'] and not s3['v3'] and s4['zoom'] > s3['zoom'] * 1.1, f'⛰ aus im 3D-Flug: Flug läuft in 2D weiter ({s3["zoom"]:.2e} → {s4["zoom"]:.2e})')
         need(box(pg, '#bar3d') is not None and box(pg, '#btn-north') is None, 'nach dem Wechsel: Flug-Leiste wie in 2D')
-        pg.click('#btn-fly'); time.sleep(0.4)
+        pg.click('#btn-fly'); time.sleep(1.4)          # 7.1.6: Anhalten rollt ~1 s aus
         need(not fly_state(pg)['on'] and box(pg, '#bar3d') is None and box(pg, '#btn-fly2d') is not None, 'Stopp: Leiste weg, ✈-Knopf wieder da')
         # --- Taste V
         a.set_view('-0.5', '0', 1); a.wait_done(60)
         pg.keyboard.press('v'); time.sleep(0.5)
         s = fly_state(pg)
         need(s['on'] and not s['d3'] and not s['v3'], f'Taste V fliegt in 2D: {s}')
-        pg.keyboard.press('v'); time.sleep(0.3)
+        pg.keyboard.press('v'); time.sleep(1.3)          # 7.1.6: weich ausrollen
         need(not fly_state(pg)['on'], 'Taste V stoppt')
         # --- Orte: ✈ Flug im 2D-Modus fliegt in 2D und landet exakt
         a.set_view(*TGT); a.wait_done(90)

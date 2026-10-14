@@ -99,11 +99,11 @@ def main():
         kept = pg.evaluate("() => [window.__fraktal.S.setCol, window.__fraktal.S.inMode]")
         need(kept == ['bunt', 2], f'nach Neuladen gespeichert: {kept}')
         base = BASE + '?nosw&noanim'
-        pg.goto(base + '#m=0&x=-0.6&y=0&z=1&sc=b1', wait_until='load'); pg.reload(wait_until='load')
+        pg.goto('about:blank'); pg.goto(base + '#m=0&x=-0.6&y=0&z=1&sc=b1', wait_until='load')   # 7.1.6: Neuladen = Neustart, Link frisch öffnen
         pg.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
         lk = pg.evaluate("() => [window.__fraktal.S.setCol, window.__fraktal.S.inMode, window.__fraktal.look().inner]")
         need(lk == ['bunt', 1, 1], f'Link sc=b1 -> Bunt, Inseln {lk}')
-        pg.goto(base + '#m=0&x=-0.6&y=0&z=1', wait_until='load'); pg.reload(wait_until='load')
+        pg.goto('about:blank'); pg.goto(base + '#m=0&x=-0.6&y=0&z=1', wait_until='load')   # 7.1.6: Neuladen = Neustart, Link frisch öffnen
         pg.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
         lk = pg.evaluate("() => [window.__fraktal.S.setCol, window.__fraktal.look().inner]")
         need(lk == ['black', 0], f'Link ohne sc -> Schwarz {lk}')

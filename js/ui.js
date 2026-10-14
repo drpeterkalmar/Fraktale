@@ -573,8 +573,9 @@ $('s-stmix').addEventListener('change', () => A.saveSettings());
 $('s-sts').addEventListener('input', (e) => { S.stS = +e.target.value; A.invalidate(); syncLook(); });
 $('s-sts').addEventListener('change', () => A.saveSettings());
 // Saumbreite 2–80 CSS-Pixel, logarithmisch (Regler 0..1)
-const edgeGet = () => S.edgeW; edgeGet.raw = () => Math.log(S.edgeW / 2) / Math.log(40);
-const syncEdge = bindRange('s-edgew', 'o-edgew', edgeGet, (v) => { S.edgeW = Math.round(2 * Math.pow(40, v) * 10) / 10; }, (v) => Math.round(v) + ' px');
+// 7.1.6: Saumbreite 2–300 px logarithmisch (100 px, der Standard, bei ~78 % des Reglers; bis 7.1.5: 2–80 px)
+const edgeGet = () => S.edgeW; edgeGet.raw = () => Math.log(S.edgeW / 2) / Math.log(150);
+const syncEdge = bindRange('s-edgew', 'o-edgew', edgeGet, (v) => { S.edgeW = Math.round(2 * Math.pow(150, v)); }, (v) => Math.round(v) + ' px');
 document.querySelectorAll('#seg-inmode button').forEach(b => b.addEventListener('click', () => {
     if (S.inMode !== +b.dataset.v) crossfade(420);
     S.inMode = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncSet();    // nur Darstellung, keine Neuberechnung
@@ -601,7 +602,9 @@ const syncDensity = bindRange('s-density', 'o-density', densGet, (v) => { S.dens
 const speedGet = () => S.speed; speedGet.raw = () => Math.log(S.speed / 0.002) / Math.log(400);
 const syncSpeed = bindRange('s-speed', 'o-speed', speedGet, (v) => { S.speed = +(0.002 * Math.pow(400, v)).toPrecision(3); }, (v) => {
     const s = 1 / Math.max(v, 1e-4), num = (x) => (x < 10 ? x.toFixed(1) : Math.round(x).toString()).replace('.', S.lang === 'de' || S.lang === 'hu' || S.lang === 'es' || S.lang === 'fr' || S.lang === 'pt' ? ',' : '.');
-    return t('anim_round').replace('{t}', s < 60 ? num(s) + '\u00a0s' : num(s / 60) + '\u00a0min');
+    // 7.1.6: Stufe dazu (Sehr langsam ≥ 60 s je Umlauf, Langsam ≥ 12 s – Standard 20 s, Mittel ≥ 4 s, sonst Schnell)
+    const lvl = s >= 60 ? 'ft_vslow' : s >= 12 ? 'ft_slow' : s >= 4 ? 'ft_mid' : 'ft_fast';
+    return t(lvl) + ' · ' + t('anim_round').replace('{t}', s < 60 ? num(s) + '\u00a0s' : num(s / 60) + '\u00a0min');
 });
 const syncRelief = bindRange('s-relief', 'o-relief', () => S.reliefStrength, (v) => { S.reliefStrength = v; }, (v) => v.toFixed(2));
 function bindToggle(id, get, set) {
@@ -621,6 +624,7 @@ const toggles = [
     bindToggle('t-deon', () => S.deOn, (v) => { S.deOn = v; }),
     bindToggle('t-aa', () => S.aa, (v) => { S.aa = v; }),
     bindToggle('t-hudfs', () => S.hudFs, (v) => { S.hudFs = v; hudApply(); }),
+    bindToggle('t-fsstart', () => S.fsStart, (v) => { S.fsStart = v; }),
 ];
 function bindSeg(id, get, set) {
     const g = $(id);
@@ -630,6 +634,7 @@ function bindSeg(id, get, set) {
 const segs = [
     bindSeg('seg-quality', () => S.quality, (v) => { S.quality = v; A.resize(); }),
     bindSeg('seg-renderer', () => S.renderer, (v) => { S.renderer = v; A.invalidate(); }),
+    bindSeg('seg-startw', () => S.startWorld, (v) => { S.startWorld = v; }),        // 7.1.6: Startwelt Zufall / Wie zuletzt
 ];
 function syncControls() {
     syncDensity(); syncSpeed(); syncRelief(); syncEdge(); syncSet(); syncBulb(); syncLook();
@@ -889,9 +894,28 @@ A.tapHook = () => {
 // 6.8.1: Doppeltipp bei ausgeblendetem HUD = Flug an/aus (sonst wie bisher: hineinzoomen) – im Vollbild/Kino-Modus ohne Knopf
 A.dblTapHook = () => {
     if (!hudless() || peeking() || !A.canFly()) return false;
-    if (A.FLY.on) A.stopFly(); else A.startFly();
+    A.toggleFly();
     return true;
 };
+// 7.1.6 Vollbild beim Start (Peter): Browser erlauben Vollbild nur nach einer Geste – also beim ERSTEN kurzen Tipp/Klick ins
+// Bild (nicht auf Bedienelemente), einmal je Sitzung (wer das Vollbild verlässt, bleibt draußen). Ohne Vollbild-Schnittstelle
+// (iPhone) gleich beim Start der Kino-Modus. Tests (navigator.webdriver) nur mit ?fsstart=1.
+const FS1 = { armed: false, down: null, asked: 0 };
+(function fsStartInit() {
+    const force = new URLSearchParams(location.search).get('fsstart');
+    if (!S.fsStart || force === '0' || (navigator.webdriver && force !== '1')) return;
+    if (!FS_API) { setCinema(true); return; }
+    FS1.armed = true;
+    const cv = A.R.canvas;
+    cv.addEventListener('pointerdown', (e) => { if (FS1.armed && e.isPrimary) FS1.down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+    cv.addEventListener('pointerup', (e) => {
+        const d = FS1.down; FS1.down = null;
+        if (!FS1.armed || !d || !e.isPrimary || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12 || performance.now() - d.t > 600) return;
+        FS1.armed = false; FS1.asked++;
+        if (!document.fullscreenElement) { A.noteResize(); document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); }
+    });
+})();
+A.FS1 = FS1;
 const onFsChange = () => { A.noteResize(); HUD.fs = !!(document.fullscreenElement || document.webkitFullscreenElement); hudApply(); };
 document.addEventListener('fullscreenchange', onFsChange);
 document.addEventListener('webkitfullscreenchange', onFsChange);
@@ -961,7 +985,7 @@ window.addEventListener('keydown', (e) => {
     if (k === ' ' || k === 'Spacebar') {
         e.preventDefault(); KEY.space = true;
         if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
-        if (A.FLY.on) A.stopFly(); else if (A.canFly()) A.startFly();
+        A.toggleFly();
         return;
     }
     const pan = (dx, dy) => { A.stopFly(); if (A.isRay()) { A.BULB.keyOrbit(-dx, dy); return; } const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
@@ -986,7 +1010,7 @@ window.addEventListener('keydown', (e) => {
                 case 'l': { const ks = Object.keys(TRANSLATIONS); S.lang = ks[(ks.indexOf(S.lang) + 1) % ks.length]; $('sel-lang').value = S.lang; A.saveSettings(); applyI18n(); break; }
                 case 'escape': closeSheet(); closeModal(); if (HUD.cine) setCinema(false); break;
                 case 'd': toggle3d(); break;
-                case 'v': if (A.FLY.on) A.stopFly(); else A.startFly(); break;      // 6.6: fliegt im aktuellen Modus
+                case 'v': A.toggleFly(); break;      // 6.6: fliegt im aktuellen Modus
             }
     }
 });
@@ -1019,7 +1043,7 @@ function prep3dProgress() {
 }
 $('btn-3d').addEventListener('click', toggle3d);
 $('btn-3d').addEventListener('pointerdown', () => A.prewarm3d());
-$('btn-fly').addEventListener('click', () => { if (A.FLY.on) A.stopFly(); else A.startFly(); });
+$('btn-fly').addEventListener('click', () => A.toggleFly());     // 7.1.6: Anhalten rollt weich aus
 $('btn-fly2d').addEventListener('click', () => A.startFly(undefined, { d3: false }));
 $('btn-north').addEventListener('click', () => A.north3d());
 $('r-height').addEventListener('input', (e) => { S.h3d = +e.target.value; A.RC.dirty = true; });

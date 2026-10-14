@@ -188,7 +188,7 @@ layout(location = 1) out vec4 o_de;   // R8: Distanzschätzung (6.1), Kodierung 
 
 // ---- Distanzschätzung (6.1): DE = |z| ln|z| / |dz/dPixel| = Abstand zur Menge in Pufferpixeln. Die Ableitung
 // Dt = dz/dPixel läuft mit (Rebase lässt sie unverändert: z selbst springt nicht; BLA: Dt' = A·Dt + B·Pixel).
-// Gespeichert als log2 in 8 bit: code = (log2 DE + 8)·16 (1..255, also 1/256 … 245 Pufferpixel, Stufe 4,4 %),
+// Gespeichert als log2 in 8 bit: code = (log2 DE + 6)·16 (1..255, also 1/64 … ~980 Pufferpixel, Stufe 4,4 %; bis 7.1.5 +8),
 // 0 = keine Angabe (innen, Newton). Ohne Fehlerschätzung wird Dt gegen Überlauf umskaliert (dex = log2-Versatz).
 float encDE(vec2 z, vec2 Dt, float dex) {
     float m = max(abs(Dt.x), abs(Dt.y));
@@ -196,7 +196,7 @@ float encDE(vec2 z, vec2 Dt, float dex) {
     if (m == 0.0) return 1.0;                   // Ableitung unterlaufen: sehr weit draußen
     vec2 u = Dt / m;
     float r = length(z);
-    float e = (log2(r * log(r)) - log2(m) - 0.5 * log2(dot(u, u)) - dex + 8.0) * 16.0;
+    float e = (log2(r * log(r)) - log2(m) - 0.5 * log2(dot(u, u)) - dex + 6.0) * 16.0;
     return clamp(floor(e + 0.5), 1.0, 255.0) / 255.0;
 }
 
@@ -723,14 +723,14 @@ float encDE(vec2 z, vec2 Dt, float dex) {
     if (m == 0.0) return 1.0;
     vec2 u = Dt / m;
     float r = length(z);
-    float e = (log2(r * log(r)) - log2(m) - 0.5 * log2(dot(u, u)) - dex + 8.0) * 16.0;
+    float e = (log2(r * log(r)) - log2(m) - 0.5 * log2(dot(u, u)) - dex + 6.0) * 16.0;
     return clamp(floor(e + 0.5), 1.0, 255.0) / 255.0;
 }
 // Distanz in Pufferpixeln direkt kodieren (wie encDE: (log2 d + 8)·16)
 float encPx(float d) {
     if (!(d < 3.0e38)) return 1.0;
     if (!(d > 0.0)) return 1.0 / 255.0;
-    return clamp(floor((log2(d) + 8.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
+    return clamp(floor((log2(d) + 6.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
 }
 // Konvergenz: Distanz aus dem Gradienten der glatten Konvergenzzahl μ = n − A/B (A = ln(ε/e_n), B = ln(e_{n−1}/e_n));
 // gn, gp = Ableitung von ln(Abstand) nach dem Pixel (komplex, holomorph) für e_n bzw. e_{n−1}:
@@ -743,7 +743,7 @@ float encMu(float A, float B, vec2 gn, vec2 gp, float dex) {
     if (!(m < 3.0e38)) return 1.0 / 255.0;
     if (m == 0.0) return 1.0;
     float l = log2(B * B / 0.6931472) - log2(m) - 0.5 * log2(dot(G / m, G / m)) - dex;
-    return clamp(floor((l + 8.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
+    return clamp(floor((l + 6.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
 }
 ${ST ? STYLE_CORE : ''}
 void main() {
@@ -1039,7 +1039,7 @@ float fetchV(usampler2D t, ivec2 c) {
 float fetchDE(sampler2D t, ivec2 c, float v) {
     if (v < 0.0) return 0.0;
     float e = texelFetch(t, c, 0).r * 255.0;
-    return e < 0.5 ? 1e4 : exp2(e * 0.0625 - 8.0);
+    return e < 0.5 ? 1e4 : exp2(e * 0.0625 - 6.0);
 }
 // Mengen-Anteil eines Bildpunkts aus der bilinear interpolierten Distanz (in Zielpixeln): weicher Saum
 // über ~1 Pixel – die Menge wird eine geschlossene Fläche mit kantengeglätteter Kontur (wie Video-Renderer)
@@ -1113,6 +1113,7 @@ uniform vec3 u_palA, u_palB, u_palC, u_palD;
 uniform int u_palCustom;
 uniform vec3 u_custom[6];
 uniform float u_cycle, u_density, u_time, u_relief;
+uniform float u_ctime;         // 7.1.6: Farbzeit (Leuchten/Pulsieren der Funken im Farbtempo; die Bewegung bleibt bei u_time)
 uniform int u_particles, u_banded;
 uniform vec3 u_setCol;          // 6.2: Farbe der Menge (Schwarz = vec3(0, 0, 0.015) wie bis 6.1)
 uniform int u_outM;             // 6.9 Außen: 0 = Palette (wie bisher), 1 = Grenznah, 2 = Schwarz („Unendlichkeit schwarz“)
@@ -1246,7 +1247,7 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
             // 6.9 Grenznah: Helligkeit fällt mit dem Abstand zur Menge (Zielpixel) weich ab – 1/2 bei W/2, 1/4 bei W;
             // die 8-bit-Distanz reicht bis ~245 Pufferpixel, davor blendet der Rest unmerklich aus (kein Ring)
             float dt = mix(mix(e00, e10, f.x), mix(e01, e11, f.x), f.y);
-            g_outK = exp2(-2.0 * dt / (xf.x * u_outW)) * (1.0 - smoothstep(120.0, 240.0, dt));
+            g_outK = exp2(-2.0 * dt / (xf.x * u_outW)) * (1.0 - smoothstep(400.0, 960.0, dt));
         }
     }
     if (u_recon == 0 || xf.x >= 0.9) return mix(shade4(v00, v10, v01, v11, f, xf.x, voidCol) * rim, voidCol, dm);
@@ -1308,10 +1309,10 @@ vec3 voidColor() {
         float h2 = fract(sin(dot(cell, vec2(269.5, 183.3))) * 43758.5453);
         vec2 off = vec2(sin(h * 6.28 + u_time * 0.5) * 0.3, cos(h2 * 6.28 + u_time * 0.4) * 0.3);
         float d = length(fr - off);
-        float glow = (h * 0.8 + 0.2) * exp(-d * d * 80.0) * (0.5 + 0.5 * sin(u_time * 2.0 + h * 20.0));
+        float glow = (h * 0.8 + 0.2) * exp(-d * d * 80.0) * (0.5 + 0.5 * sin(u_ctime * 2.0 + h * 20.0));
         sparkle += glow * (0.6 - float(layer) * 0.15);
     }
-    vec3 pc = palette(u_time * 0.1) * 0.5 + vec3(0.3, 0.4, 0.8) * 0.5;
+    vec3 pc = palette(u_ctime * 0.1) * 0.5 + vec3(0.3, 0.4, 0.8) * 0.5;
     return bg + sparkle * pc * 0.35 * sk;
 }
 

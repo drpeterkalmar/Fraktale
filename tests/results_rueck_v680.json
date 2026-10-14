@@ -1,28 +1,28 @@
 {
  "2d": {
-  "zoom_fwd": 348070.5536068791,
+  "zoom_fwd": 144950.0752335177,
   "end": {
    "zoom": 1,
    "out": true,
    "on": true,
    "sp": -0.5,
-   "revJobs": 41
+   "revJobs": 42
   },
   "toast": "Ganz draußen",
-  "n_frames": 1612,
+  "n_frames": 1556,
   "jerk": {
-   "zoom_wechsel": 0.0007769794138804582,
-   "seite_wechsel": 0.00045714324378025995,
-   "zoom_vorwaerts": 1.3427939754562246e-08,
-   "seite_vorwaerts": 4.285060052139004e-05
+   "zoom_wechsel": 0.0007128288972568984,
+   "seite_wechsel": 0.0009309569955751391,
+   "zoom_vorwaerts": 3.091643062669291e-08,
+   "seite_vorwaerts": 6.730113786631298e-05
   },
   "weg": {
-   "median": 0.0003350000632448215,
-   "p95": 0.0013342882639868607,
-   "n": 632
+   "median": 0.00025702606380449087,
+   "p95": 0.0012391067338936306,
+   "n": 587
   },
   "fps": {
-   "vorwaerts": 60.0,
+   "vorwaerts": 58.7,
    "rueckwaerts": 60.0
   }
  },
@@ -41,7 +41,7 @@
   ]
  ],
  "ort": {
-  "zoom_vor_wechsel": 4487.453899331294,
+  "zoom_vor_wechsel": 345.58999882110845,
   "zurueck": {
    "zoom": 1,
    "cx": -0.5,
@@ -56,66 +56,66 @@
  },
  "3d": {
   "revpf1": {
-   "zoom_vorwaerts": 186061124.8644326,
+   "zoom_vorwaerts": 42762142.51034161,
    "end": {
-    "zoom": 1054.509305026431,
-    "revJobs": 38,
+    "zoom": 146.95778998246402,
+    "revJobs": 40,
     "v3": true,
-    "fps": 60
+    "fps": 57
    },
    "clear_min_vorwaerts": 0.93367922117714,
    "clear_min_rueckwaerts": 0.93367922117714,
-   "kurs_abw_median": 0.00028146336543921624,
-   "kurs_abw_p95": 0.0018612683852639034,
-   "unten_luecken": 0.0,
-   "unten_schaerfe": 1.5256338383838384,
+   "kurs_abw_median": 0.0003359361295981189,
+   "kurs_abw_p95": 0.0017822479333888808,
+   "unten_luecken": 0.005050505050505051,
+   "unten_schaerfe": 1.2947777777777778,
    "n_unten": 396,
-   "fps_vorwaerts": 52.0,
-   "fps_rueckwaerts": 52.9
+   "fps_vorwaerts": 51.2,
+   "fps_rueckwaerts": 51.9
   },
   "revpf0": {
-   "zoom_vorwaerts": 381410127.90995574,
+   "zoom_vorwaerts": 24114165.275591794,
    "end": {
-    "zoom": 1491.7047056047354,
+    "zoom": 156.09379573214176,
     "revJobs": 0,
     "v3": true,
-    "fps": 60
+    "fps": 58
    },
    "clear_min_vorwaerts": 0.93367922117714,
    "clear_min_rueckwaerts": 0.93367922117714,
-   "kurs_abw_median": 0.00018375898838315918,
-   "kurs_abw_p95": 0.0010055160011360287,
+   "kurs_abw_median": 0.00037562188056955957,
+   "kurs_abw_p95": 0.0017280465615835128,
    "unten_luecken": 0.0,
-   "unten_schaerfe": 1.1537878787878788,
+   "unten_schaerfe": 1.0287575757575758,
    "n_unten": 396,
-   "fps_vorwaerts": 51.8,
-   "fps_rueckwaerts": 56.6
+   "fps_vorwaerts": 51.9,
+   "fps_rueckwaerts": 54.6
   }
  },
  "checks": [
   "ok 2D-Flug: ⇄ in der Flug-Leiste sichtbar",
   "ok Tempo-Regler -1.5 … 1.5",
-  "ok 2D vorwärts 12 s: Zoom 3.48e+05",
+  "ok 2D vorwärts 12 s: Zoom 1.45e+05",
   "ok 2D: keine NaN in Kamera",
-  "ok 2D rückwärts: Zoom fällt monoton (730 Bilder, 0 Anstiege)",
+  "ok 2D rückwärts: Zoom fällt monoton (685 Bilder, 0 Anstiege)",
   "ok 2D: hält bei Zoom 1 (Zoom 1, ganz draußen True, Flug an True)",
   "ok Hinweis „Ganz draußen“: 'Ganz draußen'",
-  "ok Richtungswechsel: größte Änderung des Zoomschritts 0.00078 (log10/Bild; harter Wechsel 0,0167, vorwärts 0.00000)",
-  "ok Richtungswechsel: größte Änderung des Seitenschritts 0.00046 Bildhälften/Bild (vorwärts 0.00004)",
-  "ok Rückflug auf dem Weg des Hinflugs: Abstand der Mitte Median 0.0003, 95 % 0.0013 Bildhälften",
-  "ok Bildrate rückwärts 60.0 ≥ vorwärts 60.0 − 10 %",
-  "ok Rückflug-Ebenen (gröber, weiter) vorausgerechnet: 41",
+  "ok Richtungswechsel: größte Änderung des Zoomschritts 0.00071 (log10/Bild; harter Wechsel 0,0167, vorwärts 0.00000)",
+  "ok Richtungswechsel: größte Änderung des Seitenschritts 0.00093 Bildhälften/Bild (vorwärts 0.00007)",
+  "ok Rückflug auf dem Weg des Hinflugs: Abstand der Mitte Median 0.0003, 95 % 0.0012 Bildhälften",
+  "ok Bildrate rückwärts 60.0 ≥ vorwärts 58.7 − 10 %",
+  "ok Rückflug-Ebenen (gröber, weiter) vorausgerechnet: 42",
   "ok Regler: 0,03 → 0 ⏸, −0,8 ⏪, 0,6 ⏩: [[0, '⏸'], [-0.8, '⏪'], [0.6, '⏩']]",
   "ok Taste R: Tempo 0,6 → -0.6 (ist -0.60), Pfeil ↓ → -0.7",
   "ok Ziel-Flug rückwärts zurück zum Start (Zoom 1, Mitte −0,5/0): {'zoom': 1, 'cx': -0.5, 'cy': 3.245485645493318e-18, 'out': True}",
   "ok … danach vorwärts exakt am Ziel gelandet: ['-0.743643887037151', '0.131825904205330', 1000000]",
   "ok 3D-Flug startet (revpf=1)",
-  "ok 3D rückwärts: Zoom 1.86e+08 → 1.05e+03, monoton (0 Anstiege)",
+  "ok 3D rückwärts: Zoom 4.28e+07 → 147, monoton (0 Anstiege)",
   "ok 3D Bodenabstand rückwärts min 0.934 (vorwärts 0.934, Minimum 0,2)",
-  "ok 3D Kurs folgt dem Hinflug: Abweichung Median 0.0003 rad, 95 % 0.0019",
-  "ok 3D: Rückflug-Ebenen 38, unterer Bildrand (hinter der Kamera) Lücken 0.0%, Schärfe Ø 1.53",
-  "ok 3D Bildrate rückwärts 52.9 ≥ vorwärts 52.0 − 10 %",
-  "ok Umdrehen: Blick +180° (3.1416), nach dem Flug zeigt die Ansicht weiter dorthin ([3.1504922659883867, 0])",
+  "ok 3D Kurs folgt dem Hinflug: Abweichung Median 0.0003 rad, 95 % 0.0018",
+  "ok 3D: Rückflug-Ebenen 40, unterer Bildrand (hinter der Kamera) Lücken 0.5%, Schärfe Ø 1.29",
+  "ok 3D Bildrate rückwärts 51.9 ≥ vorwärts 51.2 − 10 %",
+  "ok Umdrehen: Blick +180° (3.1416), nach dem Flug zeigt die Ansicht weiter dorthin ([3.1835729104853296, 0])",
   "ok 3D-Flug startet (revpf=0)",
   "ok ?rueck=0: kein ⇄, Regler ab 0,1: [True, 0.1, False]",
   "ok ?rueck=0: Taste R kehrt nicht um (Tempo 0.50)",

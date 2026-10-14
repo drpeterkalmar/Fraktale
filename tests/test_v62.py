@@ -35,6 +35,8 @@ def main():
     with sync_playwright() as p:
         a = App(p, query='nosw&noanim').open(); pg = a.page
         # --- 2D: Mengenpixel in der Hauptkardioide (Bildmitte bei -0.25)
+        # 7.1.6: Standard ist jetzt Bunt (Peter) – Schwarz ausdrücklich wählen
+        pg.evaluate("() => { const A = window.__fraktal; A.S.setCol = 'black'; A.saveSettings(); A.invalidate(); }")
         a.set_view('-0.25', '0', 1); a.wait_done(90)
         pg.evaluate("() => window.__fraktal.snapshot()")
         black = center_rgb(pg)
@@ -47,7 +49,7 @@ def main():
         st = pg.evaluate("() => JSON.parse(localStorage.getItem('fraktal_v5_settings')).setCol")
         url = pg.evaluate("() => window.__fraktal.stateURL()")
         res['2d'] = dict(black=black, white=white, saved=st, url=url[-40:])
-        need(max(black) < 12, f'Schwarz (Standard) wie 6.1: Mengenpixel {black}')
+        need(max(black) < 12, f'Schwarz wie 6.1: Mengenpixel {black}')
         need(min(white) > 200, f'Weiß wirkt in 2D: Mengenpixel {white}')
         need(st == 'white', 'Farbe der Menge gespeichert')
         need('sc=w' in url, 'Teilen-Link enthält sc=w')
@@ -61,7 +63,7 @@ def main():
         need(sc2 == 'custom', f'nach Neuladen: Farbe der Menge = {sc2}')
         # --- Link mit eigenem Farbton + Alpin
         base = a.page.url.split('#')[0]
-        pg.goto(base + '#m=0&x=-0.25&y=0&z=1&p=neon&sc=d9b26a', wait_until='load'); pg.reload(wait_until='load')
+        pg.goto('about:blank'); pg.goto(base + '#m=0&x=-0.25&y=0&z=1&p=neon&sc=d9b26a', wait_until='load')   # 7.1.6: Neuladen = Neustart, Link frisch öffnen
         pg.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
         v = pg.evaluate("() => ({ sc: window.__fraktal.S.setCol, hex: window.__fraktal.S.setHex })")
         a.wait_done(90); pg.evaluate("() => window.__fraktal.snapshot()")
@@ -77,7 +79,7 @@ def main():
         res['3d'] = dict(black=d3b, white=d3w)
         need(sum(d3w) > sum(d3b) + 250, f'Weiß wirkt in 3D (Gletscher): {d3b} -> {d3w}')
         # --- Alpin per Link
-        pg.goto(base + '#m=0&x=-0.7453&y=0.1127&z=300&p=alpine&sc=w&al=l', wait_until='load'); pg.reload(wait_until='load')
+        pg.goto('about:blank'); pg.goto(base + '#m=0&x=-0.7453&y=0.1127&z=300&p=alpine&sc=w&al=l', wait_until='load')   # 7.1.6: Neuladen = Neustart, Link frisch öffnen
         pg.wait_for_function("() => window.__fraktal && window.__fraktal.status", timeout=20000)
         al = pg.evaluate("() => ({ a: window.__fraktal.S.alpine, v: window.__fraktal.S.valley, look: window.__fraktal.look().alpine })")
         need(al == {'a': True, 'v': 'lake', 'look': 2}, f'Link al=l: Alpin-Look mit See {al}')

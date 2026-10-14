@@ -521,6 +521,7 @@ function create(canvas) {
         setPalette(L, look);
         gl.uniform1f(L.u_density, look.density);
         gl.uniform1f(L.u_time, look.time);
+        if (L.u_ctime) gl.uniform1f(L.u_ctime, look.ctime !== undefined ? look.ctime : look.time);
         gl.uniform1f(L.u_relief, look.relief);
         gl.uniform1i(L.u_particles, look.particles ? 1 : 0);
         gl.uniform1i(L.u_banded, look.banded ? 1 : 0);
