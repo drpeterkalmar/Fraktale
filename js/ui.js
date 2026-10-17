@@ -347,6 +347,10 @@ function syncBulb() {
     document.querySelectorAll('#seg-bstyle button').forEach(b => b.classList.toggle('on', +b.dataset.v === S.bulbStyle));
     $('s-bfog').value = S.bulbFog; $('o-bfog').textContent = Math.round(S.bulbFog * 100) + ' %';
     $('s-bdof').value = S.bulbDof; $('o-bdof').textContent = S.bulbDof > 0 ? Math.round(S.bulbDof * 100) + ' %' : t('off');
+    // 7.1.9 Flug-Art der Welt und Schwanken
+    const fm = BU.flyMode();
+    document.querySelectorAll('#seg-bfly button').forEach(b => b.classList.toggle('on', b.dataset.v === fm));
+    $('t-bsway').checked = S.bulbSway !== false;
 }
 // 7.1 Regler der neuen 3D-Arten: Quaternionen-Julia c (4D) + Animation, Kaleidoskop-IFS Skalierung/Winkel, Apollonian Stärke
 let bxBuilt = -1;
@@ -382,6 +386,9 @@ $('t-bbreathe').addEventListener('change', (e) => { S.bulbBreathe = e.target.che
 $('t-bjulia').addEventListener('change', (e) => { const BU = A.BULB; BU.B.julia = e.target.checked; BU.invalidate(); A.RC.dirty = true; if (e.target.checked) toast(t('bulb_julia_hint'), 3000); syncBulb(); });
 document.querySelectorAll('#seg-bstyle button').forEach(b => b.addEventListener('click', () => { if (S.bulbStyle !== +b.dataset.v) crossfade(420); S.bulbStyle = +b.dataset.v; A.saveSettings(); A.RC.dirty = true; syncBulb(); }));
 $('s-bfog').addEventListener('input', (e) => { S.bulbFog = +e.target.value; A.RC.dirty = true; syncBulb(); });
+document.querySelectorAll('#seg-bfly button').forEach(b => b.addEventListener('click', () => { A.BULB.setFlyMode(b.dataset.v); A.saveSettings(); syncBulb(); sync3d(); }));
+$('t-bsway').addEventListener('change', (e) => { S.bulbSway = e.target.checked; A.saveSettings(); });
+$('btn-flymode').addEventListener('click', () => { A.BULB.setFlyMode(A.BULB.flyMode() === 'durch' ? 'tauch' : 'durch'); A.saveSettings(); syncBulb(); sync3d(); });
 $('s-bfog').addEventListener('change', () => A.saveSettings());
 $('s-bdof').addEventListener('input', (e) => { S.bulbDof = +e.target.value; A.RC.dirty = true; syncBulb(); });
 $('s-bdof').addEventListener('change', () => A.saveSettings());
@@ -1085,9 +1092,12 @@ function sync3d() {
     // 6.8: ⏪ rückwärts, ⏩ vorwärts, ⏸ Schweben; ⇄ im Flug, ↶ im 3D-Flug
     $('speed-icon').textContent = S.flySpeed > 0 ? '⏩' : S.flySpeed < 0 ? '⏪' : '⏸';
     $('btn-rev').hidden = !fly || !A.RUECK;
+    const bfly = fly && A.FLY.mode === 'bulb';
+    $('btn-flymode').hidden = !bfly;
+    if (bfly) { const m = A.BULB.flyMode(); $('flymode-icon').textContent = m === 'durch' ? '✈' : '🔍'; $('btn-flymode').title = t('fly_' + m) + ' – ' + t('fly_mode_title'); }
     $('btn-turn').hidden = !fly || !on || !A.RUECK;
     $('btn-turn').classList.toggle('on', !!A.V3.turnT);
-    $('bar3d').classList.toggle('full', fly && on && A.RUECK);      // 3D-Flug: fünf Elemente – Stopp nur als Symbol (CSS)
+    $('bar3d').classList.toggle('full', fly && (on || bfly) && A.RUECK);      // 3D-Flug: fünf Elemente – Stopp nur als Symbol (CSS)
     $('btn-fly').title = t(fly ? 'fly_stop' : 'fly');
     $('btn-turn').setAttribute('aria-pressed', String(!!A.V3.turnT));
 }

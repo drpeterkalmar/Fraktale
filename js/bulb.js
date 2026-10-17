@@ -821,12 +821,18 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
 
     // ---------------- Kamera
     // Blickrichtung aus Gieren/Nicken; rt zeigt im Bild nach rechts, up nach oben
-    function camBasis() {
-        const cp = Math.cos(B.pitch);
-        const fw = [cp * Math.sin(B.yaw), Math.sin(B.pitch), cp * Math.cos(B.yaw)];
-        const rt = [Math.cos(B.yaw), 0, -Math.sin(B.yaw)];
-        const up = V.cross(fw, rt);
-        return { fw, rt, up: V.dot(up, [0, 1, 0]) < 0 ? V.mul(up, -1) : up };
+    // 7.1.9: gezeigte Kamera = Kurs (B.yaw/B.pitch) + sanftes Schwanken (B.swY/B.swP) + Rollen (B.roll: Schwanken und
+    // Querneigung in Kurven); raw = nur der Kurs (Autopilot, Sonden, Kollision – das Schwanken stört die Bahn nicht)
+    function camBasis(raw) {
+        const yaw = B.yaw + (raw ? 0 : B.swY || 0), pitch = Math.max(-1.52, Math.min(1.52, B.pitch + (raw ? 0 : B.swP || 0)));
+        const cp = Math.cos(pitch);
+        const fw = [cp * Math.sin(yaw), Math.sin(pitch), cp * Math.cos(yaw)];
+        let rt = [Math.cos(yaw), 0, -Math.sin(yaw)];
+        let up = V.cross(fw, rt);
+        if (V.dot(up, [0, 1, 0]) < 0) up = V.mul(up, -1);
+        const rl = raw ? 0 : B.roll || 0;
+        if (rl) { const c = Math.cos(rl), sn = Math.sin(rl); const rt2 = V.add(V.mul(rt, c), V.mul(up, sn)); up = V.sub(V.mul(up, c), V.mul(rt, sn)); rt = rt2; }
+        return { fw, rt, up };
     }
     // Iterationen in JS (Antippen, Zoom, Kollision) wie im Ruhebild – dieselbe Oberfläche wie im Bild
     const kpNow = () => kindOf() === 5 ? [B.ap, 0, 0, 0] : B.kp;
@@ -1032,6 +1038,13 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
             orbit({ pos: B.pos, yaw: B.yaw, pitch: B.pitch, pivot: I.pivot }, I.vy * dt, I.vp * dt);
             I.vy *= k; I.vp *= k;
             if (Math.hypot(I.vy, I.vp) < 0.02) B.inertia = null;
+        }
+        // 7.1.9 Fluglage nach dem Flug weich zurück (Schwanken, Rollen, Blick nach unten beim Gleiten)
+        if (!(ctx.FLY.on && ctx.FLY.mode === 'bulb') && (B.swY || B.swP || B.roll)) {
+            const k = Math.exp(-dt / 0.6);
+            B.swY *= k; B.swP *= k; B.roll *= k; F.bank = (F.bank || 0) * k;
+            if (Math.abs(B.swY) + Math.abs(B.swP) + Math.abs(B.roll) < 1e-5) B.swY = B.swP = B.roll = 0;
+            ctx.camDirty = true;
         }
         updateZoom();
     }
@@ -1241,7 +1254,7 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         catch (e) { H.fail = true; return false; }          // defekt: Flug wie 7.1.7
     }
     // Kamera festhalten bzw. für die Dauer von fn einsetzen (Streifen eines echten Bilds über mehrere Takte)
-    function snapCam() { return { pos: B.pos.slice(), yaw: B.yaw, pitch: B.pitch, zoom: B.zoom, dSurf: B.dSurf, c: camNow() }; }
+    function snapCam() { return { pos: B.pos.slice(), yaw: B.yaw, pitch: B.pitch, swY: B.swY || 0, swP: B.swP || 0, roll: B.roll || 0, zoom: B.zoom, dSurf: B.dSurf, c: camNow() }; }
     // Vorausrendern (?voraus=0 = aus): im Autopiloten ist die Bahn für die nächsten Takte bekannt – Kamera und Blick folgen
     // gedämpften Federn mit stetiger Geschwindigkeit (F.vC, F.wy/F.wp). Ein Bild in Streifen über N Takte wird darum für die
     // Kamera gerechnet, die beim Fertigwerden erreicht ist (lineare Vorausschau über N − 1 Takte), statt für die beim Beginn:
@@ -1260,12 +1273,12 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         return c;
     }
     function withCam(sc, fn) {
-        const s0 = { pos: B.pos, yaw: B.yaw, pitch: B.pitch, zoom: B.zoom, dSurf: B.dSurf };
-        Object.assign(B, { pos: sc.pos, yaw: sc.yaw, pitch: sc.pitch, zoom: sc.zoom, dSurf: sc.dSurf });
+        const s0 = { pos: B.pos, yaw: B.yaw, pitch: B.pitch, swY: B.swY, swP: B.swP, roll: B.roll, zoom: B.zoom, dSurf: B.dSurf };
+        Object.assign(B, { pos: sc.pos, yaw: sc.yaw, pitch: sc.pitch, swY: sc.swY, swP: sc.swP, roll: sc.roll, zoom: sc.zoom, dSurf: sc.dSurf });
         try { fn(); } finally { Object.assign(B, s0); }
     }
     function camNow() { const cb = camBasis(); return { pos: B.pos.slice(), fw: cb.fw, rt: cb.rt, up: cb.up, tanF: Math.tan(B.fov / 2), scale: Math.max(1e-9, B.dSurf * 1.1) }; }
-    const camSame = (c) => c && V.len(V.sub(c.pos, B.pos)) === 0 && V.dot(c.fw, camBasis().fw) > 1 - 1e-12;
+    const camSame = (c) => { if (!c || V.len(V.sub(c.pos, B.pos)) !== 0) return false; const b = camBasis(); return V.dot(c.fw, b.fw) > 1 - 1e-12 && V.dot(c.up, b.up) > 1 - 1e-12; };
     const histT = () => H.cur ? T.h1 : T.h0, histOther = () => H.cur ? T.h0 : T.h1;
     function sceneKey(lk) { return [B.power, S.formula, B.boxS, B.julia, B.jc.join(','), B.qc.join(','), kpNow().join(','), S.bulbStyle, S.bulbFog, S.quality, lk.outM, Math.round(lk.outW)].join('|'); }
     function drawShade(src, w, h, out, lk) {
@@ -1312,7 +1325,7 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
     }
     // Schlüssel: Änderung = neu marschieren (Kamera, Parameter, Größe, Qualität, Stil, Außen); Palette/Farbzyklus nur POST
     function marchKey(lk) {
-        return [B.pos.join(','), B.yaw, B.pitch, B.power, S.formula, B.boxS, B.julia, B.jc.join(','), B.qc.join(','), kpNow().join(','), S.bulbStyle, S.bulbFog, S.bulbDof, B.focus, canvas.width, canvas.height, S.quality, lk.outM, Math.round(lk.outW)].join('|');
+        return [B.pos.join(','), B.yaw, B.pitch, (B.swY || 0) + ':' + (B.swP || 0) + ':' + (B.roll || 0), B.power, S.formula, B.boxS, B.julia, B.jc.join(','), B.qc.join(','), kpNow().join(','), S.bulbStyle, S.bulbFog, S.bulbDof, B.focus, canvas.width, canvas.height, S.quality, lk.outM, Math.round(lk.outW)].join('|');
     }
     // ---------------- Bild je App-Takt
     let lastPost = '';
@@ -1708,13 +1721,21 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
     function startFly(place) {
         const FLY = ctx.FLY;
         if (!canFly()) return false;
-        B.anim = null; B.inertia = null; F.vT = null; F.vC = null; F.npP = null; F.Pi = null; F.rev = null; F.pg = null; F.wy = 0; F.wp = 0;
+        B.anim = null; B.inertia = null; F.vT = null; F.vC = null; F.npP = null; F.Pi = null; F.rev = null; F.Dd = null; F.glideT = false; F.gw = null; F.pg = null; F.wy = 0; F.wp = 0;
         if (place && place.b) { tourTo(place.b, 6); FLY.mode = 'bulbtour'; }
         else {
             const h = pick(ctx.cssW / 2, ctx.cssH / 2) || pick(ctx.cssW / 2, ctx.cssH * 0.4) || pick(ctx.cssW / 2, ctx.cssH * 0.6);
             F.T = h ? h.p : V.mul(V.norm(B.pos), 1.0);
             F.Tg = F.T; F.score = 0; F.tProbe = 0; F.glide = false;
             FLY.mode = 'bulb';
+            F.mode = flyMode();
+            if (F.mode === 'durch') {
+                const U0 = F.du;
+                F.du = { pi: 0, free: new Array(35), tgt: null, L: null, med: 0, ahead: 0, n: null, glide: false, vn: 0, glP: 0, s: 0,
+                         trail: U0 && F.trailEnd && V.len(V.sub(F.trailEnd, B.pos)) < 1e-12 ? U0.trail : [], st: statNew() };
+                if (F.du.trail.length) F.du.s = F.du.trail[F.du.trail.length - 1].s;
+            } else F.du = null;
+            F.st = statNew();
             const te = F.trailEnd;
             if (!te || V.len(V.sub(te, B.pos)) > 1e-12) F.trail = [];
         }
@@ -1733,6 +1754,7 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         // 7.1.8 Schärfe vor Tempo: kommen weniger echte Bilder (Takt N > 2), fliegt die Kamera weich langsamer (Faktor 2/N)
         F.spK = F.spK === undefined ? 1 : F.spK + ((F.spKT === undefined ? 1 : F.spKT) - F.spK) * Math.min(1, dt / 1.2);
         const sp = (FLY.sp || 0) * F.spK;
+        if (F.mode === 'durch' && F.du) { flyThrough(now, dt, sp); attitude(dt); return; }
         const D = V.len(V.sub(B.pos, F.T));
         if (sp < 0) {
             // rückwärts: auf dem Weg des Hinflugs (Position/Blick je log10 Zoom interpoliert), sonst vom Ziel weg
@@ -1750,10 +1772,14 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
             } else {
                 const dir = V.norm(V.sub(B.pos, F.T));
                 // (scheitert der Schritt an einer Wand, rückwärts entlang der Blickrichtung ausweichen)
-                if (!setPos(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))))) setPos(V.add(B.pos, V.mul(camBasis().fw, -D * (Math.pow(10, -sp * dt) - 1))));
+                // (unter dem Mindestabstand – etwa nach dem Gleiten an der Genauigkeitsgrenze – ist jeder Schritt erlaubt, der vom Rand
+                // wegführt; sonst kam der Rückflug dort nie los)
+                const away = (q) => setPos(q) || (deJS(q, params()) > deJS(B.pos, params()) && ((B.pos = q), (ctx.camDirty = true)));
+                if (!away(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))))) away(V.add(B.pos, V.mul(camBasis().fw, -D * (Math.pow(10, -sp * dt) - 1))));
                 lookAt(F.T, dt, 2.5);
             }
             F.Pi = null; F.npP = null; F.vC = null;
+            attitude(dt);
             ctx.camDirty = true;
             updateZoom();
             if (B.zoom <= 1.02) { FLY.out = true; ctx.setFlySpeed(0); toast(t('fly_out'), 2000); }
@@ -1772,12 +1798,18 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
             const vd = dl > 0 && dt > 0 ? V.mul(d, Math.min(1, mx / dl) / dt) : [0, 0, 0];
             F.vT = F.vT ? V.add(F.vT, V.mul(V.sub(vd, F.vT), Math.min(1, dt * 5))) : vd;
             F.T = V.add(F.T, V.mul(F.vT, dt));
+            // 7.1.9: das Ziel bleibt auf der Oberfläche (auf gerader Linie zum nächsten Zielpunkt läge es zwischendurch in der
+            // Luft – der Flug tauchte dann auf einen Luftpunkt zu und hing an der Genauigkeitsgrenze; gemessen im Dauerflug)
+            if (GLIDE) F.T = onSurf(F.T, Dc, params());
         } else if (dl > 0) F.T = V.add(F.T, V.mul(d, Math.min(1, mx / dl)));
         // Abstand: um sp Zehnerpotenzen/s kleiner; an der Grenze gleiten (gleicher Abstand)
-        let Dn = Dc * Math.pow(10, -sp * dt);
+        let Dn = (GLIDE && F.glideT && F.Dd ? F.Dd : Dc) * Math.pow(10, -sp * dt);
+        // (im Gleiten schrumpft der Tauch-Abstand unabhängig vom Hochschieben weiter – sonst hoben sich beide auf und man glitt in
+        // gleicher Höhe, gemessen: 56 s Gleiten bei Zoom ≤ 4500; so gleitet man immer tiefer ins Detail)
         const lim = minDist() * 1.6;
         F.glide = Dn < lim;
-        if (F.glide) Dn = Math.max(Dc, lim);
+        if (F.glide) Dn = Math.max(Math.min(Dc, F.Dd || Dc), lim);
+        F.Dd = Dn;
         // Schrägsicht: Richtung Ziel->Kamera dreht langsam auf ~40° zur Normale
         const n = nrmAt(F.T);
         let dir = V.norm(V.sub(Pc, F.T));
@@ -1789,8 +1821,36 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         // Kollision: Abstand zur Oberfläche an der Kamera mindestens 12 % des Zielabstands. 7.1.7: genau um das Defizit
         // entlang der Normale (bis 7.1.6 in festen Sprüngen von 6 % – die Kamera fuhr 3 Bilder vor und sprang 1 Bild zurück,
         // ein Sägezahn, der als Ruckeln zu sehen war; gemessen: Kamera-Schritt ±40 % trotz gleichmäßigem Takt)
-        const P = params(), mD = 0.12 * Dn;
-        for (let k = 0; k < 4; k++) { const de = deJS(np, P); if (de >= mD) break; np = V.add(np, V.mul(nrmAt(np), (mD - de) * (PACEON ? 1.02 : 0) + (PACEON ? 0 : 0.06 * Dn))); }
+        const P = params(), mD = GLIDE && PACEON ? Math.max(0.12 * Dn, minDist()) : 0.12 * Dn;   // (Gleithöhe nie unter die Grenze der Handsteuerung)
+        if (GLIDE && PACEON) {
+            // 7.1.9 Gleiten (Peter: „wenn an Oberfläche eines 3D-Objektes, dann darüber hinweggleiten“): unterschreitet der
+            // Abstand die Gleithöhe (12 % des Zielabstands – schrumpft mit dem Zoom, man gleitet immer tiefer ins Detail),
+            // wird nicht mehr abgestoßen: die Höhe wird weich gehalten (Normale tiefpassgefiltert – keine Hüpfer über kleine
+            // Knospen) und das Ziel wandert tangential voraus, die Kamera zieht über die Oberfläche hinweg
+            const de = deJS(np, P), nn = nrmAt(np);
+            F.gn = F.gn ? V.norm(V.lerp(F.gn, nn, Math.min(1, dt * 3))) : nn;
+            const gl = F.glideT ? de < mD * 1.6 : de < mD;
+            if (gl !== !!F.glideT) { F.glideT = gl; if (gl && F.st) F.st.glides++; }
+            if (gl) {
+                // (volle Korrektur des Defizits, aber entlang der geglätteten Normale; die Kamerafeder glättet die Bewegung –
+                // eine nur anteilige Korrektur je Takt ließ die Kamera unter die Gleithöhe sinken, gemessen bis 0)
+                for (let k = 0; k < 3; k++) { const e = deJS(np, P); if (e >= mD) break; np = V.add(np, V.mul(F.gn, mD - e)); }
+                // Ziel wandert tangential voraus (die Kamera zieht über die Oberfläche); kommt der Zoom dabei 1,5 s nicht voran (das
+                // Ziel liegt hinter einer Erhebung, Hochschieben und Tauchen heben sich auf – gemessen: 30 s Stillstand), neues Ziel
+                // suchen (schneller vorauswandern ließ den Abstand zum Ziel wachsen – Zoom fiel)
+                const lzN = Math.log10(Math.max(1e-9, B.zoom));
+                if (!F.gw || F.gw.t > 1.5) { if (F.gw && lzN - F.gw.lz < 0.05 * Math.abs(sp) * F.gw.t) { F.score = -9; F.tProbe = 0; } F.gw = { t: 0, lz: lzN }; }
+                F.gw.t += dt;
+                const fwR = camBasis(true).fw, tg = V.sub(fwR, V.mul(F.gn, V.dot(fwR, F.gn)));
+                if (V.len(tg) > 1e-6) {
+                    // (verschobenes Ziel zurück auf die Oberfläche – sonst zielte der Flug auf einen Punkt in der Luft und blieb dort
+                    // an der Genauigkeitsgrenze hängen)
+                    const adv = V.mul(V.norm(tg), 0.1 * Dn * dt);
+                    F.T = onSurf(V.add(F.T, adv), Dn, P); F.Tg = onSurf(V.add(F.Tg, adv), Dn, P);
+                }
+                if (F.st) F.st.gt += dt;
+            } else F.gw = null;
+        } else for (let k = 0; k < 4; k++) { const de = deJS(np, P); if (de >= mD) break; np = V.add(np, V.mul(nrmAt(np), (mD - de) * (PACEON ? 1.02 : 0) + (PACEON ? 0 : 0.06 * Dn))); }
         if (PACEON && dt > 0) {
             // 7.1.7: Kamera folgt der berechneten Stelle über eine kritisch gedämpfte Feder (ω = 10/s): Knicke in der Bahn
             // (Kollision schiebt, Wand wechselt in engen Räumen, Gleiten beginnt) ändern nur die Beschleunigung, nie sprunghaft
@@ -1811,13 +1871,228 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
             for (let k = 0; k < 3; k++) { const de = deJS(p2, P); if (de >= mD * 0.5) break; p2 = V.add(p2, V.mul(nrmAt(p2), (mD * 0.5 - de) * 1.02)); }
             np = p2;
         }
+        if (GLIDE && PACEON) {
+            // 7.1.9 Kollision auf der ganzen Strecke (nicht nur am Endpunkt): streift der Schritt eine Knospe, landet die Kamera über
+            // der Trefferstelle (gemessen: dicht über der Genauigkeitsgrenze 2 Durchdringungen in 90 s)
+            // Schritt höchstens der halbe Abstand zur Oberfläche (Kugel-Schritt: die Distanzschätzung garantiert dann freie Bahn;
+            // springt das Ziel über eine Kante, zieht die Kamera sonst in einem großen Schritt nach)
+            const de0 = deJS(B.pos, P), seg0 = V.sub(np, B.pos), sl0 = V.len(seg0);
+            if (de0 > 0 && sl0 > 0.5 * de0) { np = V.add(B.pos, V.mul(seg0, 0.5 * de0 / sl0)); if (F.vC) F.vC = V.mul(F.vC, 0.5 * de0 / sl0); }
+            const seg = V.sub(np, B.pos), sl = V.len(seg), pix = 2 * Math.tan(B.fov / 2) / Math.max(1, Math.min(canvas.width, canvas.height));
+            if (sl > 0) { const h = marchJS(B.pos, V.mul(seg, 1 / sl), P, pix * 0.05, sl); if (h.hit && h.t < sl * 0.999) np = V.add(h.p, V.mul(nrmAt(h.p), mD)); }
+            // (an Kanten und Ecken: Mindesthöhe gegen alle Flächen, wiederholt entlang der jeweiligen Normale)
+            const fl = Math.max(0.5 * mD, minDist());
+            for (let k = 0; k < 4; k++) { const e = deJS(np, P); if (e >= fl) break; np = V.add(np, V.mul(nrmAt(np), fl - e + 0.05 * mD)); }
+        }
+        if (STAT && F.st) diveStat(np, P, sp, dt, mD);
         B.pos = np;
         if (PACEON) lookSpring(F.T, dt); else lookAt(F.T, dt, 3);
+        attitude(dt);
         ctx.camDirty = true;
         updateZoom();
         trailRec();
     }
     const angD = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+    // ---------------- 7.1.9 Durchflug (Peter: „durch den Menger-Schwamm und andere 3D-Dinger darüber und durchfliegen statt
+    // reinzoomen“). Die Kamera fliegt in Blickrichtung wie ein Flugzeug; Tempo ∝ Abstand zur Oberfläche (v = DK · Tempo ·
+    // Abstand, vor einer Wand zusätzlich nach dem freien Weg geradeaus gebremst) – in engen Gängen langsam, in offenen Räumen
+    // schnell, wegen der Selbstähnlichkeit ein endloser Flug durch immer feinere Gänge; Iterationen und Epsilon folgen dem
+    // Abstand (Zoom = Z0/Abstand wie im Tauchflug). Autopilot: Sonde aus 7 × 5 Strahlen im Blickkegel (±36° × ±24°, verteilt auf
+    // 5 Takte), Kurs weich (Federn, ≤ 20°/s) auf den Strahl mit dem längsten freien Weg (Hysterese 15 %, etwas Trägheit,
+    // Flug ins Leere weniger wert); Sackgasse (alles nah) -> zur Seite mit dem meisten Platz. Gleiten: unter der Gleithöhe
+    // (4 % der lokalen Skala) tangential weiter, Höhe gedämpft geregelt, Blick 8° nach unten. Kollision: kein Schritt länger
+    // als der halbe Abstand (die Distanzschätzung ist eine Schranke – so kann der Flug keine Wand überspringen), Mindestabstand
+    // 35 % der Gleithöhe. Rückwärts: auf dem aufgezeichneten Weg (je ¼ Abstand ein Punkt) zurück.
+    const DEG = Math.PI / 180;
+    const MODE_DEF = ['tauch', 'durch', 'durch', 'tauch', 'durch', 'durch'];   // Mandelbulb, Mandelbox, Menger, Q-Julia, KIFS, Apollonian
+    function flyMode(k) { const kk = k === undefined ? kindOf() : k, m = (S.bulbFly || {})[kk]; return m === 'durch' || m === 'tauch' ? m : MODE_DEF[kk]; }
+    // Flug-Art wechseln (Leiste ✈/🔍, Bedienfeld): im Flug weich weiter in der neuen Art (Tempo und Takt bleiben)
+    function setFlyMode(m, kk) {
+        const k = kk === undefined ? kindOf() : kk;
+        S.bulbFly = Object.assign({}, S.bulbFly, { [k]: m });
+        const FLY = ctx.FLY;
+        if (FLY.on && FLY.mode === 'bulb' && k === kindOf() && F.mode !== m) {
+            const sp = FLY.sp, ease = FLY.ease;
+            startFly();
+            FLY.sp = sp; FLY.ease = ease;
+        }
+        emit('fly');
+    }
+    const SWAYQ = Q.has('schwanken') ? Math.max(0, +Q.get('schwanken') || 0) : null;
+    const GLIDE = Q.get('gleiten') !== '0', STAT = Q.has('flugstat');
+    const swayK = () => RM() ? 0 : SWAYQ !== null ? SWAYQ : (S.bulbSway === false ? 0 : 1);
+    const PA = [-36, -24, -12, 0, 12, 24, 36], PB = [-24, -12, 0, 12, 24];
+    const DK = 2.6;
+    // Höhe im Gleiten (Abstand/Gleithöhe) ab 0,5 s nach dem Einsetzen – für das Pumpen-Kriterium (p10–p90 innerhalb ±30 %)
+    // (je Gleitphase ohne die erste und die letzte halbe Sekunde: Einsetzen und Ausstieg über einer Kante sind kein Pumpen)
+    function glideSample(st, r, dt) {
+        st.gAge = (st.gAge || 0) + dt;
+        if (st.gAge > 0.5) (st.gc || (st.gc = [])).push([st.gAge, +r.toFixed(3)]);
+    }
+    function glideEnd(st) {
+        const c = st.gc || [];
+        if (c.length) { const tEnd = c[c.length - 1][0]; for (const [a, r] of c) if (a < tEnd - 0.5) (st.gr || (st.gr = [])).push(r); }
+        if (st.gr && st.gr.length > 20000) st.gr.splice(0, 10000);
+        st.gc = []; st.gAge = 0;
+    }
+    // Punkt auf die Oberfläche setzen (entlang der Normale um die Distanzschätzung, höchstens 3 Schritte)
+    function onSurf(q, scale, P) { for (let k = 0; k < 3; k++) { const e = deJS(q, P); if (Math.abs(e) < 1e-3 * scale) break; q = V.sub(q, V.mul(nrmAt(q), e)); } return q; }
+    function statNew() { return { pen: 0, push: 0, glides: 0, gt: 0, gmin: 1e9, gmax: 0, slow: 0, stuckMax: 0, stuck: 0, dead: 0, nan: 0, t: 0 }; }
+    function flyThrough(now, dt, sp) {
+        const P = params(), U = F.du, cb = camBasis(true);
+        let d = deJS(B.pos, P);
+        if (!(d > 0)) {
+            // (in der Oberfläche – Rundung tief im Detail): entlang der Normale heraus
+            const n = nrmAt(B.pos);
+            for (let k = 0; k < 8 && !(d > 0); k++) { B.pos = V.add(B.pos, V.mul(n, Math.abs(d) * 1.5 + minDist())); d = deJS(B.pos, P); }
+            U.st.pen++;
+        }
+        // lokale Skala = Trefferweiten der Sonde (Median, geglättet) – nicht der Abstand selbst: der wüchse im Leeren mit
+        // (gemessen: ohne diese Trennung entkam der Flug aus dem Menger-Schwamm und wurde dabei exponentiell schneller)
+        if (!U.L) U.L = d;
+        if (U.med) U.L += (U.med - U.L) * Math.min(1, dt * 0.7);
+        const gh = Math.max(minDist() * 3, 0.04 * U.L);
+        if (sp < 0) { throughBack(dt, sp, d); return; }
+        // Sonde: 7 Strahlen je Takt
+        const cap = 12 * U.L, pix = 2 * Math.tan(B.fov / 2) / Math.max(1, Math.min(canvas.width, canvas.height));
+        for (let r = 0; r < 7; r++) {
+            const i = U.pi % 35; U.pi++;
+            const a = Math.tan(PA[i % 7] * DEG), b = Math.tan(PB[(i / 7) | 0] * DEG);
+            const dir = V.norm(V.add(cb.fw, V.add(V.mul(cb.rt, a), V.mul(cb.up, b))));
+            const h = marchJS(B.pos, dir, P, pix, cap);
+            // ohne Treffer: Tunnel (am Strahl-Ende noch Struktur in der Nähe) oder Leere (weit weg von allem) – Leere zählt wenig
+            // (skalenfrei: am Ende eines Strahls der Länge cap ist im Tunnel eine Wand nah, in der Leere ist alles ~cap weit weg)
+            const vq = Math.min(1, 0.15 * cap / Math.max(1e-30, deJS(V.add(B.pos, V.mul(dir, cap)), P)));
+            const voidK = h.hit ? 1 : Math.max(0.02, vq * vq);
+            U.free[i] = { dir, f: h.hit ? h.t : cap, hit: h.hit, voidK };
+            if (i === 34) throughEval(U, cb, d, cap, P, pix);
+        }
+        // Kurs: Ziel-Richtung; im Gleiten nicht in die Oberfläche hinein (tangential, leicht nach oben)
+        const nn = nrmAt(B.pos);
+        U.n = U.n ? V.norm(V.lerp(U.n, nn, Math.min(1, dt * 3))) : nn;
+        // Gleiten nur über offenen Flächen: gegenüber (entlang der Normale) muss Platz sein – im engen Gang regelte es sonst gegen
+        // eine Wand, während die geglättete Normale zwischen beiden Wänden wechselte (gemessen: Höhe 1,4–1,5 statt 1)
+        if (!U.tc || now - U.tc > 250) { U.tc = now; const h = marchJS(B.pos, nn, P, pix, 6 * gh); U.open = !h.hit; }
+        const gl = GLIDE && U.open && (U.glide ? d < gh * 1.8 : d < gh);
+        if (gl !== U.glide) { U.glide = gl; if (gl) U.st.glides++; }
+        let tgt = U.tgt || cb.fw;
+        // Ziel (fast) genau hinter dem Kurs: über die Seite wenden (sonst ist die Drehrichtung unbestimmt – gemessen: Flug hing mit
+        // Blick nach oben, Ziel genau gegenüber)
+        if (V.dot(tgt, cb.fw) < -0.7) tgt = V.norm(V.add(V.mul(cb.fw, 0.2), V.mul(V.norm(V.sub(tgt, V.mul(cb.fw, V.dot(tgt, cb.fw)))).every(Number.isFinite) && V.len(V.sub(tgt, V.mul(cb.fw, V.dot(tgt, cb.fw)))) > 0.05 ? V.norm(V.sub(tgt, V.mul(cb.fw, V.dot(tgt, cb.fw)))) : cb.rt, 1)));
+        // im Gleiten Kurs ganz tangential (die Höhe regelt die Höhenregelung; ein Kurs weg von der Oberfläche ließ die Höhe über
+        // gewölbten Flächen pumpen – gemessen bei Q-Julia 0,68–1,49 der Gleithöhe)
+        if (U.glide) { const c = V.dot(tgt, U.n); const tt = V.sub(tgt, V.mul(U.n, c)); if (V.len(tt) > 1e-3) tgt = V.norm(tt); }
+        // (vor Leere oder Wand geradeaus darf der Blick schneller wenden: 30°/s statt 20°/s – sonst kroch der Flug beim Wenden über
+        // 2 s mit Bremstempo, gemessen bei KIFS)
+        const tight = (U.free[17] && U.free[17].voidK < 0.3) || (U.ahead || cap) < 2 * d;
+        lookSpring(V.add(B.pos, V.mul(tgt, Math.max(d, 1e-12))), dt, tight ? 30 * DEG : 0);
+        const fw = camBasis(true).fw;
+        // Tempo ∝ Abstand, gedeckelt durch die lokale Skala und den freien Weg geradeaus; geradeaus Leere: gebremst (≥ 35 %,
+        // ganz bremsen ließ ihn über der Würfelkante stehen bleiben), die Lenkung wendet
+        const aV = U.free[17] ? U.free[17].voidK : 1;
+        const v = DK * Math.abs(sp) * Math.min(d, 0.35 * (U.ahead || cap), 2 * U.L) * Math.max(0.35, aV);
+        let np = V.add(B.pos, V.mul(fw, Math.min(v * dt, 0.5 * d)));
+        // Gleiten: Höhe gedämpft auf gh (Normale tiefpassgefiltert)
+        if (U.glide) {
+            U.vn += (4 * (gh - d) - U.vn) * Math.min(1, dt * 6);      // Höhenregelung: Sollgeschwindigkeit 4/s × Abweichung, geglättet
+            np = V.add(np, V.mul(U.n, U.vn * dt));
+            const r = d / gh; U.st.gmin = Math.min(U.st.gmin, r); U.st.gmax = Math.max(U.st.gmax, r); U.st.gt += dt;
+            if (STAT) glideSample(U.st, r, dt);
+        } else { U.vn = 0; if (U.st.gAge) glideEnd(U.st); }
+        const dn = deJS(np, P);
+        if (dn < 0.35 * gh) { np = V.add(np, V.mul(nrmAt(np), 0.35 * gh - dn)); U.st.push++; }
+        if (STAT) {
+            // Prüfung: Strecke alt -> neu frei (kein Durchdringen), Steckenbleiben = 2 s am Stück unter 15 % des Solltempos
+            const seg = V.sub(np, B.pos), sl = V.len(seg);
+            if (sl > 0) { const h = marchJS(B.pos, V.mul(seg, 1 / sl), P, pix * 0.05, sl); if (h.hit && h.t < sl * 0.999) U.st.pen++; }
+            if (!np.every(Number.isFinite)) U.st.nan++;
+            const want = DK * Math.abs(sp) * d;
+            U.st.slow = sl / Math.max(dt, 1e-6) < 0.15 * want && Math.abs(sp) > 0.05 ? U.st.slow + dt : 0;
+            U.st.stuckMax = Math.max(U.st.stuckMax, U.st.slow); U.st.t += dt;
+        }
+        U.s += V.len(V.sub(np, B.pos));
+        B.pos = np;
+        U.glP += ((U.glide ? -8 * DEG : 0) - U.glP) * Math.min(1, dt * 1.5);
+        const tr = U.trail, last = tr[tr.length - 1];
+        if (!last || U.s - last.s > 0.25 * d) { tr.push({ s: U.s, pos: B.pos.slice(), yaw: B.yaw, pitch: B.pitch }); if (tr.length > 20000) tr.splice(0, 5000); }
+        ctx.camDirty = true;
+        updateZoom();
+    }
+    function throughEval(U, cb, d, cap, P, pix) {
+        const cur = U.tgt || cb.fw, med = [];
+        let best = null, curSc = -1e9, ca = -2, mx = 0;
+        for (const r of U.free) {
+            if (!r) continue;
+            if (r.hit) med.push(r.f);
+            // freier Weg (bis zur Obergrenze), Flug ins Leere (aus dem Gebilde hinaus) wenig wert, etwas Trägheit
+            r.sc = r.f * r.voidK + 0.25 * cap * V.dot(r.dir, cur);
+            if (!best || r.sc > best.sc) best = r;
+            const c = V.dot(r.dir, cur); if (c > ca) { ca = c; curSc = r.sc; }
+            mx = Math.max(mx, r.f);
+        }
+        med.sort((a, b) => a - b);
+        if (med.length >= 5) U.med = med[med.length >> 1];
+        U.ahead = U.free[17] ? U.free[17].f : cap;               // geradeaus (Strahl 17: 0°/0°)
+        if (!U.tgt || best.sc > curSc * 1.15 + 0.02 * cap) U.tgt = best.dir;
+        // alles voraus führt ins Leere: zurück zur Mitte des Gebildes (alle 3D-Welten liegen um den Ursprung; beim Gleiten macht
+        // die Gleit-Regel daraus die Richtung über die Oberfläche – „zur Oberfläche hin“ hob sich mit ihr auf, der Kurs stand)
+        if (best.voidK < 0.3) { U.tgt = V.norm(V.mul(B.pos, -1)); U.st.voids = (U.st.voids || 0) + 1; }
+        else if (mx < 3 * d) {
+            // Sackgasse: zur Seite (oder zurück) mit dem meisten Platz
+            let bd = null;
+            for (const dir of [cb.rt, V.mul(cb.rt, -1), cb.up, V.mul(cb.up, -1), V.mul(cb.fw, -1)]) {
+                const h = marchJS(B.pos, dir, P, pix, cap), f = h.hit ? h.t : cap;
+                if (!bd || f > bd.f) bd = { dir, f };
+            }
+            U.tgt = bd.dir; U.st.dead++;
+        }
+    }
+    function throughBack(dt, sp, d) {
+        const U = F.du, tr = U.trail, s2 = U.s - DK * Math.abs(sp) * d * dt;
+        if (tr.length < 2 || s2 <= tr[0].s) {
+            if (tr.length) { const a = tr[0]; B.pos = a.pos.slice(); B.yaw = a.yaw; B.pitch = a.pitch; U.s = a.s; }
+            ctx.FLY.out = true; ctx.setFlySpeed(0); toast(t('fly_back_start'), 2000);
+            ctx.camDirty = true; updateZoom();
+            return;
+        }
+        let k = tr.length - 1; while (k > 1 && tr[k - 1].s > s2) k--;
+        const a = tr[k - 1], b = tr[k], u = b.s > a.s ? Math.max(0, Math.min(1, (s2 - a.s) / (b.s - a.s))) : 0;
+        B.pos = V.lerp(a.pos, b.pos, u); B.yaw = a.yaw + angD(b.yaw, a.yaw) * u; B.pitch = a.pitch + (b.pitch - a.pitch) * u;
+        while (tr.length > k + 1) tr.pop();
+        U.s = s2;
+        ctx.camDirty = true;
+        updateZoom();
+    }
+    // Tauchflug: Prüfwerte (Durchdringen, Steckenbleiben = 2 s ohne Zoom-Fortschritt)
+    function diveStat(np, P, sp, dt, gh) {
+        const st = F.st, seg = V.sub(np, B.pos), sl = V.len(seg), pix = 2 * Math.tan(B.fov / 2) / Math.max(1, Math.min(canvas.width, canvas.height));
+        if (F.glideT) { const r = deJS(np, P) / gh; st.gmin = Math.min(st.gmin, r); st.gmax = Math.max(st.gmax, r); glideSample(st, r, dt); } else if (st.gAge) glideEnd(st);
+        if (sl > 0) { const h = marchJS(B.pos, V.mul(seg, 1 / sl), P, pix * 0.05, sl); if (h.hit && h.t < sl * 0.999) { st.pen++; (st.penLog || (st.penLog = [])).length < 8 && st.penLog.push([deJS(B.pos, P), deJS(np, P), h.t / sl, deJS(h.p, P), sl, gh]); } }
+        if (!np.every(Number.isFinite)) st.nan++;
+        const lz = Math.log10(Math.max(1e-9, B.zoom));
+        // Steckenbleiben = die Kamera bewegt sich 2 s lang kaum (weniger als ein Fünftel ihres Abstands zur Oberfläche); Zoom ohne
+        // Fortschritt (Gleiten über einen Grat) wird getrennt gezählt
+        if (st.lz0 === undefined || st.tw > 2) {
+            if (st.lz0 !== undefined && Math.abs(sp) > 0.05 && !F.glide) {
+                if (lz - st.lz0 < 0.02 * Math.abs(sp) * st.tw) st.noZoom = (st.noZoom || 0) + 1;
+                if (V.len(V.sub(np, st.p0)) < 0.2 * deJS(np, P)) { st.stuck++; st.stuckMax = Math.max(st.stuckMax, (st.stuckRun = (st.stuckRun || 0) + st.tw)); } else st.stuckRun = 0;
+            }
+            st.lz0 = lz; st.p0 = np.slice(); st.tw = 0;
+        }
+        st.tw += dt; st.t += dt;
+    }
+    // Fluglage: sanftes Schwanken (Summe langsamer Sinusse, Perioden 6–12 s: Gieren ±4°, Nicken ±3°, Rollen ±6°, Regler
+    // ?schwanken=0/1/2 bzw. Schalter) und Querneigung in Kurven (∝ Drehrate, höchstens 15°); nur Blick/Roll – die Bahn bleibt.
+    // Beim Start mit der Anfahrt eingeblendet, nach dem Flug in ~0,6 s ausgeblendet (update)
+    function attitude(dt) {
+        const k = swayK(), t = F.simT || 0, e = ctx.FLY.ease === undefined ? 1 : ctx.FLY.ease, w = 2 * Math.PI;
+        const sy = 4 * DEG * (0.65 * Math.sin(w * t / 8.7 + 0.3) + 0.35 * Math.sin(w * t / 11.9 + 2.1));
+        const spi = 3 * DEG * (0.6 * Math.sin(w * t / 7.1 + 1.2) + 0.4 * Math.sin(w * t / 10.3 + 0.7));
+        const sr = 6 * DEG * (0.6 * Math.sin(w * t / 9.4 + 2.5) + 0.4 * Math.sin(w * t / 6.3 + 0.2));
+        F.bank = (F.bank || 0) + (Math.max(-15 * DEG, Math.min(15 * DEG, 0.7 * (F.wy || 0))) - (F.bank || 0)) * Math.min(1, dt * 2);
+        B.swY = k * e * sy; B.swP = k * e * spi + (F.du ? F.du.glP : 0);
+        B.roll = Math.max(-15 * DEG, Math.min(15 * DEG, k * e * sr + F.bank));       // gesamt höchstens 15°
+    }
     // Blick gedämpft auf einen Punkt (Gieren/Nicken)
     function lookAt(P, dt, k) {
         const dir = V.norm(V.sub(P, B.pos));
@@ -1830,7 +2105,7 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
     // nie sprunghaft die Drehrate; Drehrate höchstens LOOK_MAX (20°/s), Drehbeschleunigung höchstens LOOK_ACC.
     // Bis 7.1.6: Blick exponentiell (k = 3/s) – jeder Zielwechsel ein Sprung in der Drehrate.
     const LOOK_W = 2.2, LOOK_MAX = 20 * Math.PI / 180, LOOK_ACC = 40 * Math.PI / 180;
-    function lookSpring(P, dt) {
+    function lookSpring(P, dt, maxRate) {
         if (!(dt > 0)) return;
         const dir = V.norm(V.sub(P, B.pos));
         const yaw = Math.atan2(dir[0], dir[2]), pitch = Math.max(-1.45, Math.min(1.45, Math.asin(Math.max(-1, Math.min(1, dir[1])))));
@@ -1838,11 +2113,19 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         let ay = LOOK_W * LOOK_W * ey - 2 * LOOK_W * F.wy, ap = LOOK_W * LOOK_W * ep - 2 * LOOK_W * F.wp;
         const al = Math.hypot(ay, ap); if (al > LOOK_ACC) { ay *= LOOK_ACC / al; ap *= LOOK_ACC / al; }
         F.wy += ay * dt; F.wp += ap * dt;
-        const wl = Math.hypot(F.wy, F.wp); if (wl > LOOK_MAX) { F.wy *= LOOK_MAX / wl; F.wp *= LOOK_MAX / wl; }
+        const LM = maxRate || LOOK_MAX, wl = Math.hypot(F.wy, F.wp); if (wl > LM) { F.wy *= LM / wl; F.wp *= LM / wl; }
         B.yaw += F.wy * dt / Math.max(0.2, Math.cos(B.pitch)); B.pitch = Math.max(-1.45, Math.min(1.45, B.pitch + F.wp * dt));
     }
     // Lenken im Flug: Ziehen dreht die Kamera um das Ziel (wie die Orbit-Geste), das Ziel wird danach neu gesucht
     function flySteer(dx, dy) {
+        if (F.mode === 'durch' && F.du) {
+            // Durchflug: Ziehen lenkt (Gieren/Nicken des Kurses); danach übernimmt der Autopilot weich (neues Ziel = Kurs)
+            const k = Math.PI / Math.max(320, ctx.cssW) * 0.9;
+            B.yaw += dx * k; B.pitch = Math.max(-1.45, Math.min(1.45, B.pitch - dy * k));
+            F.wy = 0; F.wp = 0; F.du.tgt = camBasis(true).fw; F.du.pi = 0;
+            ctx.camDirty = true;
+            return;
+        }
         if (!F.T) return;
         const k = Math.PI / Math.max(320, ctx.cssW) * 0.9;
         orbit({ pos: B.pos, yaw: B.yaw, pitch: B.pitch, pivot: F.T }, dx * k, -dy * k);
@@ -1966,7 +2249,7 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         B, G, V, update, present, redraw, bench, startFly, flyUpdate, flySteer, flyStopped, canFly, stateString, applyState, applyLegacy, tourTo, capTile,
         goHome, keyOrbit, keyZoom,
         capK: () => Math.max(8, tier().K),
-        hold(v) { B.hold = !!v; }, mem: () => Object.values(T).reduce((m, x) => m + (x ? x.w * x.h * 8 * x.tex.length : 0), 0), paceLog: () => PACE.log, taau: () => ({ on: SCHARF && taauReady(), ok: H.ok, seeds: H.seeds || 0, band: H.band ? H.band.n : 0, fail: H.fail, taau: TAAU, idx: PACE.idx, nInt: B.nInt || 0 }), flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length, revStuck: F.revStuck || 0, simT: F.simT || 0, spK: F.spK === undefined ? 1 : F.spK }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
+        hold(v) { B.hold = !!v; }, flyMode, setFlyMode, flyDbg: () => F.du && { free: F.du.free.map(r => r && [+r.f.toPrecision(3), r.hit, +r.voidK.toFixed(2), +(r.sc || 0).toPrecision(3)]), tgt: F.du.tgt, fw: camBasis(true).fw, L: F.du.L, med: F.du.med, ahead: F.du.ahead, voids: F.du.st.voids || 0, dead: F.du.st.dead, sp: ctx.FLY.sp, spK: F.spK, d: deJS(B.pos, params()), pos: B.pos }, flyStat: () => { const st0 = F.mode === 'durch' && F.du ? F.du.st : F.st; if (st0 && st0.gAge) glideEnd(st0); return F.mode === 'durch' && F.du ? Object.assign({ mode: 'durch', glide: F.du.glide, L: F.du.L, trail: F.du.trail.length }, F.du.st) : Object.assign({ mode: 'tauch', glide: !!F.glideT }, F.st || {}); }, mem: () => Object.values(T).reduce((m, x) => m + (x ? x.w * x.h * 8 * x.tex.length : 0), 0), paceLog: () => PACE.log, taau: () => ({ on: SCHARF && taauReady(), ok: H.ok, seeds: H.seeds || 0, band: H.band ? H.band.n : 0, fail: H.fail, taau: TAAU, idx: PACE.idx, nInt: B.nInt || 0 }), flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length, revStuck: F.revStuck || 0, simT: F.simT || 0, spK: F.spK === undefined ? 1 : F.spK }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
         params, iterFor, minDist, zoomToward,
         info: () => Object.assign({ ok: B.ok, why: B.why, zoom: B.zoom, dSurf: B.dSurf, iter: iterFor(B.zoom), limit: B.limit, anchor: !!ANC && B.zoom >= 60,
                                     nMot: B.nMot || 0, nInt: B.nInt || 0, flyD: F.T ? V.len(V.sub(B.pos, F.T)) : null }, B.info),

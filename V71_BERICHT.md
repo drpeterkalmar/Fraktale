@@ -15,7 +15,8 @@ Dieser Bericht wächst mit jeder Etappe; Einzelheiten zu jeder Version stehen im
 | 7.1.5 | Feinschliff: Sehenswürdigkeiten für alle Welten (84 Orte), Burning Ship/Tricorn ohne Staub-Sterne |
 | 7.1.6 | Neue Standards nach Peter (Eis, Bunt, Grenznah 100 px, Farbtempo 20 s), Vollbild beim ersten Tipp, Zufalls-Startwelt, Neuladen = Neustart, sanfter Flugstart |
 | 7.1.7 | Ruhiger 3D-Flug: gleichmäßiger Takt, Kamera und Blick ohne Zittern, Flug-Tempo 0,3 |
-| **7.1.8** | **Im Flug immer scharf** (Abschnitt unten) |
+| 7.1.8 | Im Flug immer scharf: volle Auflösung, Zwischenbilder, Streifen, Vorausrendern, langsamer statt unscharf |
+| **7.1.9** | **Durchflug, Gleiten, sanfte Fluglage** (Abschnitt unten) |
 
 Galerie-Bögen der Welten: `tests/shots/v71/blatt_*.jpg`.
 
@@ -232,3 +233,98 @@ Bildern/s. Das Tempo ist also genau die Größe, die nachgibt, wenn die GPU knap
   einer Wand, weicht er entlang der Blickrichtung aus. test_v70 danach grün (11,5 s bis „Ganz draußen“).
 - test_rueck: Schwelle „nach 1,5 s losgeflogen“ von Zoom 1,5 auf 1,3 – seit der sanften Anfahrt (7.1.6) lag der Wert genau
   auf der Kante (7.1.7: 1,50, 7.1.8: 1,48).
+
+
+## 7.1.9 – Durchflug, Gleiten, sanfte Fluglage
+
+Peter, 10.10.: „Kann man durch den Menger-Schwamm und andere 3D-Dinger darüber und durchfliegen statt reinzoomen mit dem
+Flugzeug?“ – 14.10.: „… kann auch gern etwas Pitch, Yaw und Roll machen (nicht übertreiben) … wenn an Oberfläche eines
+3D-Objektes, dann darüber hinweggleiten.“ (Etappe vor die ⓘ-Faktenkarte gezogen.)
+
+### Umsetzung
+
+- **Zwei Flug-Arten**: ✈ **Durchflug** (Standard für Menger-Schwamm, Mandelbox, Kaleidoskop-IFS, Apollonian) und 🔍 **Tauchen**
+  (bisheriger Flug, Standard für Mandelbulb und Quaternionen-Julia). Umschalter in der Flug-Leiste (im Flug, wechselt weich) und
+  im 3D-Bedienfeld („Flug“); die Wahl wird je Welt gespeichert.
+- **Durchflug**: Die Kamera fliegt in Blickrichtung; Tempo ∝ Abstand zur Oberfläche (v = 2,6 · Tempo · Abstand), gedeckelt durch
+  die lokale Skala und den freien Weg geradeaus – in engen Gängen langsam, in offenen Hallen schnell, nie in die Wand.
+  Iterationen und Treffer-Epsilon folgen dem Abstand (Zoom = Z0/Abstand). Autopilot: Sonde aus 7 × 5 Strahlen im Blickkegel
+  (±36° × ±24°, verteilt auf 5 Takte); Kurs weich (Federn) auf den Strahl mit dem längsten freien Weg, Hysterese 15 %, etwas
+  Trägheit. Strahlen ohne Treffer werden unterschieden: Tunnel (am Strahl-Ende noch Struktur nah) zählt voll, Leere zählt
+  quadratisch wenig – ohne diese Unterscheidung flog der Autopilot aus dem Menger-Schwamm hinaus und wurde dabei, weil das
+  Tempo am Abstand hängt, exponentiell schneller. Führt alles ins Leere: Kurs zur Mitte des Gebildes. Sackgasse: zur Seite mit
+  dem meisten Platz. Ziel genau hinter dem Kurs: Wende über die Seite. Vor Leere oder Wand darf der Blick 30°/s drehen
+  (sonst 20°/s).
+- **Gleiten** (beide Flug-Arten, `?gleiten=0` = aus): Durchflug – unter der Gleithöhe (4 % der lokalen Skala) Kurs ganz
+  tangential, Höhe geregelt (4/s, geglättet), Normale tiefpassgefiltert (keine Hüpfer über kleine Knospen), Blick 8° nach unten;
+  nur über offenen Flächen (gegenüber muss Platz sein, sonst regelte es in engen Gängen gegen eine Wand). Tauchen – unter der
+  Gleithöhe (12 % des Zielabstands, nie unter der Grenze der Handsteuerung) kein Abstoßen, sondern Höhe halten, das Ziel wandert
+  tangential voraus und bleibt auf der Oberfläche; der Tauch-Abstand schrumpft im Gleiten weiter, man gleitet immer tiefer ins
+  Detail bis zur Genauigkeitsgrenze.
+- **Sanfte Fluglage** (`?schwanken=0/1/2`, Schalter „Sanft schwanken“ im 3D-Bedienfeld): Summe langsamer Sinusse, Perioden
+  6,3–11,9 s – Gieren ±4°, Nicken ±3°, Rollen ±6°; Querneigung in Kurven ∝ Drehrate; Rollen gesamt ≤ 15°. Nur Blick/Roll in der
+  Darstellung (Sonden, Kollision und Bahn nutzen den Kurs ohne Schwanken); mit der Anfahrt eingeblendet, nach dem Flug in
+  ~0,6 s ausgeblendet. Die Kamera kann dafür jetzt rollen (Kamera-Basis, Reprojektion des scharfen Flugs inklusive).
+- **Kollision**: Durchflug – kein Schritt länger als der halbe Abstand (die Distanzschätzung ist eine Schranke: keine Wand wird
+  übersprungen), Mindestabstand 35 % der Gleithöhe. Tauchen – Schritt ebenso begrenzt, Strecke geprüft, an Kanten Mindesthöhe
+  gegen alle Flächen.
+- **Rückwärts**: Durchflug auf dem aufgezeichneten Weg (ein Punkt je ¼ Abstand) bis zum Anfang („Am Anfang des Wegs“).
+- **Lenken**: Ziehen dreht im Durchflug den Kurs (Gieren/Nicken), danach übernimmt der Autopilot weich.
+- Behoben beim Prüfen: (1) Das Tauchziel glitt auf gerader Linie zum nächsten Zielpunkt und lag dabei in der Luft – der
+  Tauchflug zielte auf einen Luftpunkt und hing an der Genauigkeitsgrenze (vermutlich das „Steckenbleiben im Tauchflug“ aus
+  7.1.7); es bleibt jetzt auf der Oberfläche. (2) Nach dem Gleiten an der Genauigkeitsgrenze kam der Rückflug nicht los
+  (test_v70) – Schritte weg von der Oberfläche sind dort jetzt erlaubt.
+
+### Messung
+
+Dauerflug je Welt 3 min (`tests/measure_durchflug.py`, Pixel-7-Profil, Tempo 0,5, Prüfwerte im Flug per `?flugstat`):
+Durchdringung = die Strecke von Takt zu Takt schneidet die Oberfläche; Steckenbleiben = Durchflug 2 s am Stück unter 15 % des
+Solltempos, Tauchen 2 s kaum Bewegung; Gleithöhe = Abstand/Gleithöhe je Gleitphase ohne erste und letzte halbe Sekunde.
+Ergebnis `tests/results_durchflug_v719.json`.
+
+| Welt | Flug-Art | Durchdringungen | NaN | Steckenbleiben (längstes) | Gleitphasen / Zeit im Gleiten | Gleithöhe Median (p10–p90) | max. Zoom | angezeigt Bilder/s / > 50 ms |
+|---|---|---|---|---|---|---|---|---|
+| Mandelbulb | Tauchen | 0 | 0 | 0 (0 s) | 1 / 177,1 s | 0,95 (0,95–0,95) | 83515 | 59,9 / 0 |
+| Mandelbox | Durchflug | 0 | 0 | 0 (0 s) | 6 / 151,3 s | 1,01 (0,91–1,08) | 1026 | 59,8 / 1 |
+| Menger | Durchflug | 0 | 0 | 0 (0,9 s) | 4 / 143,3 s | 1,01 (0,98–1,18) | 8251 | 59,5 / 3 |
+| Quaternionen-Julia | Tauchen | 0 | 0 | 0 (0 s) | 1 / 169,5 s | 1,01 (1,0–1,02) | 12103 | 60,0 / 0 |
+| Kaleidoskop-IFS | Durchflug | 0 | 0 | 0 (1,28 s) | 1 / 101,3 s | 1,01 (0,89–1,1) | 9719 | 59,6 / 0 |
+| Apollonian | Durchflug | 0 | 0 | 0 (0 s) | 0 / 0 s | – (–––) | 2 | 59,8 / 0 |
+
+Pumpen-Kriterium (±30 %): Streuung p10–p90 um den eigenen Median – erfüllt in allen Welten. Der Mandelbulb gleitet nach
+~10 s fast durchgehend an der Genauigkeitsgrenze (Gleithöhe dort = Grenze der Handsteuerung, daher Median 0,95 und keine
+Streuung); Apollonian fliegt durch die Hallen des Kugelschaums ohne Gleitphase.
+
+Takt mit den Standard-Flugarten (`tests/measure_bulbfly.py --secs=20`, Mittelklasse-Profil; `results_bulbfly_v719_hoch.json`):
+
+| Welt (Standard-Flugart) | angezeigt Bilder/s | echte Bilder/s | Bildzeit-σ ms | p95/Median | > 50 ms | Tempo-Faktor Mittel | Blick max °/s |
+|---|---|---|---|---|---|---|---|
+| Mandelbulb | 59,7 | 11,6 | 1,53 | 1,08 | 0 | 0,44 | 20,0 |
+| Mandelbox | 59,1 | 30,4 | 2,16 | 1,07 | 0 | 0,95 | 20,0 |
+| Menger | 60,0 | 35,2 | 0,71 | 1,08 | 0 | 1,0 | 19,9 |
+| Quaternionen-Julia | 59,7 | 24,1 | 1,38 | 1,08 | 0 | 0,79 | 20,0 |
+| Kaleidoskop-IFS | 60,0 | 55,6 | 0,63 | 1,07 | 0 | 1,0 | 20,0 |
+| Apollonian | 59,2 | 31,2 | 2,03 | 1,08 | 0 | 1,0 | 20,0 |
+
+Bildfolgen (`tests/series_v719.py`, 16 Bilder im Abstand von 0,5 s ab 6 s nach dem Start): `tests/shots/v719/flug_<welt>.jpg`.
+Meine Sichtprüfung (kein separates Vision-Modell): Menger – nähert sich dem Würfel, zieht im Tiefflug über die Deckfläche und
+taucht dann durch ein Loch in die Gänge (erkennbar DURCH); Mandelbox – fliegt an Kanten und durch Hohlräume der Box; KIFS –
+Flug an einer Felswand entlang (über Strukturen); Apollonian – durch die Hallen des Kugelschaums; Mandelbulb – taucht bis
+Zoom ~7·10⁴ und gleitet dann sichtbar an einer gefiederten Kante entlang; Q-Julia – taucht in ihre gestreiften Tiefen.
+Schwanken: Horizont neigt sich langsam um einige Grad, in Kurven deutlicher – sichtbar, ruhig.
+
+**Ehrlich zu den Grenzen:**
+
+- Die Mandelbox wird von außen meist überflogen bzw. an ihren Kanten entlang beflogen; ins Innere findet der Autopilot selten
+  (die Box ist außen weitgehend geschlossen). Der Menger-Schwamm gelingt am besten.
+- Drehrate des Blicks: 20°/s wie in 7.1.7, im Durchflug vor Leere oder Wand bis 30°/s (sonst kroch er beim Wenden).
+- Der Tauchflug des Mandelbulb kostet nah an der Oberfläche viel GPU: Tempo-Faktor im Mittel 0,44 im Mittelklasse-Profil.
+- Vorausrendern (7.1.8) nutzt im Durchflug noch keine Vorausschau der Bahn (nur im Tauchen); Streifen und Zwischenbilder gelten.
+
+### Tests
+
+- `tests/test_v719.py` A–F: Standard-Flugart je Welt, Umschalter im Flug, Wahl gespeichert; Durchflug Menger ohne Durchdringung,
+  Rollen ≤ 15°, Gieren-Schwanken ≤ 4°; `?schwanken=0/2`; Rückwärts bis zum Anfang; Lenken; `?gleiten=0`; Fluglage nach dem Flug.
+- Angepasst: test_v71 (Apollonian: Tauchen – Zoom steigt; Durchflug – Weg in Abständen zur Oberfläche).
+- Regression grün: test_v70, test_v71, test_v716, test_v717, test_v718, test_shader_fail, test_rueck, test_fs_fly, test_shot,
+  test_hud_fs, Unit-Tests.

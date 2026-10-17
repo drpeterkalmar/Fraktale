@@ -3,17 +3,17 @@
   "scale": [
    1
   ],
-  "real": 144,
-  "zwischen": 214,
+  "real": 111,
+  "zwischen": 234,
   "taau": {
    "on": true,
    "ok": true,
    "seeds": 1,
-   "band": 3,
+   "band": 6,
    "fail": false,
    "taau": true,
-   "idx": 4,
-   "nInt": 221
+   "idx": 6,
+   "nInt": 234
   }
  },
  "B": [
@@ -22,40 +22,40 @@
     0,
     0
    ],
-   "ssim_shift": 0.6714,
-   "ssim": 0.672,
-   "ssim_norm": 0.6887,
-   "kante": 1.034,
-   "hf": 0.658,
-   "hell": 1.308
+   "ssim_shift": 0.677,
+   "ssim": 0.678,
+   "ssim_norm": 0.6454,
+   "kante": 0.887,
+   "hf": 0.331,
+   "hell": 1.277
   },
   {
    "shift": [
     0,
     0
    ],
-   "ssim_shift": 0.6798,
-   "ssim": 0.681,
-   "ssim_norm": 0.6889,
-   "kante": 0.969,
-   "hf": 0.505,
-   "hell": 1.281
+   "ssim_shift": 0.4118,
+   "ssim": 0.4141,
+   "ssim_norm": 0.5078,
+   "kante": 0.842,
+   "hf": 0.667,
+   "hell": 1.229
   }
  ],
  "C": {
   "shift": [
    0,
-   2
+   1
   ],
-  "ssim_shift": 0.8712,
-  "ssim": 0.6867,
-  "ssim_norm": 0.7872,
-  "kante": 1.117,
-  "hf": 1.547,
-  "hell": 1.046
+  "ssim_shift": 0.8701,
+  "ssim": 0.8225,
+  "ssim_norm": 0.8972,
+  "kante": 1.119,
+  "hf": 1.592,
+  "hell": 1.043
  },
  "D": [
-  0.3433632521394618,
+  0.34255575958193984,
   6,
   2
  ],

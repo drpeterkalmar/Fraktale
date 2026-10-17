@@ -670,6 +670,16 @@ const TRANSLATIONS_V71 = {
           help_magnet: "Magnet fractals come from physics (renormalisation of the Ising model): seahorses and spirals, points escape to infinity or land at z = 1." }
 };
 for (const l of Object.keys(TRANSLATIONS_V71)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_V71[l]);
+// 7.1.9 Durchflug, Tauchen, Schwanken
+const TRANSLATIONS_V719 = {
+    de: { bulb_flight: "Flug", fly_durch: "Durchflug", fly_tauch: "Tauchen", fly_mode_title: "Flug-Art: ✈ Durchflug (durch Gänge, über Strukturen) / 🔍 Tauchen (hinein in die Tiefe)",
+          fly_back_start: "Am Anfang des Wegs", bulb_sway: "Sanft schwanken (Fluglage)",
+          fly_mode_hint: "✈ Durchflug: fliegt wie ein Flugzeug durch Gänge und Löcher, an Oberflächen gleitet er darüber hinweg. 🔍 Tauchen: zoomt endlos in die Tiefe." },
+    en: { bulb_flight: "Flight", fly_durch: "Fly-through", fly_tauch: "Dive", fly_mode_title: "Flight mode: ✈ fly-through (through corridors, over structures) / 🔍 dive (into the depths)",
+          fly_back_start: "Back at the start of the path", bulb_sway: "Gentle sway (attitude)",
+          fly_mode_hint: "✈ Fly-through: flies like a plane through corridors and holes and glides over surfaces. 🔍 Dive: zooms endlessly into the depths." }
+};
+for (const l of Object.keys(TRANSLATIONS_V719)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_V719[l]);
 (function () {
     for (const lang of Object.keys(TRANSLATIONS)) {
         TRANSLATIONS[lang] = Object.assign({}, TRANSLATIONS_UI.en, TRANSLATIONS[lang], TRANSLATIONS_UI[lang] || {});

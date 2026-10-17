@@ -303,10 +303,14 @@ def case_I(p):
     pg.evaluate("() => { const A = window.__fraktal; A.startTour(A.SIGHTS[16][1]); }"); time.sleep(9)
     q = pg.evaluate("() => window.__fraktal.BULB.B.qc")
     check(abs(q[0] + 0.291) < 1e-9 and abs(q[3] - 0.437) < 1e-9, f'Tour: c der Spirale übernommen {q}')
-    # Flug durch den Kugelschaum (Apollonian): Zoom steigt
-    pg.evaluate("() => { const A = window.__fraktal; A.setMode(18); A.S.flySpeed = 0.6; A.startFly(); }"); time.sleep(8)
+    # Flug durch den Kugelschaum (Apollonian): Tauchen – Zoom steigt; Durchflug (Standard seit 7.1.9) – die Kamera legt Weg zurück
+    pg.evaluate("() => { const A = window.__fraktal; A.setMode(18); A.BULB.setFlyMode('tauch'); A.S.flySpeed = 0.6; A.startFly(); }"); time.sleep(8)
     z = pg.evaluate("() => { const A = window.__fraktal; const z = A.S.cam.zoom; A.stopFly(); return [z, A.BULB.info().zoom || z]; }")
-    check(max(z) > 3, f'Flug im Apollonian: Zoom {max(z):.1f}')
+    check(max(z) > 3, f'Tauchflug im Apollonian: Zoom {max(z):.1f}')
+    p0 = pg.evaluate("() => { const A = window.__fraktal; A.BULB.setFlyMode('durch'); A.S.flySpeed = 0.6; A.startFly(); return A.BULB.B.pos.concat([A.BULB.B.dSurf]); }"); time.sleep(8)
+    p1 = pg.evaluate("() => { const A = window.__fraktal; const p = A.BULB.B.pos.slice(); A.stopFly(); A.BULB.setFlyMode(null); return p; }")
+    dd = sum((x - y) ** 2 for x, y in zip(p0[:3], p1)) ** 0.5 / p0[3]     # (Weg in Abständen zur Oberfläche – nach dem Tauchen ist alles klein)
+    check(dd > 3, f'Durchflug im Apollonian: Weg {dd:.1f} Abstände')
     check(not a.errors, f'keine Fehler {a.errors[:2]}')
     a.close()
 

@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.8';
+const APP_VERSION = '7.1.9';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -191,7 +191,7 @@ const S = {
     outMode: 'edge', edgeW: 100,                                             // 6.9: Außen (pal/edge/black), Saumbreite Grenznah (CSS-Pixel)
     style: 0, stMix: 0.85, stS: 5,                                          // 7.1: Färbe-Stil (0 Standard … 6 Stängel), Stärke, Streifendichte
     wp: {}, wpal: {},                                                       // 7.1: Welt-Parameter, Palette je Welt
-    bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false,             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
+    bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false, bulbFly: {}, bulbSway: true,   // 7.1.9 Flug-Art je 3D-Welt ('durch'/'tauch', leer = Standard der Welt), Schwanken             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     fsStart: true, startWorld: 'random',                                    // 7.1.6: Vollbild beim ersten Tipp; Startwelt Zufall/'last'
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
@@ -271,7 +271,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'bulbFly', 'bulbSway', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld'])
             if (s[k] !== undefined) S[k] = s[k];
         for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f], S.wp[f] || {});
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
@@ -289,7 +289,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'bulbFly', 'bulbSway', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld']) o[k] = S[k];
     // 7.1.6: paletteId = Palette der Klassiker (bis 7.1.5 die gerade gezeigte – nach einem Start in einer neuen Welt bekamen
     // die Klassiker deren Palette); die Palette der aktuellen Welt steht in wpal
     S.wpal = Object.assign({}, S.wpal, { [palKey(S.formula)]: PAL.list[S.palette].id });
