@@ -10,7 +10,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 57.1,
-   "sec": 1.3
+   "sec": 0.6
   },
   "Lyapunov Zirkon": {
    "ok": 0.9833333333333333,
@@ -34,7 +34,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 47.9,
-   "sec": 1.3
+   "sec": 1.4
   },
   "Phoenix Mandel": {
    "ok": 1,
@@ -46,7 +46,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 77.7,
-   "sec": 1.3
+   "sec": 0.5
   },
   "Nova Mandel": {
    "ok": 1,
@@ -70,7 +70,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 58.9,
-   "sec": 1.5
+   "sec": 0.5
   },
   "Magnet I": {
    "ok": 0.98,
@@ -82,7 +82,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 72.8,
-   "sec": 0.8
+   "sec": 0.6
   },
   "Magnet II": {
    "ok": 0.9966666666666667,
@@ -94,7 +94,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 53.0,
-   "sec": 0.4
+   "sec": 0.5
   },
   "Multibrot 3,5": {
    "ok": 0.9933333333333333,
@@ -118,7 +118,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 92.2,
-   "sec": 0.6
+   "sec": 0.5
   },
   "Newton z³−1": {
    "ok": 1,
@@ -130,7 +130,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 42.5,
-   "sec": 0.5
+   "sec": 1.4
   },
   "Newton z³−2z+2": {
    "ok": 1,
@@ -142,7 +142,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 18.5,
-   "sec": 0.5
+   "sec": 1.2
   },
   "Newton z⁸+15z⁴−16": {
    "ok": 0.9933333333333333,
@@ -166,7 +166,7 @@
    "kind": "gpu",
    "mode": "direct",
    "std": 72.1,
-   "sec": 0.6
+   "sec": 0.8
   },
   "Senkrecht": {
    "ok": 1,
@@ -200,7 +200,7 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 2.1
+   "sec": 1.1
   },
   "Senkrecht": {
    "good": 0.69,
@@ -208,7 +208,7 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 1.0
+   "sec": 0.8
   },
   "Büffel": {
    "good": 0.5375,
@@ -216,13 +216,13 @@
    "n": 400,
    "kind": "gpu",
    "mode": "perturb",
-   "sec": 1.1
+   "sec": 1.8
   }
  },
  "H": {
   "Flamme Sichel": {
-   "first_ms": 288,
-   "std": 38.0,
+   "first_ms": 348,
+   "std": 38.1,
    "info": {
     "ok": true,
     "why": "",
@@ -236,36 +236,36 @@
     "h": 1678,
     "N": 65536,
     "K": 24,
-    "total": 171245568,
-    "spp": 123.85,
-    "ageMs": 1915,
+    "total": 157351936,
+    "spp": 113.8,
+    "ageMs": 1950,
     "fblend": true
    }
   },
   "Flamme Galaxie": {
-   "first_ms": 397,
-   "std": 36.4,
+   "first_ms": 232,
+   "std": 36.5,
    "info": {
     "ok": true,
     "why": "",
     "gpu": true,
     "E": {
      "B": 0.25,
-     "occ": 0.753,
-     "peak": 53.1
+     "occ": 0.778,
+     "peak": 54.7
     },
     "w": 824,
     "h": 1678,
     "N": 65536,
-    "K": 11,
-    "total": 102170624,
-    "spp": 73.89,
-    "ageMs": 1933,
+    "K": 19,
+    "total": 120127488,
+    "spp": 86.88,
+    "ageMs": 1932,
     "fblend": true
    }
   },
   "Clifford": {
-   "first_ms": 331,
+   "first_ms": 345,
    "std": 21.8,
    "info": {
     "ok": true,
@@ -280,31 +280,31 @@
     "h": 1678,
     "N": 65536,
     "K": 24,
-    "total": 167247872,
-    "spp": 120.96,
-    "ageMs": 1967,
+    "total": 165543936,
+    "spp": 119.73,
+    "ageMs": 2000,
     "fblend": true
    }
   },
   "Lorenz": {
-   "first_ms": 504,
-   "std": 32.6,
+   "first_ms": 547,
+   "std": 31.8,
    "info": {
     "ok": true,
     "why": "",
     "gpu": true,
     "E": {
-     "B": 0.4,
-     "occ": 0.323,
-     "peak": 10.9
+     "B": 0.42,
+     "occ": 0.288,
+     "peak": 9.9
     },
     "w": 824,
     "h": 1678,
     "N": 65536,
     "K": 23,
-    "total": 156172288,
-    "spp": 112.95,
-    "ageMs": 2200,
+    "total": 150929408,
+    "spp": 109.16,
+    "ageMs": 2233,
     "fblend": true
    }
   },
@@ -314,21 +314,21 @@
    "bytes": 20858,
    "tiles": 6,
    "kind": "dens",
-   "ms": 5976
+   "ms": 6250
   }
  },
  "I": {
   "Quaternionen-Julia": {
-   "still_s": 0.7,
+   "still_s": 0.8,
    "std": 64.1
   },
   "Kaleidoskop-IFS": {
-   "still_s": 0.0,
-   "std": 77.8
+   "still_s": 0.5,
+   "std": 76.2
   },
   "Apollonian": {
-   "still_s": 1.8,
-   "std": 82.3
+   "still_s": 0.1,
+   "std": 78.8
   }
  },
  "K": {

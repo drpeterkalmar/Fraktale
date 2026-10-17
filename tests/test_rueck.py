@@ -141,7 +141,8 @@ def main():
         pg.keyboard.press('r'); time.sleep(1.2)
         k1 = pg.evaluate("() => [__fraktal.S.flySpeed, __fraktal.FLY.sp]")
         pg.keyboard.press('ArrowDown'); k2 = pg.evaluate("() => __fraktal.S.flySpeed")
-        need(z1 > 1.5 and abs(k1[0] + 0.6) < 1e-9 and abs(k1[1] + 0.6) < 0.05 and abs(k2 + 0.7) < 1e-9, f'Taste R: Tempo 0,6 → {k1[0]} (ist {k1[1]:.2f}), Pfeil ↓ → {k2}')
+        # (z1: seit der sanften Anfahrt 7.1.6 nach 1,5 s erst ~1,5 – gemessen 1,48–1,50; geprüft wird nur, dass er losflog)
+        need(z1 > 1.3 and abs(k1[0] + 0.6) < 1e-9 and abs(k1[1] + 0.6) < 0.05 and abs(k2 + 0.7) < 1e-9, f'Taste R: Tempo 0,6 → {k1[0]} (ist {k1[1]:.2f}), Pfeil ↓ → {k2}; Zoom vorher {z1:.2f}')
         pg.evaluate("() => __fraktal.stopFly()")
         # ------------------------------------------------------------ Ziel-Flug (Orte) rückwärts und wieder vorwärts
         tgt = {'cx': '-0.743643887037151', 'cy': '0.131825904205330', 'zoom': 1e6, 'formula': 0}

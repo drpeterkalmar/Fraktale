@@ -6,7 +6,7 @@ CPU ×4 + 4 Kerne, echte GPU, sichtbares Fenster). Abnahme-Kriterien (Peter/Herm
   * Kamera-Schritt je gezeigtem Bild gleichmäßig: Variationskoeffizient ≤ 10 % (Schritt = Weg der Kamera je Bild relativ
     zum Abstand zum Flugziel; bei konstantem Tempo und gleichmäßigem Takt konstant)
 Gemessen wird je rAF: Zeit, Zahl der Bewegungsbilder (BULB.info().nMot), Skala, Abstand zum Ziel. „Gezeigte Bilder“ =
-rAF-Takte mit neuem Bewegungsbild (rastet der Flug auf 30 Bilder/s ein, ist das jedes zweite).
+rAF-Takte mit neuem Bild (seit 7.1.8 auch reprojizierte Zwischenbilder; echte Bilder: real_fps; Tempo-Faktor spK_min).
 Die Anfahrt (2 s, 7.1.6) wird ausgelassen: Messung ab 2,5 s; bei --secs ≥ 15 zusätzlich „ab6s“ (eingeschwungen: Takt-Stufe
 gefunden). Ruhe der Kamerafahrt: look_* (Drehrate °/s), ljerk_* (Änderung der Drehrate je Takt), pjerk_* (Positions-Ruck).
 Aufruf: FK_HEADED=1 python3 tests/measure_bulbfly.py [--land] [--tag=v716] [--worlds=6,8,9,16,17] [--slow=1,4]
@@ -21,14 +21,16 @@ from measure_bulb import arg
 
 NAMES = {6: 'Mandelbulb', 8: 'Mandelbox', 9: 'Menger', 16: 'Quaternionen-Julia', 17: 'Kaleidoskop-IFS', 18: 'Apollonian'}
 REC = """(ms) => new Promise(res => { const A = window.__fraktal, out = []; const t0 = performance.now();
-  const f = (t) => { const i = A.BULB.info(); out.push([t, i.nMot, +(i.scale || 0).toFixed(4), i.flyD, A.FLY.sp, A.BULB.B.pos.slice(), i.N || 1, i.lvl || 0, A.BULB.B.yaw, A.BULB.B.pitch, A.BULB.flyInfo().simT]);
+  const f = (t) => { const i = A.BULB.info(); out.push([t, i.nMot + (i.nInt || 0), +(i.scale || 0).toFixed(4), i.flyD, A.FLY.sp, A.BULB.B.pos.slice(), i.N || 1, i.lvl || 0, A.BULB.B.yaw, A.BULB.B.pitch, A.BULB.flyInfo().simT, i.nMot, A.BULB.flyInfo().spK || 1]);
     if (t - t0 < ms) requestAnimationFrame(f); else res(out); }; requestAnimationFrame(f); })"""
 
 
 def analyse(rec, skip=2500):
     t0 = rec[0][0]
     rec = [r for r in rec if r[0] - t0 >= skip]
+    # gezeigte Bilder = echte Bewegungsbilder + reprojizierte Zwischenbilder (7.1.8); echte getrennt (real_fps)
     shown = [r for i, r in enumerate(rec) if i > 0 and r[1] != rec[i - 1][1]]
+    real = [r for i, r in enumerate(rec) if i > 0 and r[11] != rec[i - 1][11]]
     dts = [shown[i][0] - shown[i - 1][0] for i in range(1, len(shown))]
     if len(dts) < 10: return {'n': len(dts)}
     med = stt.median(dts); sd = stt.pstdev(dts)
@@ -77,7 +79,8 @@ def analyse(rec, skip=2500):
         pj.append(math.hypot(*d2) * (1 / 60) ** 2 / vel[i][1])
     q = lambda xs, p: sorted(xs)[min(len(xs) - 1, int(len(xs) * p))] if xs else 0
     return {'fps': round(1000 * len(dts) / sum(dts), 1), 'median_ms': round(med, 1), 'sd_ms': round(sd, 2), 'p95_ms': round(p95, 1),
-            'p95_rel': round(p95 / med, 2), 'gt50': sum(1 for x in dts if x > 50), 'n': len(dts), 'scale_changes_s': round(changes / dur, 2),
+            'p95_rel': round(p95 / med, 2), 'gt50': sum(1 for x in dts if x > 50), 'real_fps': round(1000 * (len(real) - 1) / max(1, real[-1][0] - real[0][0]), 1) if len(real) > 2 else 0,
+            'spK_min': round(min(r[12] for r in rec), 2), 'spK_mean': round(sum(r[12] for r in rec) / len(rec), 2), 'n': len(dts), 'scale_changes_s': round(changes / dur, 2),
             'scale_min': min(sc), 'scale_max': max(sc), 'cam_cv': round(cv, 3), 'cam_ac1': round(ac1, 2), 'cam_zz': round(czz, 3), 'look_max': round(max(om), 1), 'look_p95': round(q(om, 0.95), 1),
             'ljerk_p99': round(q(lj, 0.99), 2), 'ljerk_max': round(max(lj), 2), 'pjerk_p99': round(q(pj, 0.99) * 1e3, 3), 'pjerk_max': round(max(pj) * 1e3, 3), 'N': sorted(set(r[6] for r in shown)), 'lvl': sorted(set(r[7] for r in shown)),
             'ok': sd <= 3 and p95 <= 1.15 * med and not any(x > 50 for x in dts) and changes / dur <= 1 and cv <= 0.10}
@@ -108,7 +111,7 @@ def main():
                 pg.evaluate("() => window.__fraktal.stopFly()")
                 r = analyse(rec)
                 if arg('dump', False): json.dump(rec, open(f'/tmp/fk_rec_{f}.json', 'w'))
-                if dur >= 15000: r['ab6s'] = {k: v for k, v in analyse(rec, 6000).items() if k in ('fps', 'median_ms', 'sd_ms', 'p95_rel', 'gt50', 'scale_changes_s', 'cam_cv', 'cam_zz', 'N', 'lvl', 'ok')}
+                if dur >= 15000: r['ab6s'] = {k: v for k, v in analyse(rec, 6000).items() if k in ('fps', 'real_fps', 'median_ms', 'sd_ms', 'p95_rel', 'gt50', 'scale_changes_s', 'cam_cv', 'cam_zz', 'N', 'lvl', 'ok')}
                 name = NAMES.get(f, str(f)) + ('' if sl == 1 else ' (GPU ×%d)' % sl)
                 r['pacelog'] = r_log[-12:]
                 r['js_gt25'] = len(prof); r['js_max'] = max([x['pre'] + x['sched'] + x['present'] for x in prof] or [0])

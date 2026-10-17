@@ -1,0 +1,289 @@
+{
+ "tag": "v717",
+ "query": "scharf=0",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "runs": {
+  "mandelbulb": [
+   {
+    "shift": [
+     -1,
+     -2
+    ],
+    "ssim_shift": 0.1486,
+    "ssim": 0.1546,
+    "ssim_norm": 0.2249,
+    "kante": 0.732,
+    "hf": 0.145,
+    "hell": 2.79,
+    "scale": 0.595,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 211.7,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -4,
+     -2
+    ],
+    "ssim_shift": 0.2225,
+    "ssim": 0.2215,
+    "ssim_norm": 0.3579,
+    "kante": 0.773,
+    "hf": 0.189,
+    "hell": 1.641,
+    "scale": 0.595,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 978.9,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -3,
+     -4
+    ],
+    "ssim_shift": 0.2575,
+    "ssim": 0.2587,
+    "ssim_norm": 0.295,
+    "kante": 0.611,
+    "hf": 0.117,
+    "hell": 1.791,
+    "scale": 0.595,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 3404.0,
+    "still_at_shot": 0
+   }
+  ],
+  "mandelbox": [
+   {
+    "shift": [
+     -4,
+     1
+    ],
+    "ssim_shift": 0.2639,
+    "ssim": 0.2433,
+    "ssim_norm": 0.3486,
+    "kante": 0.636,
+    "hf": 0.254,
+    "hell": 1.809,
+    "scale": 0.7,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 35.0,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -2,
+     0
+    ],
+    "ssim_shift": 0.3215,
+    "ssim": 0.317,
+    "ssim_norm": 0.4396,
+    "kante": 0.649,
+    "hf": 0.229,
+    "hell": 1.496,
+    "scale": 0.7,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 176.6,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -1,
+     -1
+    ],
+    "ssim_shift": 0.3248,
+    "ssim": 0.3402,
+    "ssim_norm": 0.4435,
+    "kante": 0.583,
+    "hf": 0.201,
+    "hell": 1.688,
+    "scale": 0.7,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 174.4,
+    "still_at_shot": 0
+   }
+  ],
+  "menger": [
+   {
+    "shift": [
+     0,
+     -1
+    ],
+    "ssim_shift": 0.2869,
+    "ssim": 0.2927,
+    "ssim_norm": 0.3393,
+    "kante": 0.654,
+    "hf": 0.347,
+    "hell": 1.245,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 56.8,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     0,
+     -1
+    ],
+    "ssim_shift": 0.3643,
+    "ssim": 0.3558,
+    "ssim_norm": 0.4521,
+    "kante": 0.572,
+    "hf": 0.281,
+    "hell": 1.074,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 88.9,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     0,
+     -1
+    ],
+    "ssim_shift": 0.3746,
+    "ssim": 0.3667,
+    "ssim_norm": 0.4653,
+    "kante": 0.569,
+    "hf": 0.279,
+    "hell": 1.066,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 89.5,
+    "still_at_shot": 0
+   }
+  ],
+  "quatjulia": [
+   {
+    "shift": [
+     -4,
+     -4
+    ],
+    "ssim_shift": 0.5615,
+    "ssim": 0.5733,
+    "ssim_norm": 0.7369,
+    "kante": 0.798,
+    "hf": 0.504,
+    "hell": 1.388,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 404.0,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -4,
+     4
+    ],
+    "ssim_shift": 0.7125,
+    "ssim": 0.7144,
+    "ssim_norm": 0.878,
+    "kante": 0.723,
+    "hf": 0.35,
+    "hell": 1.252,
+    "scale": 0.5116999999999999,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 2881.0,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -4,
+     4
+    ],
+    "ssim_shift": 0.7283,
+    "ssim": 0.7312,
+    "ssim_norm": 0.8653,
+    "kante": 0.799,
+    "hf": 0.482,
+    "hell": 1.226,
+    "scale": 0.595,
+    "N": 2,
+    "s": null,
+    "spK": null,
+    "zoom": 3014.5,
+    "still_at_shot": 0
+   }
+  ],
+  "kifs": [
+   {
+    "shift": [
+     0,
+     -1
+    ],
+    "ssim_shift": 0.5568,
+    "ssim": 0.565,
+    "ssim_norm": 0.6521,
+    "kante": 0.699,
+    "hf": 0.32,
+    "hell": 1.039,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 412.9,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     0,
+     1
+    ],
+    "ssim_shift": 0.3407,
+    "ssim": 0.3401,
+    "ssim_norm": 0.4398,
+    "kante": 0.531,
+    "hf": 0.246,
+    "hell": 1.068,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 2332.8,
+    "still_at_shot": 0
+   },
+   {
+    "shift": [
+     -1,
+     -1
+    ],
+    "ssim_shift": 0.3547,
+    "ssim": 0.3604,
+    "ssim_norm": 0.4386,
+    "kante": 0.617,
+    "hf": 0.268,
+    "hell": 1.051,
+    "scale": 0.7,
+    "N": 1,
+    "s": null,
+    "spK": null,
+    "zoom": 2728.8,
+    "still_at_shot": 0
+   }
+  ]
+ },
+ "errors": []
+}

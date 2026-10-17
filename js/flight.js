@@ -311,7 +311,7 @@ root.FKFlight = { create(ctx) {
     // nahe einer halben Periode zwischen 0 und 2 Takten). Ein Bild, das einen Takt später kommt, zeigt die Kamera auch einen
     // Takt weiter (zeitrichtig). FLY.simT = Flugzeit (Messung). ?takt=0 (bzw. ?bulbpace=0) = roher Zeitschritt wie bis 7.1.6.
     const TAKT = ctx.Q.get('takt') !== '0' && ctx.Q.get('bulbpace') !== '0';
-    function taktDt(now, dt) {
+    function taktDt(now, dt, hold) {
         if (!TAKT) return dt;
         const vs = (ctx.RC.vsync || 16.67) / 1000, ts = now / 1000;
         if (FLY.kPrev === null || FLY.kPrev === undefined) { FLY.tRef = ts - vs; FLY.kPrev = 0; }
@@ -319,10 +319,12 @@ root.FKFlight = { create(ctx) {
         FLY.tRef += (kf - k) * vs * 0.1;
         const dk = k - FLY.kPrev;                       // (nach Pause/Hänger > 6 Takte: ein Takt, kein Sprung)
         if (k > FLY.kPrev) FLY.kPrev = k;
-        return dk > 6 ? vs : Math.max(0, Math.min(3, dk)) * vs;
+        // (hold: Schonfrist nach einem Größenwechsel – der Schritt bleibt höchstens 1/30 s wie vom Aufrufer begrenzt)
+        const q = dk > 6 ? vs : Math.max(0, Math.min(3, dk)) * vs;
+        return hold ? Math.min(q, 1 / 30) : q;
     }
-    function flyUpdate(now, dt) {
-        dt = taktDt(now, dt);
+    function flyUpdate(now, dt, hold) {
+        dt = taktDt(now, dt, hold);
         if (!(dt > 0)) return;
         FLY.simT = (FLY.simT || 0) + dt;
         if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { flySpeedStep(now, dt); ctx.BULB.flyUpdate(now, dt); return; }

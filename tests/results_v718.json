@@ -1,0 +1,79 @@
+{
+ "A": {
+  "scale": [
+   1
+  ],
+  "real": 144,
+  "zwischen": 214,
+  "taau": {
+   "on": true,
+   "ok": true,
+   "seeds": 1,
+   "band": 3,
+   "fail": false,
+   "taau": true,
+   "idx": 4,
+   "nInt": 221
+  }
+ },
+ "B": [
+  {
+   "shift": [
+    0,
+    0
+   ],
+   "ssim_shift": 0.6714,
+   "ssim": 0.672,
+   "ssim_norm": 0.6887,
+   "kante": 1.034,
+   "hf": 0.658,
+   "hell": 1.308
+  },
+  {
+   "shift": [
+    0,
+    0
+   ],
+   "ssim_shift": 0.6798,
+   "ssim": 0.681,
+   "ssim_norm": 0.6889,
+   "kante": 0.969,
+   "hf": 0.505,
+   "hell": 1.281
+  }
+ ],
+ "C": {
+  "shift": [
+   0,
+   2
+  ],
+  "ssim_shift": 0.8712,
+  "ssim": 0.6867,
+  "ssim_norm": 0.7872,
+  "kante": 1.117,
+  "hf": 1.547,
+  "hell": 1.046
+ },
+ "D": [
+  0.3433632521394618,
+  6,
+  2
+ ],
+ "E_scharf=0": [
+  false,
+  0.5116999999999999,
+  null
+ ],
+ "E_taau=0": [
+  true,
+  1,
+  1
+ ],
+ "F": {
+  "MB": 66.4,
+  "canvas": [
+   824,
+   1678
+  ]
+ }
+}

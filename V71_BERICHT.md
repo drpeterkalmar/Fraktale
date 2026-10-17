@@ -14,7 +14,8 @@ Dieser Bericht wächst mit jeder Etappe; Einzelheiten zu jeder Version stehen im
 | 7.1.4 | Julia-Lupe und Julia-Morph |
 | 7.1.5 | Feinschliff: Sehenswürdigkeiten für alle Welten (84 Orte), Burning Ship/Tricorn ohne Staub-Sterne |
 | 7.1.6 | Neue Standards nach Peter (Eis, Bunt, Grenznah 100 px, Farbtempo 20 s), Vollbild beim ersten Tipp, Zufalls-Startwelt, Neuladen = Neustart, sanfter Flugstart |
-| **7.1.7** | **Ruhiger 3D-Flug** (dieser Abschnitt) |
+| 7.1.7 | Ruhiger 3D-Flug: gleichmäßiger Takt, Kamera und Blick ohne Zittern, Flug-Tempo 0,3 |
+| **7.1.8** | **Im Flug immer scharf** (Abschnitt unten) |
 
 Galerie-Bögen der Welten: `tests/shots/v71/blatt_*.jpg`.
 
@@ -121,3 +122,113 @@ Geschwindigkeit je Flugzeit × Takt², relativ zum Zielabstand.
   Tempo 0,5 ausdrücklich (Standard jetzt 0,3).
 - Einmal beobachtet und nicht reproduzierbar: test_v70 „Rückflug bis ganz draußen“ blieb bei Zoom 219 stehen; eine
   Wiederholung des Tests und zwei nachgestellte Abläufe (mit und ohne Pause/Größenwechsel vor dem Rückflug) liefen sauber durch.
+
+
+## 7.1.8 – Im Flug immer scharf
+
+Peter, 14.10.: „… wenn beim Flug nicht das Bild unscharf und pixelig wird, sondern immer perfekt aussieht, am besten durch
+vorausschauendes Rendern?“ Ausgangslage (7.1.7): Auflösungsskala im Flug 0,44–0,70, die Bewegung rechnete außerdem mit zwei
+Iterationen weniger, gröberem Treffer-Epsilon und ohne bzw. mit wenigen Schatten – das Flugbild zeigte eine andere, weichere
+und 1,4–2,2-mal hellere Oberfläche als das Standbild an derselben Stelle.
+
+### Umsetzung (Stufen nach Messung)
+
+1. **Schärfe vor Tempo** (Standard; `?scharf=0` = Weg 7.1.7): die Auflösung bleibt immer 1,0. Reicht die GPU nicht, kommen
+   weniger echte Bilder, und der Flug wird weich langsamer (Faktor 2/N bei einem echten Bild je N Takte; Tempo-Regler =
+   Höchsttempo). Die Effekte bleiben auf jeder Stufe gleich und nahe am Standbild (Iterationen wie dort, 60 % der Schatten-
+   Schritte mit gleicher Reichweite, volle AO, 70 % Marsch-Schritte, Epsilon 0,6) – so gibt es auch keinen Helligkeits-
+   sprung, wenn der Regler umschaltet.
+2. **Vorausrendern** (Standard; `?voraus=0` = aus) – nicht als Ringpuffer vieler Bilder, sondern in der Form, die die Messung
+   nahelegte: Ein echtes Bild wird **in Streifen über N Takte** gerechnet (jeder Takt gleich viel Arbeit, ein teures Bild
+   verdrängt die Anzeige nicht mehr) und zwar **für die Kamera, die beim Fertigwerden erreicht ist** (der Autopilot kennt
+   seine Bahn: Kamera und Blick folgen gedämpften Federn mit stetiger Geschwindigkeit). Jeder Takt dazwischen zeigt den
+   Verlauf per Tiefen-Reprojektion in seiner Kamera (**Zwischenbilder**: 30, 20 … echte → 60 angezeigte Bilder/s). Gemessen
+   bei fester Stufe (15 echte Bilder/s): Kantenschärfe Mandelbulb 0,96 mit / 0,81 ohne Vorausschau. Ein Puffer über
+   Sekunden wäre bei Lenken/Gesten zu verwerfen und brauchte bis 150 MB; die Streifen brauchen keinen zusätzlichen Speicher.
+3. **Temporal hochrechnen** (Standard; `?taau=0` = jedes echte Bild voll gerechnet): auf den unteren Stufen wird je echtem
+   Bild nur jedes 4. Pixel neu marschiert (2×2-Raster, Versatz wechselt), die übrigen kommen per Tiefen-Reprojektion aus dem
+   Verlauf – ein gemeinsamer Pfad mit den Zwischenbildern (RESOLVE_FS). Gegen Schlieren: Reprojektion nur, wenn die Tiefe
+   passt (vier Proben-Kandidaten + Fixpunkt-Suche), Klemme auf den Wertebereich der neuen Proben dort, wo die Reprojektion
+   unsicher ist, frei gewordene Stellen aus den neuen Proben (tiefenbewusst), Catmull-Rom statt bilinear (bilinear verwischte
+   jede Reprojektion weiter). Ein 3×3-Raster war gebaut, zeigte aber Treppen an Silhouetten und Streifen – gestrichen.
+- Leiter: volle Abtastung 60/30 → 2×2-Raster 60/30 → 20/15/10/7,5/5 echte Bilder/s; Wechsel ≤ 1/s, Sperren 10–15 s.
+- Startbild aus dem geglätteten Standbild; beim Anhalten wird der Verlauf in die aktuelle Kamera gebracht (sonst sprang das
+  Bild um die Streifen-Takte zurück – auch der Weg 7.1.7 springt hier um 1–4 px, s. Versatz unten).
+- Speicher (Pixel-7-Profil, Canvas 824 × 1678): 66 MB (vorher 49 MB) – Marsch-Ziel = Ziel der Ruhebild-Mittelung.
+- Nebenbei behoben: die Schonfrist nach einem Größenwechsel (Flugschritt ≤ 1/30 s) wurde seit 7.1.7 von der Takt-Rundung
+  überschrieben (test_fs_fly).
+
+### Messung
+
+Schärfe: `tests/measure_scharf.py` – je Welt 3 Punkte im Flug (Mittelklasse-Profil, Tempo 0,5): Flug pausieren, sofort das
+gezeigte Bild, dann das fertig gemittelte Standbild derselben Kamera. Maße im mittleren Ausschnitt (70 %):
+Kantenschärfe = mittlerer Sobel-Betrag Flug/Stand (normiert), SSIM, Helligkeit Flug/Stand, Versatz = beste Verschiebung.
+Ergebnisse `tests/results_scharf_{v717,v718}.json`, Bildpaare `tests/shots/v718/scharf_*.jpg`.
+
+| Welt | Skala 7.1.7 → 7.1.8 | Kantenschärfe Mittel (Min–Max) | SSIM Mittel | Helligkeit Flug/Stand | Versatz beim Anhalten |
+|---|---|---|---|---|---|
+| Mandelbulb | 0,59 → 1,0 | 0,71 → **0,86** (0,86–0,86) | 0,21 → 0,67 | 2,07 → 1,23 | 1–4 px → 0 |
+| Mandelbox | 0,70 → 1,0 | 0,62 → **0,90** (0,85–0,94) | 0,30 → 0,71 | 1,66 → 1,20 | 1–4 px → 0–1 |
+| Menger | 0,70 → 1,0 | 0,60 → **0,79** (0,72–0,87) | 0,34 → 0,60 | 1,13 → 1,03 | 1 px → 0 |
+| Quaternionen-Julia | 0,51–0,70 → 1,0 | 0,77 → **1,02** (0,96–1,06) | 0,67 → 0,85 | 1,29 → 1,09 | 4–6 px → 0* |
+| Kaleidoskop-IFS | 0,70 → 1,0 | 0,62 → **1,07** (0,98–1,26) | 0,42 → 0,78 | 1,05 → 1,01 | 1 px → 0 |
+
+\* einmal [4, −3]: periodisches Muster, die Verschiebungssuche findet dort ein Nebenmaximum.
+
+Takt und Tempo: `tests/measure_bulbfly.py --secs=30 --slow=1,4` (Mittelklasse-Profil; „GPU ×4“ = Marsch-Pass viermal,
+simuliert ein schwaches Handy). Angezeigt = echte + Zwischenbilder. Tempo-Faktor = wie schnell der Flug gegenüber dem Regler
+fliegt (Schärfe vor Tempo).
+
+| Welt | angezeigt Bilder/s | echte Bilder/s | Bildzeit-σ ms (ab 6 s) | p95/Median | > 50 ms | Skala | Tempo-Faktor Mittel (Min) | Takt N |
+|---|---|---|---|---|---|---|---|---|
+| Mandelbulb | 59,1 | 30,2 | 2,16 (2,29) | 1,08 | 0 | 1,0 | 1,0 (0,82) | 1/2/3 |
+| Mandelbox | 59,7 | 22,9 | 1,4 (1,47) | 1,08 | 0 | 1,0 | 0,76 (0,67) | 2/3 |
+| Menger | 59,4 | 27,8 | 1,77 (1,88) | 1,08 | 0 | 1,0 | 0,77 (0,5) | 1/2/3/4 |
+| Quaternionen-Julia | 59,7 | 27,3 | 1,3 (0,67) | 1,08 | 0 | 1,0 | 0,88 (0,67) | 1/2/3 |
+| Kaleidoskop-IFS | 59,1 | 57,0 | 2,21 (1,72) | 1,1 | 0 | 1,0 | 1,0 (0,99) | 1/2 |
+| Mandelbulb (GPU ×4) | 57,3 | 5,3 | 4,06 (3,19) | 1,11 | 2 | 1,0 | **0,22** (0,17) | 3/6/12 |
+
+Ein Lauf eine Stunde früher, während auf dem Rechner zusätzlich ein Hermes-Job und die macOS-Fotoanalyse liefen (Last 6–8):
+Tempo-Faktor Mandelbulb 0,33–0,5, Mandelbox 0,43, Menger 0,69, Q-Julia 0,67, KIFS 0,87 – bei ebenfalls 59–60 angezeigten
+Bildern/s. Das Tempo ist also genau die Größe, die nachgibt, wenn die GPU knapp ist.
+
+**Abnahme gegen die Kriterien:**
+
+| Kriterium | Ergebnis |
+|---|---|
+| Auflösungsskala im Flug ≥ 0,95 | erfüllt: 1,0 in allen Welten und auf allen Stufen |
+| SSIM ≥ 0,95 oder Kantenschärfe ≥ 90 % | Kantenschärfe erfüllt bei Mandelbox (0,90), Q-Julia (1,02), KIFS (1,07); knapp nicht bei Mandelbulb (0,86) und Menger (0,79). SSIM 0,60–0,85: das Standbild mittelt 12 versetzte Bilder (Kantenglättung) – schon ein voll gerechnetes Einzelbild kommt beim Menger nur auf SSIM ~0,63 (Flimmern der feinsten Löcher). Zeitliche Glättung mit Subpixel-Versatz war gebaut und gemessen: sie hob die SSIM nicht und kostete Kantenschärfe (0,94 → 0,83) – Standard aus (`?taaujit`). |
+| Takt-Kriterien aus 7.1.7 | erfüllt: angezeigt 59–60 Bilder/s, σ 0,7–2,3 ms, p95 ≤ 1,1 × Median, 0 Bilder > 50 ms (schwache GPU: 2) |
+| Tempo-Einbußen als Tabelle | s. o.: Mittelklasse-Profil 0,76–1,0 des Reglertempos, schwache GPU 0,22 |
+| Speicher-Spitze | 66 MB (Pixel-7-Profil) |
+| Bildfolgen 16 Frames „scharf wie Standbild? Pixel? Schlieren?“ | `tests/shots/v718/serie_<welt>_{neu,alt}[_1zu1].jpg` (`tests/series_v718.py`). Meine Sichtprüfung (kein separates Vision-Modell): neu deutlich schärfer (Menger-Löcher, Mandelbulb-Knospen klar begrenzt, Schattierung wie im Stand), alt weich hochskaliert mit flimmernden Lichtsäumen; neu in extrem feinkörnigen Mandelbulb-Zonen leichte Körnung und vereinzelte Reißverschluss-Kanten an Silhouetten, keine Schlieren hinter bewegten Kanten gefunden |
+
+**Ehrlich zu den Grenzen:**
+
+- **Schwaches Handy:** Volle Schärfe gibt es dort nur über Tempo – bei 4× langsamerer GPU fliegt der Mandelbulb mit etwa
+  einem Fünftel des eingestellten Tempos (5 echte Bilder/s, angezeigt weiter ~57). Wem das zu langsam ist: `?scharf=0`
+  (Weg 7.1.7, schneller, aber grob) – als Schalter in den Optionen ist das noch nicht angeboten.
+- **Helligkeit:** Das Flugbild ist im Mittel noch 1–23 % heller als das Standbild (60 % der Schatten-Schritte); volle
+  Standbild-Effekte trafen die Helligkeit (0,97–1,0), kosteten aber so viel, dass der Mandelbulb nur noch mit grobem Raster
+  flüssig lief. Die Überblendung beim Anhalten (180 ms) fängt den Rest auf.
+- **Messrechner:** Messungen schwanken stark mit der Fremdlast (macOS-Fotoanalyse teilt die GPU); kein 120-Hz-Display
+  vorhanden – Takt-Raster, Streifen und Zwischenbilder rechnen mit der gemessenen Bildschirmperiode (8,33 ms wird erkannt),
+  sind dort aber nicht gemessen.
+- **2D-Flug:** mitgemessen (Bildfolge Mandelbrot, Pixel-7-Profil): sichtbar scharf (Schärfe-Front seit 5.1) – nicht geändert.
+
+### Tests
+
+- `tests/test_v718.py` A–F: Flug in voller Auflösung (Skala 1, echte + Zwischenbilder), Anhalten ohne Sprung (Versatz 0),
+  Start aus dem Ruhebild, Schärfe vor Tempo (Tempo-Faktor 2/N), `?scharf=0` / `?taau=0`, Speicher ≤ 150 MB – grün.
+- `tests/test_shader_fail.py` (l): Auflöse-Pass defekt → scharfer Weg aus, Flug wie 7.1.7, keine Fehler – grün.
+- Unit `tests/unit/bulb.test.js`: alle Shader der 3D-Welten durch den GLSL-Prüfer.
+- Regression grün: test_v717, test_v716, test_v70, test_v71, test_rueck, test_fs_fly, test_hud_fs, test_fly2d, test_release,
+  Unit-Tests (54). test_shot: alle Nähte der 2D- und Ray-Welten bitgleich; „Naht 3D“ (3D-Landschaft, von 7.1.8 nicht berührt)
+  zeigte unter der heutigen Fremdlast 560–670 abweichende Werte bis 12–21/255 – genauso beim veröffentlichten 7.1.7 im selben
+  Lauf (Gegenprobe im eigenen Arbeitsbaum), also vorbestehend und lastabhängig.
+- Rückflug-Hänger (test_v70, zweimal im langen Testlauf: Rückflug blieb bei Zoom ~200 stehen, im nachgestellten Ablauf nie):
+  Ursache nicht gefunden; abgesichert mit einem Fortschrittswächter – sinkt der Zoom eine Sekunde lang nicht (weniger als
+  10 % des Tempos), gilt der aufgezeichnete Weg nicht mehr und der Flug zieht vom Ziel weg heraus; scheitert der Schritt an
+  einer Wand, weicht er entlang der Blickrichtung aus. test_v70 danach grün (11,5 s bis „Ganz draußen“).
+- test_rueck: Schwelle „nach 1,5 s losgeflogen“ von Zoom 1,5 auf 1,3 – seit der sanften Anfahrt (7.1.6) lag der Wert genau
+  auf der Kante (7.1.7: 1,50, 7.1.8: 1,48).

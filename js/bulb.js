@@ -46,10 +46,13 @@ precision highp float;
 precision highp int;
 uniform vec4 u_vp;          // Lage des Ziels im ganzen Bild (x, y, Breite, Höhe in Pixeln des ganzen Bilds)
 uniform vec2 u_jit;         // Subpixel-Versatz (Pixel)
+uniform float u_stride;     // 7.1.8 Raster: dieses Ziel rechnet jedes u_stride-te Pixel des ganzen Bilds (1 = alle) …
+uniform vec2 u_off;         // … ab diesem Versatz (temporales Hochrechnen im Flug)
 uniform vec3 u_ro, u_fw, u_rt, u_up;
 uniform float u_tanF;       // tan(halber senkrechter Bildwinkel)
 uniform float u_power;      // Exponent (2–16, stufenlos)
 uniform int u_iter, u_steps, u_shN, u_aoN;
+uniform float u_shF;        // 7.1.8 kleinster Schritt des Schattenstrahls (Anteil der Szene; 0 = wie bisher nach u_shN)
 uniform int u_julia;        // 1 = Julia-Bulb (fester c = u_jc)
 uniform vec3 u_jc;
 uniform float u_bound;      // Radius der umhüllenden Kugel
@@ -247,7 +250,7 @@ float softShadow(vec3 q, vec3 L, float s, float jit) {
         if (i >= u_shN) break;
         float h = deQ(q + L * t);
         res = min(res, 9.0 * h / t);
-        t += clamp(h, s * (u_shN < 16 ? 0.02 : 0.003), s * 0.2);
+        t += clamp(h, s * (u_shF > 0.0 ? u_shF : (u_shN < 16 ? 0.02 : 0.003)), s * 0.2);
         if (res < 0.002 || t > s * 2.5) break;
     }
     res = clamp(res, 0.0, 1.0);
@@ -290,7 +293,8 @@ vec3 background(vec3 rd) {
     return c;
 }
 void main() {
-    vec2 px = gl_FragCoord.xy + u_vp.xy + u_jit;
+    vec2 pc = (gl_FragCoord.xy - 0.5) * u_stride + 0.5 + u_off + u_vp.xy;    // Pixelmitte im ganzen Bild
+    vec2 px = pc + u_jit;
     float mn = min(u_vp.z, u_vp.w);                           // Bildwinkel gilt für die kürzere Seite (hoch und quer gleich)
     vec2 uv = (px - 0.5 * u_vp.zw) / (0.5 * mn);
     vec3 rd = normalize(u_fw + (uv.x * u_rt + uv.y * u_up) * u_tanF);
@@ -343,7 +347,7 @@ void main() {
     float cone = pix * t;
     vec3 n = normalQ(q, max(cone * 0.6, 1e-9));
     if (dot(n, rd) > 0.0) n = -n;
-    float jit = hash12(floor(gl_FragCoord.xy + u_vp.xy) + u_seed * 17.31);    // Bildkoordinaten: Kachel = ganzes Bild
+    float jit = hash12(floor(pc) + u_seed * 17.31);    // Bildkoordinaten: Kachel = ganzes Bild
     // Licht: Hauptlicht schräg von oben links hinter der Kamera (wandert mit dem Blick – was man ansieht, ist beleuchtet),
     // Himmelslicht von oben, Rückstreulicht gegenüber
     vec3 L = normalize(-0.55 * u_rt + 0.75 * u_up - 0.35 * u_fw);
@@ -392,10 +396,37 @@ void main() {
     float idx = 1.1 * trapO + 0.35 * clamp(trap.y, 0.0, 2.0) + 0.08 * log2(1.0 + t / sc);
     o0 = vec4(Ld * keep, idx);
     o1 = vec4(add * keep + skyGrad(rd) * fogK, mSpec * keep);
-    o2 = vec4(emis * keep, 0.0, 1.0, 0.0);
+    o2 = vec4(emis * keep, 0.0, 1.0, t / sc);     // a: Tiefe relativ zur Szene (7.1.8 Reprojektion; 0 = Hintergrund)
 }`;
 
 // ---------------------------------------------------------------- POST-Pass
+// Schattierung aus den drei Marsch-Ausgaben (Farbe der Palette erst hier: Farbzyklus ohne neues Marschieren) und Abschluss
+// (Belichtung, Sättigung, Vignette, Gamma) – gemeinsam für POST, Schattier- und Auflöse-Pass (7.1.8)
+const SHADEF = `
+vec3 lin(vec3 c) { return c * c; }
+vec3 keyTint() { return vec3(1.0, 0.9, 0.78); }
+vec3 shadeV(vec4 A, vec4 B, vec4 C) {
+    float cov = C.b;
+    float idx = cov > 1e-4 ? A.a / cov : 0.0;
+    vec3 pal = lin(palette(idx * u_density + u_cycle));
+    vec3 alb = u_style == 1 ? mix(vec3(0.42, 0.39, 0.35), pal, 0.35) : (u_style == 2 ? pal * 0.10 : (u_style == 3 ? pal * 0.25 : pal * 0.85));
+    vec3 col = alb * A.rgb + B.rgb + pal * keyTint() * B.a + lin(palette(idx * u_density + 0.5 + u_cycle)) * C.r * 1.4
+             + lin(palette(0.15 + u_cycle)) * C.g * 0.9;
+    return col;
+}
+vec3 tone(vec3 x) {           // ACES-Näherung (Narkowicz), Belichtung davor
+    x *= u_expo;
+    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+vec3 finish(vec3 col, vec2 pxAll, vec2 resAll) {
+    col = tone(col);
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(lum), col, 1.08);
+    vec2 vv = pxAll / resAll - 0.5;
+    col *= 1.0 - dot(vv, vv) * 0.3;
+    return pow(max(col, vec3(0.0)), vec3(1.0 / 2.2));
+}`;
+
 const POST_FS = `#version 300 es
 precision highp float;
 uniform sampler2D u_s0, u_s1, u_s2;      // Quelle A (Bewegungsbild oder Mittelung)
@@ -406,35 +437,173 @@ uniform vec2 u_res;                      // Zielgröße
 uniform vec4 u_vp;                       // Lage des Ziels im ganzen Bild (Vignette)
 uniform int u_style;
 uniform float u_cycle, u_density, u_expo;
+uniform int u_aMode;
 ${PALF}
+${SHADEF}
 out vec4 fragColor;
-vec3 lin(vec3 c) { return c * c; }
-vec3 keyTint() { return vec3(1.0, 0.9, 0.78); }
 vec3 shade(sampler2D a, sampler2D b, sampler2D c, vec2 uv) {
-    vec4 A = texture(a, uv), B = texture(b, uv), C = texture(c, uv);
-    float cov = C.b;
-    float idx = cov > 1e-4 ? A.a / cov : 0.0;
-    vec3 pal = lin(palette(idx * u_density + u_cycle));
-    vec3 alb = u_style == 1 ? mix(vec3(0.42, 0.39, 0.35), pal, 0.35) : (u_style == 2 ? pal * 0.10 : (u_style == 3 ? pal * 0.25 : pal * 0.85));
-    vec3 col = alb * A.rgb + B.rgb + pal * keyTint() * B.a + lin(palette(idx * u_density + 0.5 + u_cycle)) * C.r * 1.4
-             + lin(palette(0.15 + u_cycle)) * C.g * 0.9;
-    return col;
-}
-
-vec3 tone(vec3 x) {           // ACES-Näherung (Narkowicz), Belichtung davor
-    x *= u_expo;
-    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+    return shadeV(texture(a, uv), texture(b, uv), texture(c, uv));
 }
 void main() {
     vec2 f = gl_FragCoord.xy / u_res;
-    vec3 col = shade(u_s0, u_s1, u_s2, f * u_sr.xy / u_sr.zw);
+    // 7.1.8: Quelle A ist im Flug das schon schattierte Bild des temporalen Hochrechnens (u_aMode = 1)
+    vec3 col = u_aMode == 1 ? texture(u_s0, f * u_sr.xy / u_sr.zw).rgb : shade(u_s0, u_s1, u_s2, f * u_sr.xy / u_sr.zw);
     if (u_mix > 0.0) col = mix(col, shade(u_t0, u_t1, u_t2, f * u_tr.xy / u_tr.zw), u_mix);
+    fragColor = vec4(finish(col, gl_FragCoord.xy + u_vp.xy, u_vp.zw), 1.0);
+}`;
+
+// ---------------------------------------------------------------- 7.1.8 Schattier-Pass (Viertelbild bzw. Mittelung -> Farbe + Tiefe)
+const SHADE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D u_s0, u_s1, u_s2;
+uniform int u_style;
+uniform float u_cycle, u_density, u_expo;
+${PALF}
+${SHADEF}
+out vec4 o;
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec4 C = texelFetch(u_s2, p, 0);
+    o = vec4(shadeV(texelFetch(u_s0, p, 0), texelFetch(u_s1, p, 0), C), C.b > 0.5 ? C.a / C.b : 0.0);
+}`;
+
+// ---------------------------------------------------------------- 7.1.8 Auflöse-Pass (temporales Hochrechnen)
+// Je Flugbild ist nur jedes u_stride²-te Pixel neu gerechnet (u_cur, Raster mit Versatz u_off); alle anderen Pixel kommen
+// aus dem Verlauf u_hist (volles Bild, Farbe + Tiefe), reprojiziert mit der Tiefe: Kandidaten-Tiefen sind die vier
+// umliegenden neuen Proben – gewählt wird die, deren Punkt im Verlauf zur dort gespeicherten Tiefe passt. Passt keine
+// (frei gewordene Fläche, Rand), füllt das Pixel aus den neuen Proben. Gegen Schlieren: Verlaufsfarbe in den (leicht
+// geweiteten) Wertebereich der 3×3 umliegenden neuen Proben geklemmt. Ohne neue Proben (Zwischenbild bei 30 echten
+// Bildern/s, u_hasCur = 0): reine Reprojektion per Fixpunkt-Suche in der Verlaufs-Tiefe, direkt aufs Canvas (u_toCanvas).
+// Positionen relativ zur Kamera (u_dpos = Kamera jetzt − Kamera des Verlaufs, in f64 gerechnet): genau auch im Tiefzoom.
+const RESOLVE_FS = `#version 300 es
+precision highp float;
+uniform sampler2D u_cur, u_hist;
+uniform vec2 u_res;
+uniform ivec2 u_qn;                 // genutzte Größe des Viertelbilds
+uniform float u_stride;
+uniform vec2 u_off;
+uniform int u_hasCur, u_hasHist, u_toCanvas;
+uniform vec3 u_fw, u_rt, u_up, u_pfw, u_prt, u_pup, u_dpos;
+uniform float u_tanF, u_ptanF, u_scale, u_pscale, u_alpha, u_expo;
+uniform vec4 u_vp;
+out vec4 o;
+vec3 tone(vec3 x) { x *= u_expo; return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+vec3 finish(vec3 col, vec2 pxAll, vec2 resAll) {
     col = tone(col);
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, 1.08);
-    vec2 vv = (gl_FragCoord.xy + u_vp.xy) / u_vp.zw - 0.5;
+    vec2 vv = pxAll / resAll - 0.5;
     col *= 1.0 - dot(vv, vv) * 0.3;
-    fragColor = vec4(pow(max(col, vec3(0.0)), vec3(1.0 / 2.2)), 1.0);
+    return pow(max(col, vec3(0.0)), vec3(1.0 / 2.2));
+}
+vec3 rayDir(vec2 px, vec3 fw, vec3 rt, vec3 up, float tf) {
+    float mn = min(u_res.x, u_res.y);
+    vec2 uv = (px - 0.5 * u_res) / (0.5 * mn);
+    return normalize(fw + (uv.x * rt + uv.y * up) * tf);
+}
+vec2 proj(vec3 v, vec3 fw, vec3 rt, vec3 up, float tf) {
+    float z = dot(v, fw);
+    if (z <= 1e-30) return vec2(-1e6);
+    return vec2(dot(v, rt), dot(v, up)) / (z * tf) * 0.5 * min(u_res.x, u_res.y) + 0.5 * u_res;
+}
+vec4 hist(vec2 px) { return texture(u_hist, px / u_res); }
+// Verlaufsfarbe mit Catmull-Rom (9 bilineare Abgriffe): bilinear verwischte jede Reprojektion das Bild ein wenig mehr
+vec3 histCR(vec2 px) {
+    vec2 pos = px - 0.5, tc = floor(pos), f = pos - tc;
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
+    vec2 w12 = w1 + w2, o12 = w2 / w12;
+    vec2 t0 = (tc - 0.5) / u_res, t3 = (tc + 2.5) / u_res, t12 = (tc + o12 + 0.5) / u_res;
+    vec3 r = texture(u_hist, vec2(t0.x, t0.y)).rgb * w0.x * w0.y + texture(u_hist, vec2(t12.x, t0.y)).rgb * w12.x * w0.y
+           + texture(u_hist, vec2(t3.x, t0.y)).rgb * w3.x * w0.y + texture(u_hist, vec2(t0.x, t12.y)).rgb * w0.x * w12.y
+           + texture(u_hist, vec2(t12.x, t12.y)).rgb * w12.x * w12.y + texture(u_hist, vec2(t3.x, t12.y)).rgb * w3.x * w12.y
+           + texture(u_hist, vec2(t0.x, t3.y)).rgb * w0.x * w3.y + texture(u_hist, vec2(t12.x, t3.y)).rgb * w12.x * w3.y
+           + texture(u_hist, vec2(t3.x, t3.y)).rgb * w3.x * w3.y;
+    return max(r, vec3(0.0));
+}
+bool inside(vec2 px) { return px.x >= 0.5 && px.y >= 0.5 && px.x <= u_res.x - 0.5 && px.y <= u_res.y - 0.5; }
+vec4 cur(ivec2 q) { return texelFetch(u_cur, clamp(q, ivec2(0), u_qn - 1), 0); }
+// Verlauf für einen Punkt mit Abstand t (0 = Hintergrund) auf dem Strahl rd: Pixel im Verlauf und Fehlermaß
+vec2 histPx(vec3 rd, float t) { return t > 0.0 ? proj(rd * t + u_dpos, u_pfw, u_prt, u_pup, u_ptanF) : proj(rd, u_pfw, u_prt, u_pup, u_ptanF); }
+float histErr(vec3 rd, float t, vec2 hp) {
+    if (!inside(hp)) return 1e9;
+    float hd = hist(hp).a * u_pscale;
+    if (t <= 0.0) return hd <= 0.0 ? 0.0 : 1e9;
+    if (hd <= 0.0) return 1e9;
+    float e = length(rd * t + u_dpos);
+    return abs(hd - e) / e;
+}
+void main() {
+    vec2 px = gl_FragCoord.xy;
+    vec3 rd = rayDir(px, u_fw, u_rt, u_up, u_tanF);
+    // Stelle im Verlauf, deren Punkt auf dieses Pixel fällt (Fixpunkt-Suche in der Verlaufs-Tiefe); itT = ihr Abstand in der
+    // jetzigen Kamera (0 = Hintergrund)
+    vec2 hp = px; float itT = 0.0;
+    for (int k = 0; k < 4; k++) {
+        vec4 h = hist(clamp(hp, vec2(0.5), u_res - 0.5));
+        if (h.a <= 0.0) { hp = histPx(rd, 0.0); itT = 0.0; break; }
+        vec3 Q = rayDir(hp, u_pfw, u_prt, u_pup, u_ptanF) * (h.a * u_pscale) - u_dpos;
+        hp += px - proj(Q, u_fw, u_rt, u_up, u_tanF);
+        itT = length(Q);
+    }
+    if (u_hasCur == 0) {
+        // Zwischenbild: reine Reprojektion
+        vec4 h = hist(clamp(hp, vec2(0.5), u_res - 0.5));
+        o = u_toCanvas == 1 ? vec4(finish(h.rgb, px + u_vp.xy, u_vp.zw), 1.0) : vec4(h.rgb, itT / u_scale);
+        return;
+    }
+    vec2 g = (px - 0.5 - u_off) / u_stride;
+    ivec2 g0 = ivec2(floor(g + 1e-4));
+    vec2 fr = g - vec2(g0);
+    bool exact = all(lessThan(abs(fr), vec2(1e-3)));
+    // 3×3 neue Proben: Wertebereich (Klemme) und die vier nächsten als Tiefen-Kandidaten
+    vec3 mn = vec3(1e9), mx = vec3(-1e9);
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) { vec3 c = cur(g0 + ivec2(i, j) + ivec2(fr.x > 0.5 ? 1 : 0, fr.y > 0.5 ? 1 : 0)).rgb; mn = min(mn, c); mx = max(mx, c); }
+    vec4 s00 = cur(g0), s10 = cur(g0 + ivec2(1, 0)), s01 = cur(g0 + ivec2(0, 1)), s11 = cur(g0 + ivec2(1, 1));
+    float best = 1e9, bt = 0.0; vec2 bp = vec2(0.0);
+    if (u_hasHist == 1) {
+        float ts[4] = float[4](s00.a, s10.a, s01.a, s11.a);
+        for (int k = 0; k < 4; k++) {
+            if (exact && k > 0) break;
+            float t = ts[k] * u_scale;
+            vec2 hp = histPx(rd, t);
+            float e = histErr(rd, t, hp);
+            if (e < best) { best = e; bt = ts[k]; bp = hp; }
+        }
+    }
+    bool ok = best < 0.03;
+    if (!ok && u_hasHist == 1 && inside(hp) && !exact) {
+        // keine Nachbarprobe passt (raue Oberfläche: die Tiefe am Pixel liegt zwischen denen der Proben) – dann gilt die
+        // Fixpunkt-Stelle, wenn ihre Tiefe im Bereich der vier Proben liegt (sonst wäre es frei geworden)
+        float lo = min(min(s00.a, s10.a), min(s01.a, s11.a)) * u_scale, hi = max(max(s00.a, s10.a), max(s01.a, s11.a)) * u_scale;
+        bool bgAll = hi <= 0.0, fit = itT <= 0.0 ? bgAll : (lo > 0.0 && itT >= lo * 0.97 && itT <= hi * 1.03);
+        if (fit) { ok = true; best = 0.02; bp = hp; bt = itT / u_scale; }
+    }
+    // Klemme nur, wo die Reprojektion unsicher ist: passt die Tiefe sehr gut (< 0,5 %), gilt der Verlauf – sonst klemmte sie
+    // feine Einzelheiten zwischen den Proben weg (Löcher des Menger-Schwamms: Kantenschärfe 0,6 statt ~0,9)
+    float cl = smoothstep(0.004, 0.012, best);
+    vec3 ext = (mx - mn) * 0.35 + 0.02 * (mx + mn);
+    vec3 hc = ok ? histCR(bp) : vec3(0.0);
+    hc = mix(hc, clamp(hc, mn - ext, mx + ext), cl);
+    if (exact) {
+        vec3 c = s00.rgb;
+        o = vec4(ok ? mix(hc, c, u_alpha) : c, s00.a);
+    } else if (ok) {
+        o = vec4(hc, bt);
+    } else {
+        // frei geworden: aus den neuen Proben – bilinear, aber nur über Proben mit ähnlicher Tiefe wie die nächste
+        // (sonst Säume aus Vorder- und Hintergrund)
+        vec4 nn = fr.x < 0.5 ? (fr.y < 0.5 ? s00 : s01) : (fr.y < 0.5 ? s10 : s11);
+        vec4 sv[4] = vec4[4](s00, s10, s01, s11);
+        float wb[4] = float[4]((1.0 - fr.x) * (1.0 - fr.y), fr.x * (1.0 - fr.y), (1.0 - fr.x) * fr.y, fr.x * fr.y);
+        vec3 acc = vec3(0.0); float ws = 0.0;
+        for (int k = 0; k < 4; k++) {
+            float same = (nn.a <= 0.0) == (sv[k].a <= 0.0) && abs(sv[k].a - nn.a) <= 0.05 * max(nn.a, 1e-6) ? 1.0 : 0.25;
+            acc += sv[k].rgb * wb[k] * same; ws += wb[k] * same;
+        }
+        o = vec4(acc / max(ws, 1e-6), nn.a);
+    }
+    if (u_toCanvas == 1) o = vec4(finish(o.rgb, px + u_vp.xy, u_vp.zw), 1.0);
 }`;
 
 // ---------------------------------------------------------------- Mathe in f64 (Kamera, Antippen, Flug, Taylor-Anker)
@@ -616,7 +785,7 @@ function anchorJS(P0, P) {        // (nur Mandelbulb)
     return { P0, K, J, H, dr1 };
 }
 
-root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, create(ctx) {
+root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, create(ctx) {
     let R, S, HP, look, toast, t, emit, canvas;          // aus app.js, gesetzt in link()
     const gl = () => R.gl;
     const Q = ctx.Q;
@@ -877,12 +1046,12 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
 
     // ---------------- GPU
     let FLOAT = null;
-    const T = { mot: null, acc: null, tmp: null };     // Ziele: { w, h, tex: [3], fbo }
-    function target(w, h) {
-        const g = gl();
+    const T = { mot: null, acc: null, tmp: null, qc: null, h0: null, h1: null };     // Ziele: { w, h, tex: [1 oder 3], fbo }
+    function target(w, h, n) {
+        const g = gl(), nt = n || 3;
         const tex = [], fbo = g.createFramebuffer();
         g.bindFramebuffer(g.FRAMEBUFFER, fbo);
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < nt; i++) {
             const tx = g.createTexture();
             g.bindTexture(g.TEXTURE_2D, tx);
             g.texStorage2D(g.TEXTURE_2D, 1, g.RGBA16F, w, h);
@@ -893,21 +1062,21 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
             g.framebufferTexture2D(g.FRAMEBUFFER, g.COLOR_ATTACHMENT0 + i, g.TEXTURE_2D, tx, 0);
             tex.push(tx);
         }
-        g.drawBuffers([g.COLOR_ATTACHMENT0, g.COLOR_ATTACHMENT1, g.COLOR_ATTACHMENT2]);
+        g.drawBuffers([g.COLOR_ATTACHMENT0, g.COLOR_ATTACHMENT1, g.COLOR_ATTACHMENT2].slice(0, nt));
         const ok = g.checkFramebufferStatus(g.FRAMEBUFFER) === g.FRAMEBUFFER_COMPLETE;
         g.bindFramebuffer(g.FRAMEBUFFER, null);
         if (!ok) { tex.forEach(x => g.deleteTexture(x)); g.deleteFramebuffer(fbo); return null; }
         return { w, h, tex, fbo };
     }
     function freeTarget(x) { if (!x || R.lost) return; const g = gl(); x.tex.forEach(t => g.deleteTexture(t)); g.deleteFramebuffer(x.fbo); }
-    function ensure(name, w, h) {
+    function ensure(name, w, h, n) {
         const x = T[name];
         if (x && x.w === w && x.h === h) return x;
         freeTarget(x);
-        T[name] = target(w, h);
+        T[name] = target(w, h, n);
         return T[name];
     }
-    function reset() { T.mot = T.acc = T.tmp = null; B.still = null; B.key = ''; FLOAT = null; B.fence = null; }
+    function reset() { T.mot = T.acc = T.tmp = T.qc = T.h0 = T.h1 = null; B.still = null; B.key = ''; FLOAT = null; B.fence = null; H.ok = false; }
     // Kann die neue Darstellung laufen? (Float-Renderziel + Shader übersetzt); sonst Rückfall auf presentBulb (6.x)
     function ready() {
         if (B.ok === false) return false;
@@ -938,24 +1107,31 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const zoom = B.zoom;
         g.uniform4f(L.u_vp, o.x || 0, o.y || 0, o.W, o.H);
         g.uniform2f(L.u_jit, o.jit ? o.jit[0] : 0, o.jit ? o.jit[1] : 0);
+        g.uniform1f(L.u_stride, o.stride || 1);
+        g.uniform2f(L.u_off, o.off ? o.off[0] : 0, o.off ? o.off[1] : 0);
         g.uniform3f(L.u_ro, B.pos[0], B.pos[1], B.pos[2]);
         g.uniform3fv(L.u_fw, cb.fw); g.uniform3fv(L.u_rt, cb.rt); g.uniform3fv(L.u_up, cb.up);
         g.uniform1f(L.u_tanF, Math.tan(B.fov / 2));
         g.uniform1f(L.u_power, B.power);
         g.uniform1i(L.u_kind, kindOf());
         g.uniform1f(L.u_boxS, B.boxS);
-        g.uniform1i(L.u_iter, iterFor(zoom) + (o.still ? 2 : 0));
+        // (7.1.8: die scharfe Bewegung rechnet dieselbe Oberfläche wie das Ruhebild – gleiche Iterationen, Epsilon nach Stufe)
+        const full = o.still || (o.lv && o.lv.full);
+        g.uniform1i(L.u_iter, iterFor(zoom) + (full ? 2 : 0));
         const lz = Math.log10(Math.max(1, zoom));
         const lv = o.lv;            // 7.1.7: Stufe der Qualitätsleiter in der Bewegung (Schatten, AO, Schritte)
-        g.uniform1i(L.u_steps, Math.round((o.still ? tr.stepsS : tr.stepsM * (lv ? lv.st : 1)) * (1 + (o.still ? 0.25 : 0.12) * lz)));
+        g.uniform1i(L.u_steps, Math.round((o.still ? tr.stepsS : lv && lv.full ? tr.stepsS * lv.st : tr.stepsM * (lv ? lv.st : 1)) * (1 + (full ? 0.25 : 0.12) * lz)));
         g.uniform1i(L.u_shN, o.still ? tr.shS : lv ? lv.sh : tr.shM);
         g.uniform1i(L.u_aoN, o.still ? tr.aoS : lv ? lv.ao : tr.aoM);
+        // (scharfe Bewegung mit weniger Schatten-Schritten als das Ruhebild: gleiche Reichweite – kleinster Schritt 0,12/n der
+        // Szene; mit dem festen 0,003 endeten 24 Schritte zu früh, das Flugbild war ~25 % heller)
+        g.uniform1f(L.u_shF, !o.still && lv && lv.full && lv.sh > 0 ? Math.max(0.003, 0.12 / lv.sh) : 0);
         g.uniform1i(L.u_julia, B.julia && kindOf() <= 1 ? 1 : 0);
         g.uniform4f(L.u_qc, B.qc[0], B.qc[1], B.qc[2], B.qc[3]);
         { const kp = kpNow(); g.uniform4f(L.u_kp, kp[0], kp[1], kp[2], kp[3] || 0); }
         g.uniform3fv(L.u_jc, B.jc);
         g.uniform1f(L.u_bound, boundOf(params()));
-        g.uniform1f(L.u_epsK, o.still ? 0.5 : tr.epsM);
+        g.uniform1f(L.u_epsK, o.still ? 0.5 : lv && lv.full ? lv.eps : tr.epsM);
         g.uniform1f(L.u_stepK, [B.power < 4 || B.julia ? 0.75 : 0.9, 0.85, 1.0, 0.8, 0.9, 0.75][kindOf()]);
         g.uniform1f(L.u_scale, Math.max(1e-9, B.dSurf * 1.1));
         g.uniform1i(L.u_style, S.bulbStyle);
@@ -1017,7 +1193,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         R.submitted = (R.submitted || 0) + 1;
     }
     // POST: Quelle a (und b mit Überblendung mix) ins Ziel (null = Canvas)
-    function drawPost(a, aw, ah, b, bw, bh, mix, lk, out, vp) {
+    function drawPost(a, aw, ah, b, bw, bh, mix, lk, out, vp, aMode) {
         const g = gl(), pr = R.program('bulb7post', POST_FS), L = pr.loc;
         g.useProgram(pr.p);
         g.bindFramebuffer(g.FRAMEBUFFER, out ? out.fbo : null);
@@ -1035,10 +1211,104 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         g.uniform1i(L.u_style, S.bulbStyle);
         g.uniform1f(L.u_density, lk.density);
         g.uniform1f(L.u_expo, 1.3);
+        g.uniform1i(L.u_aMode, aMode ? 1 : 0);
         R.setPalette(L, lk);
         g.drawArrays(g.TRIANGLES, 0, 3);
         g.bindFramebuffer(g.FRAMEBUFFER, null);
         g.activeTexture(g.TEXTURE0);
+    }
+    // ---------------- 7.1.8 Im Flug immer scharf (Peter: „… nicht das Bild unscharf und pixelig wird, sondern immer perfekt
+    // aussieht“). Gemessen (7.1.7): im Flug Auflösungsskala 0,44–0,70 – grob. Jetzt in voller Auflösung:
+    //  * Temporales Hochrechnen: je Bewegungsbild wird nur jedes 4. Pixel neu marschiert (2×2-Raster, Versatz wechselt
+    //    jedes Bild), die übrigen kommen per Tiefen-Reprojektion aus dem Verlauf (RESOLVE_FS) – volle Auflösung für etwa die
+    //    Kosten von Skala 0,5. Startbild des Verlaufs = das geglättete Ruhebild, wenn die Kamera noch dort steht.
+    //  * Zwischenbilder: rastet der Takt auf 30 (20, 15 …) echte Bilder/s ein, zeigen die Takte dazwischen das reprojizierte
+    //    Bild der neuen Kamera statt eines stehenden Bilds (60 angezeigte Bilder/s).
+    //  * Schärfe vor Tempo: reicht auch das nicht, wird nicht die Auflösung gröber, sondern es kommen weniger echte Bilder
+    //    und der Flug wird weich langsamer (so bleibt der Weg je echtem Bild klein genug für eine saubere Reprojektion).
+    // Leiter (LAD, s. ladder): volle Abtastung 60/30 → Raster 2×2 60/30 → 20/15/10/7,5/5 echte Bilder/s mit Tempo ×2/N.
+    // ?scharf=0 = Regler 7.1.7 (Auflösung sinkt), ?taau=0 = jedes Bild voll marschiert (Raster 1, nur Zwischenbilder).
+    const SCHARF = Q.get('bulbpace') !== '0' && Q.get('scharf') !== '0', TAAU = SCHARF && Q.get('taau') !== '0';
+    const H = { ok: false, cur: 0, cam: null, k: 0, fail: false, sceneKey: '', w: 0, h: 0, band: null };
+    const LADFIX = Q.has('bulblad') ? +Q.get('bulblad') : -1;     // Test: feste Sprosse der Leiter
+    // Gewicht der neuen Probe auf ihrem Pixel und Subpixel-Versatz: gemessen schärfer mit 0,8 und ohne Versatz (0,5 + Versatz
+    // glättete Kanten, kostete aber Kantenschärfe 0,94 -> 0,83)
+    const ALPHA = +(Q.get('taaualpha') || 0.8), JIT = +(Q.get('taaujit') || 0);
+    const OFFS = { 1: [[0, 0]], 2: [[0, 0], [1, 1], [1, 0], [0, 1]] };
+    function taauReady() {
+        if (!SCHARF || H.fail) return false;
+        try { return R.programReady('bulb7shade', SHADE_FS) && R.programReady('bulb7res', RESOLVE_FS); }
+        catch (e) { H.fail = true; return false; }          // defekt: Flug wie 7.1.7
+    }
+    // Kamera festhalten bzw. für die Dauer von fn einsetzen (Streifen eines echten Bilds über mehrere Takte)
+    function snapCam() { return { pos: B.pos.slice(), yaw: B.yaw, pitch: B.pitch, zoom: B.zoom, dSurf: B.dSurf, c: camNow() }; }
+    // Vorausrendern (?voraus=0 = aus): im Autopiloten ist die Bahn für die nächsten Takte bekannt – Kamera und Blick folgen
+    // gedämpften Federn mit stetiger Geschwindigkeit (F.vC, F.wy/F.wp). Ein Bild in Streifen über N Takte wird darum für die
+    // Kamera gerechnet, die beim Fertigwerden erreicht ist (lineare Vorausschau über N − 1 Takte), statt für die beim Beginn:
+    // das frische Bild muss dann kaum noch reprojiziert werden. Nicht bei Gesten/Lenken (dort ist die Bahn nicht bekannt).
+    const VORAUS = Q.get('voraus') !== '0';
+    function snapCamAhead(ticks) {
+        const FLY = ctx.FLY, c0 = snapCam();
+        if (!VORAUS || ticks <= 0 || !FLY.on || FLY.paused || FLY.mode !== 'bulb' || moving() || !F.vC || (FLY.sp || 0) <= 0) return c0;
+        const dt = ticks * (ctx.RC.vsync || 16.67) / 1000;
+        const s0 = { pos: B.pos, yaw: B.yaw, pitch: B.pitch };
+        B.pos = V.add(B.pos, V.mul(F.vC, dt));
+        B.yaw += (F.wy || 0) * dt / Math.max(0.2, Math.cos(B.pitch)); B.pitch = Math.max(-1.45, Math.min(1.45, B.pitch + (F.wp || 0) * dt));
+        const c = snapCam();
+        Object.assign(B, s0);
+        c.ahead = ticks;
+        return c;
+    }
+    function withCam(sc, fn) {
+        const s0 = { pos: B.pos, yaw: B.yaw, pitch: B.pitch, zoom: B.zoom, dSurf: B.dSurf };
+        Object.assign(B, { pos: sc.pos, yaw: sc.yaw, pitch: sc.pitch, zoom: sc.zoom, dSurf: sc.dSurf });
+        try { fn(); } finally { Object.assign(B, s0); }
+    }
+    function camNow() { const cb = camBasis(); return { pos: B.pos.slice(), fw: cb.fw, rt: cb.rt, up: cb.up, tanF: Math.tan(B.fov / 2), scale: Math.max(1e-9, B.dSurf * 1.1) }; }
+    const camSame = (c) => c && V.len(V.sub(c.pos, B.pos)) === 0 && V.dot(c.fw, camBasis().fw) > 1 - 1e-12;
+    const histT = () => H.cur ? T.h1 : T.h0, histOther = () => H.cur ? T.h0 : T.h1;
+    function sceneKey(lk) { return [B.power, S.formula, B.boxS, B.julia, B.jc.join(','), B.qc.join(','), kpNow().join(','), S.bulbStyle, S.bulbFog, S.quality, lk.outM, Math.round(lk.outW)].join('|'); }
+    function drawShade(src, w, h, out, lk) {
+        const g = gl(), pr = R.program('bulb7shade', SHADE_FS), L = pr.loc;
+        g.useProgram(pr.p);
+        g.bindFramebuffer(g.FRAMEBUFFER, out.fbo);
+        g.viewport(0, 0, w, h);
+        for (let i = 0; i < 3; i++) { g.activeTexture(g.TEXTURE0 + i); g.bindTexture(g.TEXTURE_2D, src.tex[i]); g.uniform1i(L['u_s' + i], i); }
+        g.uniform1i(L.u_style, S.bulbStyle);
+        g.uniform1f(L.u_density, lk.density);
+        R.setPalette(L, lk);
+        g.drawArrays(g.TRIANGLES, 0, 3);
+        g.bindFramebuffer(g.FRAMEBUFFER, null);
+        g.activeTexture(g.TEXTURE0);
+    }
+    // o: { cur, qn, stride, off, alpha, out (null = Canvas, dann mit Abschluss) }; Verlauf = histT() mit Kamera H.cam
+    function drawResolve(o) {
+        const g = gl(), pr = R.program('bulb7res', RESOLVE_FS), L = pr.loc, cw = canvas.width, ch = canvas.height;
+        const c = camNow(), p = H.cam || c, hs = histT();
+        g.useProgram(pr.p);
+        g.bindFramebuffer(g.FRAMEBUFFER, o.out ? o.out.fbo : null);
+        g.viewport(0, 0, cw, ch);
+        g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, o.cur ? o.cur.tex[0] : hs.tex[0]); g.uniform1i(L.u_cur, 0);
+        g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, hs.tex[0]); g.uniform1i(L.u_hist, 1);
+        g.uniform2f(L.u_res, cw, ch);
+        g.uniform2i(L.u_qn, o.qn ? o.qn[0] : 1, o.qn ? o.qn[1] : 1);
+        g.uniform1f(L.u_stride, o.stride || 1);
+        g.uniform2f(L.u_off, o.off ? o.off[0] : 0, o.off ? o.off[1] : 0);
+        g.uniform1i(L.u_hasCur, o.cur ? 1 : 0);
+        g.uniform1i(L.u_hasHist, H.ok ? 1 : 0);
+        g.uniform1i(L.u_toCanvas, o.out ? 0 : 1);
+        g.uniform3fv(L.u_fw, c.fw); g.uniform3fv(L.u_rt, c.rt); g.uniform3fv(L.u_up, c.up);
+        g.uniform3fv(L.u_pfw, p.fw); g.uniform3fv(L.u_prt, p.rt); g.uniform3fv(L.u_pup, p.up);
+        g.uniform3fv(L.u_dpos, V.sub(c.pos, p.pos));
+        g.uniform1f(L.u_tanF, c.tanF); g.uniform1f(L.u_ptanF, p.tanF);
+        g.uniform1f(L.u_scale, c.scale); g.uniform1f(L.u_pscale, p.scale);
+        g.uniform1f(L.u_alpha, o.alpha === undefined ? 0.6 : o.alpha);
+        g.uniform1f(L.u_expo, 1.3);
+        g.uniform4f(L.u_vp, 0, 0, cw, ch);
+        g.drawArrays(g.TRIANGLES, 0, 3);
+        g.bindFramebuffer(g.FRAMEBUFFER, null);
+        g.activeTexture(g.TEXTURE0);
+        R.submitted = (R.submitted || 0) + 1;
     }
     // Schlüssel: Änderung = neu marschieren (Kamera, Parameter, Größe, Qualität, Stil, Außen); Palette/Farbzyklus nur POST
     function marchKey(lk) {
@@ -1065,7 +1335,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     //    kritisch gedämpfte Federn, Sonde auf 5 Bilder verteilt (flyUpdate, lookSpring, probe).
     // A/B: ?bulbpace=0 = Regler und Kamera bis 7.1.6.
     const PACEON = Q.get('bulbpace') !== '0';
-    const PACE = { log: [], N: 1, tick: 0, lvl: 0, tChange: -1e9, tUp: -1e9, tMov: 0, wasMov: false, mem: {}, block: {}, smp: [], fence: null, fTick: 0, fN: 1 };
+    const PACE = { log: [], idx: 0, memT: {}, blockT: {}, blockNT: {}, N: 1, tick: 0, lvl: 0, tChange: -1e9, tUp: -1e9, tMov: 0, wasMov: false, mem: {}, block: {}, smp: [], fence: null, fTick: 0, fN: 1 };
     function paceLevels(tr) {
         const L = [{ sh: tr.shM, ao: tr.aoM, st: 1, sc: tr.sMax }, { sh: 0, ao: tr.aoM, st: 1, sc: tr.sMax }, { sh: 0, ao: 1, st: 0.85, sc: tr.sMax }];
         for (let s = tr.sMax * 0.85; s >= tr.sMin * 0.999; s *= 0.86) L.push({ sh: 0, ao: 1, st: 0.85, sc: s });
@@ -1123,6 +1393,134 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
             else if (PACE.lvl > 0 && ok(PACE.lvl - 1, PACE.N) && since > 4000 && (PACE.N === 1 || fast > 0.5)) set(PACE.lvl - 1, PACE.N);
         }
     }
+    // 7.1.8 Leiter der scharfen Bewegung: je Sprosse Effekte (sh/ao/st wie 7.1.7), Raster s (1/s² der Pixel je Bild neu) und
+    // Takt N (ein echtes Bild je N Bildschirmtakte); abwärts sinkt die Last je Takt stetig, die Auflösung nie
+    // Effekte bleiben auf jeder Sprosse gleich und nahe am Ruhebild (Iterationen wie dort, 60 % der Schatten-Schritte mit
+    // gleicher Reichweite, volle AO, 70 % der Marsch-Schritte, Treffer-Epsilon 0,6 statt 0,5): so sieht das Flugbild fast
+    // aus wie das Ruhebild, und ein Wechsel der Sprosse ist nicht als Helligkeitssprung zu sehen. Gemessen (Helligkeit
+    // Flug/Ruhebild): Effekt-Stufen aus 7.1.7 1,4–2,2; dieser Satz ≈ 1,05–1,1; volle Ruhebild-Effekte 0,97–1,0, kosten aber
+    // so viel, dass der Mandelbulb im Mittelklasse-Profil nur noch das 3×3-Raster flüssig schafft (weniger Schärfe).
+    // Bezahlt wird über weniger echte Bilder (Streifen + Zwischenbilder) bzw. Tempo, nie über die Auflösung.
+    function ladder(tr) {
+        const fx = (Q.get('scharffx') || '').split(':').map(Number);          // (Test: Schatten:AO:Schritte:Epsilon)
+        const E = fx.length === 4 ? { sh: fx[0], ao: fx[1], st: fx[2], eps: fx[3], full: true }
+            : { sh: Math.round(tr.shS * 0.6), ao: tr.aoS, st: 0.7, eps: 0.6, full: true };
+        // nach Kosten je Takt: alle Pixel 60/s (1) → alle Pixel 30/s + Zwischenbilder (½) → Raster 2×2 60/s (¼) → 2×2 30/s
+        // (⅛) → weniger echte Bilder mit Tempo ×2/N. Volle Abtastung zuerst: das Raster verliert feinste Muster (Menger-Löcher:
+        // Kantenschärfe 0,75 mit Raster, 1,0 ohne). Kein 3×3-Raster: es zeigte Treppen an Silhouetten und Streifen (Bildfolge) –
+        // Peter will lieber langsamer als pixelig
+        const L = TAAU ? [[1, 1], [1, 2], [2, 1], [2, 2], [2, 3], [2, 4], [2, 6], [2, 8], [2, 12]] : [[1, 1], [1, 2], [1, 3], [1, 4], [1, 6], [1, 8], [1, 12]];
+        return L.map(([sN, N]) => Object.assign({ s: sN, N, sc: 1 }, E));
+    }
+    function paceControlT(now, LAD) {
+        const since = now - PACE.tChange;
+        const sm = PACE.smp.filter(x => x.t > Math.max(PACE.tChange, PACE.tMov) + 300);
+        if (sm.length < 20) return;
+        const nl = sm.filter(x => x.late).length, late = nl / sm.length, fast = sm.filter(x => x.fast).length / sm.length;
+        if (since < (late > 0.3 ? 500 : 1000)) return;
+        const i = PACE.idx, maxI = LAD.length - 1;
+        const set = (j) => {
+            if (now - PACE.tUp < 3000 && j > i) PACE.blockT[i] = now;          // eben hochgeschaltet, gleich gescheitert
+            if (j < i) { PACE.tUp = now; PACE.upFrom = i; }
+            if (LAD[j].N > LAD[i].N) PACE.blockNT[LAD[i].N] = now;
+            PACE.log.push([Math.round(now), i, j, nl, sm.length, +fast.toFixed(2)]);
+            if (PACE.log.length > 40) PACE.log.shift();
+            PACE.idx = j; PACE.tChange = now; PACE.smp.length = 0;
+            PACE.memT[kindOf()] = j;
+        };
+        // (Sperren kürzer als in 7.1.7: ein Wechsel der Sprosse ist dank Streifen und Zwischenbildern nicht mehr als Takt-
+        // wechsel zu sehen – nur das Tempo gleitet; nach einer Lastspitze soll es bald wieder schneller gehen)
+        const ok = (j) => !(now - (PACE.blockT[j] || -1e9) < 15000);
+        if (nl >= 3 && late > 0.05) {
+            // abwärts (massiv: zwei Sprossen); eine eben probierte, gescheiterte Sprosse: zurück, 30 s gesperrt
+            if (now - PACE.tUp < 3000 && PACE.upFrom > i) set(PACE.upFrom);
+            else if (i < maxI) set(Math.min(maxI, i + (late > 0.5 ? 2 : 1)));
+        } else if (nl === 0 && since > 3000 && i > 0 && ok(i - 1)) {
+            // aufwärts: mehr echte Bilder erst, wenn die GPU fast immer schon nach einem Takt fertig war, frühestens 10 s
+            // nach dem Einrasten; sonst bei eingerastetem Takt mit Reserve (≥ 50 % der Bilder nach einem Takt fertig)
+            const a = LAD[i], b = LAD[i - 1];
+            if (b.N < a.N) { if (fast > 0.9 && now - (PACE.blockNT[b.N] || -1e9) > 10000) set(i - 1); }
+            else if (a.N === 1 || fast > 0.5) set(i - 1);
+        }
+    }
+    // scharfe Bewegung (temporales Hochrechnen); false = nicht möglich (Ziele fehlen) -> Weg wie 7.1.7
+    function presentT(now, key, mov, lk, tr) {
+        const g = gl(), cw = canvas.width, ch = canvas.height, vs = ctx.RC.vsync || 16.67;
+        PACE.tPrev = now; PACE.tick++;
+        if (mov && !PACE.wasMov) {
+            PACE.tMov = now; PACE.smp.length = 0; PACE.tDraw = 0;
+            const m = PACE.memT[kindOf()]; PACE.idx = m !== undefined ? m : 0;
+        }
+        PACE.wasMov = mov;
+        const LAD = ladder(tr);
+        if (mov) { paceProbe(now, 0, vs); paceControlT(now, LAD); } else PACE.smp.length = 0;
+        PACE.idx = Math.min(LADFIX >= 0 ? LADFIX : PACE.idx, LAD.length - 1);
+        const st = LAD[PACE.idx], N = mov ? st.N : 1;
+        PACE.N = N; PACE.lvl = PACE.idx;
+        F.spKT = Math.min(1, 2 / N);                    // Schärfe vor Tempo: weniger echte Bilder -> langsamer
+        const sk = sceneKey(lk);
+        if (H.sceneKey !== sk || H.w !== cw || H.h !== ch) { H.ok = false; H.band = null; H.sceneKey = sk; H.w = cw; H.h = ch; }
+        const h0 = ensure('h0', cw, ch, 1), h1 = ensure('h1', cw, ch, 1);
+        // Marsch-Ziel = das Ziel der Ruhebild-Mittelung (in der Bewegung beginnt die ohnehin neu; gelesen wird es vorher nur
+        // für das Startbild) – spart ein eigenes Ziel (Pixel 7: 61 MB). Gesamt: Mittelung 24 + Farbe 8 + 2 × Verlauf 8 B/Pixel.
+        const q = ensure('acc', cw, ch), qc = ensure('qc', cw, ch, 1);
+        if (!h0 || !h1 || !q || !qc) { H.fail = true; return false; }
+        if (!mov) H.band = null;
+        // Startbild aus dem Ruhebild (geglättet, volle Auflösung) mit dessen Kamera – bewegt sich die Kamera schon (erster
+        // Flug-Takt), reprojiziert der erste Auflöse-Pass. k ≥ 1: seit dem letzten Bewegungsbild ist mindestens ein Durchgang
+        // der Mittelung fertig – sie ist neuer und schärfer als der Verlauf
+        if (!H.band && B.still && B.still.k >= 1 && B.stillCam && T.acc && T.acc.w === cw && T.acc.h === ch) {
+            drawShade(T.acc, cw, ch, histOther(), lk);
+            H.cur = 1 - H.cur; H.cam = B.stillCam; H.ok = true; H.seeds = (H.seeds || 0) + 1;
+        }
+        // Ein echtes Bild wird bei Takt N in N Streifen über N Takte gerechnet – für eine feste Kamera (die beim Beginn) –
+        // und erst danach in den Verlauf eingearbeitet; jeder Takt zeigt den Verlauf reprojiziert in seine Kamera. So kostet
+        // jeder Takt gleich viel, und ein teures Bild verdrängt die Anzeige nicht (gemessen mit simulierter 4× langsamerer GPU:
+        // am Stück gerechnet 49 statt 60 angezeigte Bilder/s, 32 Bilder > 50 ms).
+        if (!H.band) {
+            // Raster-Versatz wechselt jedes Bild; je vollem Umlauf ein neuer Subpixel-Versatz (Halton, Standard aus)
+            const sN = st.s, kk = H.k++, ofs = OFFS[sN][kk % (sN * sN)], ji = Math.floor(kk / (sN * sN)) % 16;
+            const jit = TAAU ? [(halton(ji + 1, 2) - 0.5) * JIT, (halton(ji + 1, 3) - 0.5) * JIT] : [0, 0];
+            const nb = mov && H.ok ? N : 1;
+            H.band = { cam: snapCamAhead(nb - 1), n: nb, i: 0, sN, kk, ofs, jit, st,
+                       qw: Math.ceil((cw - ofs[0]) / sN), qh: Math.ceil((ch - ofs[1]) / sN) };
+        }
+        const bd = H.band, rows = Math.ceil(bd.qh / bd.n), r0 = bd.i * rows;
+        withCam(bd.cam, () => {
+            for (let r = 0; r < SLOW; r++) drawMarch(q, bd.qw, bd.qh, { W: cw, H: ch, still: false, lv: bd.st, stride: bd.sN, off: bd.ofs, jit: bd.jit, k: bd.kk }, lk,
+                                                     bd.n > 1 ? [0, r0, bd.qw, Math.max(0, Math.min(rows, bd.qh - r0))] : null);
+        });
+        bd.i++;
+        const done = bd.i >= bd.n;
+        if (done) {
+            withCam(bd.cam, () => {
+                drawShade(q, bd.qw, bd.qh, qc, lk);
+                drawResolve({ cur: qc, qn: [bd.qw, bd.qh], stride: bd.sN, off: bd.ofs, out: histOther(), alpha: TAAU ? ALPHA : 1 });
+            });
+            H.cur = 1 - H.cur; H.cam = bd.cam.c; H.ok = true; H.band = null;
+            B.nMot = (B.nMot || 0) + 1;
+        } else B.nInt = (B.nInt || 0) + 1;
+        // Anzeige: Verlauf in der Kamera dieses Takts (ein Bild aus einem Takt: direkt)
+        if (done && bd.n === 1) drawPost(histT(), cw, ch, null, 0, 0, 0, lk, null, null, true);
+        else if (H.ok) drawResolve({ out: null });
+        if (mov) {
+            // jeder Takt zeigt ein Bild; Last-Probe = Fence je Takt (die GPU hängt mehr als einen Takt hinterher). Ausfälle
+            // zählen erst ab zwei Takten am Stück – einzelne sind meist Prozessor-Aussetzer, gegen die weniger Grafik nicht hilft
+            if (PACE.tDraw && now - PACE.tDraw > vs * 2.45 && now - PACE.tDraw < 1000) PACE.smp.push({ late: true, fast: false, gap: true, t: now });
+            PACE.tDraw = now;
+            if (!PACE.fence) { PACE.fence = g.fenceSync(g.SYNC_GPU_COMMANDS_COMPLETE, 0); PACE.fTick = PACE.tick; PACE.fN = 1; }
+        }
+        B.mot = { w: cw, h: ch, taau: true };
+        if (T.mot) { freeTarget(T.mot); T.mot = null; }       // (Bewegungsziel des alten Wegs wird nicht mehr gebraucht)
+        if (B.key && B.focusKey !== key.split('|').slice(0, 3).join('|')) B.focus = 0;
+        B.focusKey = key.split('|').slice(0, 3).join('|');
+        B.key = key;
+        B.still = { k: 0, row: 0, t0: now + 90, K: KFIX || tr.K, done: false, shown: false };
+        B.stillWait = now; B.stillCam = camNow();
+        lastPost = '';
+        if (done) B.info = { scale: 1, w: cw, h: ch, still: 0, K: tr.K, N, lvl: PACE.idx, s: bd.sN, spK: +(F.spK === undefined ? 1 : F.spK).toFixed(3) };
+        return true;
+    }
     function present(now, camChanged) {
         const rd = ready();
         if (rd !== true) {
@@ -1136,7 +1534,10 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const mov = moving() || (ctx.FLY.on && !ctx.FLY.paused) || (S.bulbBreathe && S.anim && !RM()) || camChanged;
         const tr = tier();
         let lv = null;
+        const tReady = taauReady();          // (auch im Stand: übersetzt die Shader des scharfen Flugs vorab, asynchron)
+        if ((key !== B.key || mov) && tReady && presentT(now, key, mov, lk, tr)) return;
         if (key !== B.key || mov) {
+            F.spKT = 1;
             if (PACEON) {
                 const vs = ctx.RC.vsync || 16.67, dt = now - (PACE.tPrev || now);
                 PACE.tPrev = now; PACE.tick++;
@@ -1177,6 +1578,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
                 if (!PACE.fence) { const g = gl(); PACE.fence = g.fenceSync(g.SYNC_GPU_COMMANDS_COMPLETE, 0); PACE.fTick = PACE.tick; PACE.fN = PACE.N; }
             }
             B.mot = { w, h }; B.nMot = (B.nMot || 0) + 1;          // nMot: Zahl der Bewegungsbilder (Messung)
+            B.stillCam = null;
             if (B.key && B.focusKey !== key.split('|').slice(0, 3).join('|')) B.focus = 0;
             B.focusKey = key.split('|').slice(0, 3).join('|');
             B.key = key;
@@ -1189,7 +1591,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         }
         // Stillstand: Mittelung in voller Auflösung, in Streifen (Häppchen) über mehrere Bilder
         const st = B.still;
-        if (st && !st.done && now - B.stillWait > 90) {
+        if (st && !st.done && !B.hold && now - B.stillWait > 90) {
             const acc = ensure('acc', cw, ch);
             if (!acc) { B.ok = false; B.why = 'fbo'; return; }
             // Häppchen-Größe nach der GPU: ist der Streifen des letzten Bilds schon fertig (Fence), darf es mehr sein; sonst
@@ -1203,6 +1605,8 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
                 if (done) B.rows = Math.min(ch, Math.round(B.rows * 1.15) + 1);
             }
             if (ROWS) B.rows = ROWS;
+            H.band = null;          // (die Mittelung schreibt in dasselbe Ziel wie die Streifen der Bewegung)
+            if (st.k === 0 && st.row === 0) B.stillCam = camNow();      // Kamera des Ruhebilds (Startbild des scharfen Flugs)
             const k = st.k, rows = Math.min(B.rows, ch - st.row);
             const jit = k === 0 ? [0, 0] : [halton(k + 1, 2) - 0.5, halton(k + 1, 3) - 0.5];
             if (k > 0) { g.enable(g.BLEND); g.blendFunc(g.CONSTANT_ALPHA, g.ONE_MINUS_CONSTANT_ALPHA); g.blendColor(0, 0, 0, 1 / (k + 1)); }
@@ -1232,7 +1636,16 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const pk = [lk.cycle, lk.density, lk.pal.id, st ? st.k + ':' + st.row : '', fade, cw, ch].join('|');
         if (pk === lastPost && !(st && !st.done)) return;
         lastPost = pk;
+        // 7.1.8: Bewegungsbild = schattierter Verlauf in voller Auflösung; stammt er (Streifen über mehrere Takte) von einer
+        // älteren Kamera, einmal in die jetzige reprojizieren – sonst spränge das Bild beim Anhalten um diese Takte zurück
+        if (B.mot && B.mot.taau && H.ok && H.cam && !camSame(H.cam)) {
+            H.band = null;
+            drawResolve({ out: histOther() });
+            H.cur = 1 - H.cur; H.cam = camNow();
+        }
+        const ta = B.mot && B.mot.taau && histT();
         if (showAcc && fade >= 1) drawPost(T.acc, cw, ch, null, 0, 0, 0, lk);
+        else if (ta) drawPost(ta, cw, ch, showAcc ? T.acc : null, cw, ch, showAcc ? fade : 0, lk, null, null, true);
         else if (showAcc) drawPost(T.mot, B.mot.w, B.mot.h, T.acc, cw, ch, fade, lk);
         else drawPost(T.mot, B.mot.w, B.mot.h, null, 0, 0, 0, lk);
     }
@@ -1295,7 +1708,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     function startFly(place) {
         const FLY = ctx.FLY;
         if (!canFly()) return false;
-        B.anim = null; B.inertia = null; F.vT = null; F.vC = null; F.npP = null; F.Pi = null; F.pg = null; F.wy = 0; F.wp = 0;
+        B.anim = null; B.inertia = null; F.vT = null; F.vC = null; F.npP = null; F.Pi = null; F.rev = null; F.pg = null; F.wy = 0; F.wp = 0;
         if (place && place.b) { tourTo(place.b, 6); FLY.mode = 'bulbtour'; }
         else {
             const h = pick(ctx.cssW / 2, ctx.cssH / 2) || pick(ctx.cssW / 2, ctx.cssH * 0.4) || pick(ctx.cssW / 2, ctx.cssH * 0.6);
@@ -1317,11 +1730,18 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         F.simT = (F.simT || 0) + dt;            // Messung: Flugzeit der Kamera (auf Bildschirmtakte gerundet, flight.js)
         if (FLY.mode === 'bulbtour') { if (!B.anim) { ctx.stopFly(); } return; }
         if (!F.T) return;
-        const sp = FLY.sp || 0;
+        // 7.1.8 Schärfe vor Tempo: kommen weniger echte Bilder (Takt N > 2), fliegt die Kamera weich langsamer (Faktor 2/N)
+        F.spK = F.spK === undefined ? 1 : F.spK + ((F.spKT === undefined ? 1 : F.spKT) - F.spK) * Math.min(1, dt / 1.2);
+        const sp = (FLY.sp || 0) * F.spK;
         const D = V.len(V.sub(B.pos, F.T));
         if (sp < 0) {
             // rückwärts: auf dem Weg des Hinflugs (Position/Blick je log10 Zoom interpoliert), sonst vom Ziel weg
             const lz = Math.log10(Math.max(1e-9, B.zoom)), lz2 = lz + sp * dt, tr = F.trail;
+            // 7.1.8 Wächter: sinkt der Zoom 1 s Flugzeit lang nicht (einmal im langen Testlauf beobachtet: Rückflug blieb bei
+            // Zoom ~200 stehen, nicht nachstellbar), gilt der aufgezeichnete Weg nicht mehr -> vom Ziel weg heraus
+            if (!F.rev || F.rev.sp > 0) F.rev = { t: 0, lz, sp };
+            F.rev.t += dt; F.rev.sp = sp;
+            if (F.rev.t > 1) { if (Math.abs(sp) > 0.05 && F.rev.lz - lz < 0.1 * Math.abs(sp) * F.rev.t && tr.length) { tr.length = 0; F.revStuck = (F.revStuck || 0) + 1; } F.rev = { t: 0, lz, sp }; }
             if (tr.length >= 2 && lz2 >= tr[0].lz && lz2 <= tr[tr.length - 1].lz + 0.02) {
                 let k = tr.length - 1; while (k > 0 && tr[k - 1].lz > lz2) k--;
                 const a = tr[Math.max(0, k - 1)], b = tr[k], u = b.lz > a.lz ? Math.max(0, Math.min(1, (lz2 - a.lz) / (b.lz - a.lz))) : 0;
@@ -1329,7 +1749,8 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
                 while (tr.length > 1 && tr[tr.length - 1].lz > lz2 + 0.02) tr.pop();
             } else {
                 const dir = V.norm(V.sub(B.pos, F.T));
-                setPos(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))));
+                // (scheitert der Schritt an einer Wand, rückwärts entlang der Blickrichtung ausweichen)
+                if (!setPos(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))))) setPos(V.add(B.pos, V.mul(camBasis().fw, -D * (Math.pow(10, -sp * dt) - 1))));
                 lookAt(F.T, dt, 2.5);
             }
             F.Pi = null; F.npP = null; F.vC = null;
@@ -1341,6 +1762,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         // 7.1.7: die Bahn wird an der Ideal-Stelle F.Pi weitergerechnet, die Kamera folgt ihr über die Feder (unten). Ginge
         // die nachlaufende Kamera selbst wieder in die Rechnung ein, stieße jeder ausgefallene Takt eine kleine Schwingung an
         // (gemessen: +27 % Tempo, über ~0,1 s abklingend)
+        F.rev = null;
         const Pc = PACEON && F.Pi ? F.Pi : B.pos, Dc = V.len(V.sub(Pc, F.T));
         if (now - F.tProbe > 250 || F.pg) probe(now);
         // Ziel gleitet weich zur gewählten Stelle (höchstens 0,5 Abstände je Sekunde)
@@ -1521,7 +1943,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         return true;
     }
     // Messung (Tests): GPU-Zeit eines Bewegungsbilds (Skala s) bzw. eines Ruhebild-Durchgangs in voller Auflösung, Median aus n
-    function bench(s, still, n) {
+    function bench(s, still, n, lv) {
         const g = gl(), ext = g.getExtension('EXT_disjoint_timer_query_webgl2');
         if (!ext || ready() !== true) return Promise.resolve(null);
         const lk = look(), cw = canvas.width, ch = canvas.height;
@@ -1530,7 +1952,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const qs = [];
         for (let i = 0; i < (n || 5); i++) {
             const q = g.createQuery(); g.beginQuery(ext.TIME_ELAPSED_EXT, q);
-            drawMarch(tg, still ? cw : w, still ? ch : h, { W: still ? cw : w, H: still ? ch : h, still: !!still, k: i }, lk);
+            drawMarch(tg, still ? cw : w, still ? ch : h, { W: still ? cw : w, H: still ? ch : h, still: !!still, k: i, lv }, lk);
             g.endQuery(ext.TIME_ELAPSED_EXT); qs.push(q);
         }
         B.key = '';
@@ -1544,10 +1966,10 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         B, G, V, update, present, redraw, bench, startFly, flyUpdate, flySteer, flyStopped, canFly, stateString, applyState, applyLegacy, tourTo, capTile,
         goHome, keyOrbit, keyZoom,
         capK: () => Math.max(8, tier().K),
-        paceLog: () => PACE.log, flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length, simT: F.simT || 0 }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
+        hold(v) { B.hold = !!v; }, mem: () => Object.values(T).reduce((m, x) => m + (x ? x.w * x.h * 8 * x.tex.length : 0), 0), paceLog: () => PACE.log, taau: () => ({ on: SCHARF && taauReady(), ok: H.ok, seeds: H.seeds || 0, band: H.band ? H.band.n : 0, fail: H.fail, taau: TAAU, idx: PACE.idx, nInt: B.nInt || 0 }), flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length, revStuck: F.revStuck || 0, simT: F.simT || 0, spK: F.spK === undefined ? 1 : F.spK }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
         params, iterFor, minDist, zoomToward,
         info: () => Object.assign({ ok: B.ok, why: B.why, zoom: B.zoom, dSurf: B.dSurf, iter: iterFor(B.zoom), limit: B.limit, anchor: !!ANC && B.zoom >= 60,
-                                    nMot: B.nMot || 0, flyD: F.T ? V.len(V.sub(B.pos, F.T)) : null }, B.info),
+                                    nMot: B.nMot || 0, nInt: B.nInt || 0, flyD: F.T ? V.len(V.sub(B.pos, F.T)) : null }, B.info),
         link() { ({ R, S, HP, look, toast, t, emit, canvas } = ctx); Z0 = deJS(HOME.pos, { kind: 0, power: 8, julia: false, jc: [0, 0, 0], iter: 10 }); },
         setBoxS(v) { B.boxS = v; setHome(); invalidate(); },
         kindOf,

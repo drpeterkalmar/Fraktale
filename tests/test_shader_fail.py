@@ -11,6 +11,7 @@ console.error (die einmalige console.warn je defektem Programm ist erlaubt), die
   (e) 6.7 nur das Gelände MIT Horizont-AO defekt -> Rückfall auf das Gelände wie 6.6 (Programm t3terr_66), 3D läuft,
       kein Toast
   (f) 6.7 TAA- und Bloom-Programm defekt (?taa=1) -> beide aus, 3D läuft ohne Toast
+  (l) 7.1.8 Auflöse-Pass des temporalen Hochrechnens defekt -> scharfer Flug aus, Flug wie 7.1.7 (Skala < 1), keine Fehler
   (g) 7.0 Mandelbulb-Marsch-Shader defekt -> Toast, einfacher Mandelbulb wie bis 6.9 (Bild nicht leer), Drehen geht, Screenshot geht
   (h) 7.1 Exoten-Shader (Lyapunov) defekt -> Toast, CPU-Rechenweg (f64), Bild fertig und nicht leer
   (i) 7.1 Lichtbilder-Wander-Shader defekt -> Toast, Flamme auf dem Prozessor, Bild nicht leer
@@ -287,8 +288,24 @@ def case_k(p):
     a.close()
 
 
+def case_l(p):
+    print('(l) 7.1.8 Auflöse-Pass (temporales Hochrechnen) defekt -> Flug wie 7.1.7')
+    a = open_app(p, [['u_hasCur']])
+    pg = a.page
+    pg.evaluate("() => { const A = window.__fraktal; A.setMode(6); }"); time.sleep(4)
+    n0 = pg.evaluate("() => { const A = window.__fraktal; A.S.flySpeed = 0.5; A.startFly(); return A.BULB.info().nMot; }")
+    time.sleep(4)
+    st = pg.evaluate("() => { const B = window.__fraktal.BULB; return [B.taau(), B.info().nMot, B.info().scale, !!window.__fraktal.FLY.on]; }")
+    pg.evaluate("() => window.__fraktal.stopFly()")
+    check(st[0]['fail'] and not st[0]['on'], 'Auflöse-Pass als defekt erkannt, scharfer Weg aus %s' % st[0])
+    check(st[3] and st[1] - n0 > 30 and 0 < st[2] < 1, 'Flug läuft wie 7.1.7 (%d Bewegungsbilder, Skala %.2f)' % (st[1] - n0, st[2]))
+    check(len(pg.evaluate("() => window.__broken")) > 0, 'Shader wirklich zerstört')
+    check(not a.errors, 'keine Fehler %s' % a.errors[:3])
+    a.close()
+
+
 with sync_playwright() as p:
-    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i), ('j', case_j), ('k', case_k)]:
+    for k, fn in [('a', case_a), ('b', case_b), ('c', case_c), ('d', case_d), ('e', case_e), ('f', case_f), ('g', case_g), ('h', case_h), ('i', case_i), ('j', case_j), ('k', case_k), ('l', case_l)]:
         if ONLY and k not in ONLY:
             continue
         try:

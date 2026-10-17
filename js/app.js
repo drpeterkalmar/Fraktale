@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.7';
+const APP_VERSION = '7.1.8';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -1281,7 +1281,7 @@ function frame(now) {
     update3d(now, dt);
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
     if (FLY.on && !canFly()) stopFly();
-    if (FLY.on && !FLY.paused) flyUpdate(now, now - (RC.resizeT || -1e9) < RESIZE_HOLD ? Math.min(dt, 1 / 30) : dt);
+    if (FLY.on && !FLY.paused) { const hold = now - (RC.resizeT || -1e9) < RESIZE_HOLD; flyUpdate(now, hold ? Math.min(dt, 1 / 30) : dt, hold); }
     const camChanged = camDirty;
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;

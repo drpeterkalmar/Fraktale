@@ -1,12 +1,12 @@
 {
  "B": {
-  "look_max": 11.4,
-  "ljerk_p99": 0.36,
-  "vjump_p99": 0.019,
-  "scale_changes_s": 0.13,
+  "look_max": 20.0,
+  "ljerk_p99": 0.5,
+  "vjump_p99": 0.035,
+  "scale_changes_s": 0.0,
   "N": [
-   1,
-   2
+   2,
+   3
   ]
  }
 }
