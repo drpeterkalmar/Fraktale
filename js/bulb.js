@@ -946,9 +946,10 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         g.uniform1f(L.u_boxS, B.boxS);
         g.uniform1i(L.u_iter, iterFor(zoom) + (o.still ? 2 : 0));
         const lz = Math.log10(Math.max(1, zoom));
-        g.uniform1i(L.u_steps, Math.round((o.still ? tr.stepsS : tr.stepsM) * (1 + (o.still ? 0.25 : 0.12) * lz)));
-        g.uniform1i(L.u_shN, o.still ? tr.shS : tr.shM);
-        g.uniform1i(L.u_aoN, o.still ? tr.aoS : tr.aoM);
+        const lv = o.lv;            // 7.1.7: Stufe der Qualitätsleiter in der Bewegung (Schatten, AO, Schritte)
+        g.uniform1i(L.u_steps, Math.round((o.still ? tr.stepsS : tr.stepsM * (lv ? lv.st : 1)) * (1 + (o.still ? 0.25 : 0.12) * lz)));
+        g.uniform1i(L.u_shN, o.still ? tr.shS : lv ? lv.sh : tr.shM);
+        g.uniform1i(L.u_aoN, o.still ? tr.aoS : lv ? lv.ao : tr.aoM);
         g.uniform1i(L.u_julia, B.julia && kindOf() <= 1 ? 1 : 0);
         g.uniform4f(L.u_qc, B.qc[0], B.qc[1], B.qc[2], B.qc[3]);
         { const kp = kpNow(); g.uniform4f(L.u_kp, kp[0], kp[1], kp[2], kp[3] || 0); }
@@ -1048,6 +1049,80 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     const ROWS = +(Q.get('bulbrows') || 0);      // Test: feste Streifenhöhe der Mittelung
     const KFIX = +(Q.get('bulbk') || 0);         // Test: feste Zahl gemittelter Bilder
     const SLOW = Math.max(1, +(Q.get('bulbslow') || 1));   // Test: langsamere GPU simulieren (Marsch-Pass n-mal)
+    // ---------------- 7.1.7 Gleichmäßiger Takt in der Bewegung (Peter: „Mandelbulb-Flug ist ziemlich ruckelnd“)
+    // Gemessen (7.0/7.1.6, Mittelklasse-Profil): der alte Regler stellte die Auflösung fast jedes Bild um ×0,9/×1,04 nach
+    // (26 Wechsel/s, Skala pumpte 0,28–0,7), die Bilder sprangen zwischen 16 und 33 ms (p95 = 2 × Median). Jetzt:
+    //  * Takt einrasten: ein Bewegungsbild je N Bildschirmtakte (N = 1: 60/s, N = 2: stabile 30/s, 3: 20/s); in den Takten
+    //    dazwischen wird nichts gezeichnet, das letzte Bild bleibt stehen – gleichmäßig statt 60↔30.
+    //  * Qualitätsleiter mit Ruhe: höchstens eine Änderung je Sekunde (Totzone, Last aus GPU-Fences und Bildabständen),
+    //    erst die teuren Effekte (weiche Schatten, AO), dann die Marsch-Schritte, zuletzt die Pixel; eine Stufe, die
+    //    gerade gescheitert ist, wird 30 s lang nicht wieder versucht, eine gescheiterte Probe geht auf die vorige Stufe
+    //    zurück, aus 30/s geht es frühestens 30 s nach dem Einrasten wieder auf 60/s (kein Pendeln); „spät“ = die GPU war
+    //    zum eigenen Takt nicht fertig (Fence) bzw. ein Bild fiel aus.
+    //  * (Timer-Queries geprüft und verworfen: unter Metal/ANGLE maßen sie bei geteilter GPU die Wartezeit mit, und
+    //    Safari auf dem iPhone kennt sie nicht.)
+    //  * Kamera: Zeitschritt auf ganze Bildschirmtakte (flight.js taktDt), Bahn an einer Ideal-Stelle, Kamera und Blick über
+    //    kritisch gedämpfte Federn, Sonde auf 5 Bilder verteilt (flyUpdate, lookSpring, probe).
+    // A/B: ?bulbpace=0 = Regler und Kamera bis 7.1.6.
+    const PACEON = Q.get('bulbpace') !== '0';
+    const PACE = { log: [], N: 1, tick: 0, lvl: 0, tChange: -1e9, tUp: -1e9, tMov: 0, wasMov: false, mem: {}, block: {}, smp: [], fence: null, fTick: 0, fN: 1 };
+    function paceLevels(tr) {
+        const L = [{ sh: tr.shM, ao: tr.aoM, st: 1, sc: tr.sMax }, { sh: 0, ao: tr.aoM, st: 1, sc: tr.sMax }, { sh: 0, ao: 1, st: 0.85, sc: tr.sMax }];
+        for (let s = tr.sMax * 0.85; s >= tr.sMin * 0.999; s *= 0.86) L.push({ sh: 0, ao: 1, st: 0.85, sc: s });
+        return L;
+    }
+    // Last-Probe: Fence nach dem Bewegungsbild; „spät“ = nach N + 1 Takten noch nicht fertig (ein Bild Puffer ist erlaubt),
+    // „schnell“ = schon nach einem Takt fertig (Reserve: dann passt die nächste Stufe bzw. N − 1)
+    function paceProbe(now, dt, vs) {
+        const g = gl(), F = PACE.fence;
+        if (F) {
+            const el = PACE.tick - PACE.fTick, done = g.getSyncParameter(F, g.SYNC_STATUS) === g.SIGNALED;
+            // (der Browser puffert ein Bild: die GPU darf einen Takt hinterherhängen, ohne dass ein Bild ausfällt)
+            if (done || el >= PACE.fN + 1) {
+                // fast: nach einem Takt fertig – dann trägt die GPU auch den vollen Takt (N − 1)
+                PACE.smp.push({ late: !done, fast: done && el <= 1, t: now });
+                g.deleteSync(F); PACE.fence = null;
+            }
+        }
+        // (lange Bildabstände ohne GPU-Rückstand – Prozessor-Aussetzer – zählen nicht: weniger Grafik hilft dagegen nicht)
+        if (PACE.smp.length > 90) PACE.smp.splice(0, PACE.smp.length - 90);
+    }
+    function paceControl(now, L) {
+        const since = now - PACE.tChange;
+        // nach einem Wechsel bzw. dem Bewegungsbeginn 0,3 s Ruhe (Übersetzen, Anfahrt), dann mindestens 20 Proben
+        const sm = PACE.smp.filter(x => x.t > Math.max(PACE.tChange, PACE.tMov) + 300);
+        if (sm.length < 20) return;
+        const nl = sm.filter(x => x.late).length, late = nl / sm.length, fast = sm.filter(x => x.fast).length / sm.length;
+        if (since < (late > 0.3 ? 500 : 1000)) return;          // starke Überlast: schneller abwärts
+        const set = (lvl, N) => {
+            if (now - PACE.tUp < 3000 && (lvl > PACE.lvl || N > PACE.N)) PACE.block[PACE.lvl + ':' + PACE.N] = now;   // eben hochgeschaltet, gleich gescheitert
+            if (lvl < PACE.lvl || N < PACE.N) { PACE.tUp = now; PACE.upFrom = { lvl: PACE.lvl, N: PACE.N }; }
+            PACE.log.push([Math.round(now), PACE.lvl, PACE.N, lvl, N, nl, sm.filter(x => x.gap).length, sm.length, +fast.toFixed(2)]);
+            if (PACE.log.length > 40) PACE.log.shift();
+            PACE.lvl = lvl; PACE.N = N; PACE.tChange = now; PACE.smp.length = 0;
+            PACE.mem[kindOf()] = { lvl, N };
+        };
+        const ok = (lvl, N) => !(now - (PACE.block[lvl + ':' + N] || -1e9) < 30000);
+        const maxL = L.length - 1, l60 = Math.min(maxL, 5);
+        const down = (lvl, N) => { if (N > PACE.N) PACE.block['N' + PACE.N] = now; set(lvl, N); };
+        if (nl >= 3 && late > 0.05) {
+            // abwärts: bei 60/s bis Stufe 5 (Skala ~0,55 × Max), dann auf 30/s einrasten (doppeltes Budget, eine Stufe besser),
+            // dann weiter abwärts; besser wird es nur über die vorsichtige Probe (eine Stufe je ≥ 2,5 s ohne späte Bilder)
+            // eben eine Stufe besser probiert und gescheitert: zurück auf die vorige (set sperrt die Probe 30 s), nicht einrasten
+            if (now - PACE.tUp < 3000 && PACE.upFrom && PACE.upFrom.N === PACE.N && PACE.upFrom.lvl > PACE.lvl) set(PACE.upFrom.lvl, PACE.N);
+            else if (PACE.N === 1 && late > 0.5 && PACE.lvl >= 3) down(PACE.lvl, 2);   // trotz weniger Effekte massiv überlastet: einrasten
+            else if (PACE.N === 1 && PACE.lvl >= l60) down(Math.max(0, PACE.lvl - 1), 2);
+            else if (PACE.lvl < maxL) set(Math.min(maxL, PACE.lvl + (late > 0.5 ? 2 : 1)), PACE.N);   // massiv: zwei Stufen
+            else if (PACE.N < 3) down(PACE.lvl, PACE.N + 1);
+        } else if (nl === 0 && since > 2500) {
+            // schneller Takt erst wieder, wenn die GPU das Bild 4 s lang fast immer binnen eines Takts fertig hatte, und
+            // frühestens 30 s nach dem Einrasten (kein Pendeln 60↔30 – genau das sah man als Ruckeln)
+            if (PACE.N > 1 && fast > 0.9 && since > 4000 && now - (PACE.block['N' + (PACE.N - 1)] || -1e9) > 30000 && ok(PACE.lvl, PACE.N - 1)) set(PACE.lvl, PACE.N - 1);
+            // bessere Stufe: eingerastet nur, wenn die GPU meist schon nach einem Takt fertig war (Reserve ≥ 50 %, die nächste
+            // Stufe kostet ×1,2–1,35); bei 60/s vorsichtig nach 4 s ohne späte Bilder (jeder Fehlversuch kostet Bilder)
+            else if (PACE.lvl > 0 && ok(PACE.lvl - 1, PACE.N) && since > 4000 && (PACE.N === 1 || fast > 0.5)) set(PACE.lvl - 1, PACE.N);
+        }
+    }
     function present(now, camChanged) {
         const rd = ready();
         if (rd !== true) {
@@ -1060,19 +1135,48 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const key = marchKey(lk);
         const mov = moving() || (ctx.FLY.on && !ctx.FLY.paused) || (S.bulbBreathe && S.anim && !RM()) || camChanged;
         const tr = tier();
+        let lv = null;
         if (key !== B.key || mov) {
-            // Bewegungsbild in angepasster Auflösung; Skala folgt der Bildrate (≥ 30 Bilder/s auf dem Mittelklasse-Gerät)
-            const dtm = ctx.RC.dtEMA || 16;
-            if (B.key && key !== B.key) {
-                if (dtm > 24) B.scaleM = Math.max(tr.sMin, B.scaleM * 0.9);
-                else if (dtm < 18.5) B.scaleM = Math.min(tr.sMax, B.scaleM * 1.04);
+            if (PACEON) {
+                const vs = ctx.RC.vsync || 16.67, dt = now - (PACE.tPrev || now);
+                PACE.tPrev = now; PACE.tick++;
+                if (mov && !PACE.wasMov) {          // Bewegungsbeginn: Stufe dieser Welt vom letzten Mal
+                    PACE.tMov = now; PACE.smp.length = 0; PACE.tDraw = 0;
+                    const m = PACE.mem[kindOf()]; if (m) { PACE.lvl = m.lvl; PACE.N = m.N; } else { PACE.lvl = 0; PACE.N = 1; }
+                }
+                PACE.wasMov = mov;
+                if (mov) paceProbe(now, dt, vs);
+                const L = paceLevels(tr);
+                if (mov) paceControl(now, L); else { PACE.smp.length = 0; }
+                PACE.lvl = Math.min(PACE.lvl, L.length - 1);
+                // eingerastet: nur jeden N-ten Takt zeichnen (dazwischen bleibt das letzte Bild stehen)
+                // (nach der Zeit, nicht nach der Takt-Nummer: fiel ein Takt aus, kommt das nächste Bild gleich zum nächsten Takt
+                // statt erst nach N weiteren – sonst wurden aus 33 ms 50 ms)
+                if (mov && PACE.N > 1 && B.mot && PACE.tDraw && now - PACE.tDraw < vs * (PACE.N - 0.5)) return;
+                lv = L[PACE.lvl];
+                B.scaleM = lv.sc;
+            } else {
+                // Bewegungsbild in angepasster Auflösung; Skala folgt der Bildrate (bis 7.1.6)
+                const dtm = ctx.RC.dtEMA || 16;
+                if (B.key && key !== B.key) {
+                    if (dtm > 24) B.scaleM = Math.max(tr.sMin, B.scaleM * 0.9);
+                    else if (dtm < 18.5) B.scaleM = Math.min(tr.sMax, B.scaleM * 1.04);
+                }
             }
             B.scaleM = Math.max(tr.sMin, Math.min(tr.sMax, B.scaleM));
             const w = Math.max(16, Math.round(cw * B.scaleM)), h = Math.max(16, Math.round(ch * B.scaleM));
             const mt = ensure('mot', Math.round(cw * tr.sMax) + 2, Math.round(ch * tr.sMax) + 2);
             if (!mt) { B.ok = false; B.why = 'fbo'; return; }
-            for (let r = 0; r < SLOW; r++) drawMarch(mt, w, h, { W: w, H: h, still: false }, lk);
-            B.mot = { w, h };
+            for (let r = 0; r < SLOW; r++) drawMarch(mt, w, h, { W: w, H: h, still: false, lv }, lk);
+            if (PACEON && mov) {
+                // Abstand zum letzten Bewegungsbild: über 1,45 × N Takten = ein Bild ausgefallen (der Browser bremst bei vollem
+                // GPU-Puffer den Takt selbst – dann sind die Fences zum verspäteten Takt schon fertig)
+                const vs = ctx.RC.vsync || 16.67;
+                if (PACE.tDraw && now - PACE.tDraw > vs * PACE.N * 1.45 && now - PACE.tDraw < 1000) PACE.smp.push({ late: true, fast: false, gap: true, t: now });
+                PACE.tDraw = now;
+                if (!PACE.fence) { const g = gl(); PACE.fence = g.fenceSync(g.SYNC_GPU_COMMANDS_COMPLETE, 0); PACE.fTick = PACE.tick; PACE.fN = PACE.N; }
+            }
+            B.mot = { w, h }; B.nMot = (B.nMot || 0) + 1;          // nMot: Zahl der Bewegungsbilder (Messung)
             if (B.key && B.focusKey !== key.split('|').slice(0, 3).join('|')) B.focus = 0;
             B.focusKey = key.split('|').slice(0, 3).join('|');
             B.key = key;
@@ -1080,7 +1184,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
             B.stillWait = now;
             drawPost(mt, w, h, null, 0, 0, 0, lk);
             lastPost = '';
-            B.info = { scale: B.scaleM, w, h, still: 0, K: tr.K };
+            B.info = { scale: B.scaleM, w, h, still: 0, K: tr.K, N: PACE.N, lvl: PACE.lvl };
             return;
         }
         // Stillstand: Mittelung in voller Auflösung, in Streifen (Häppchen) über mehrere Bilder
@@ -1155,12 +1259,25 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     // Sonde: 5×5 Strahlen um die Bildmitte. Wertung: Rauheit (Tiefensprünge zu den Nachbarn – Kerben, Knospen, Ränder statt
     // glatter „Sahne“), Strukturdichte (Schritte), Nähe zur Mitte, nicht viel tiefer als das jetzige Ziel. Neues Ziel nur, wenn
     // deutlich besser (Hysterese) oder das alte erreicht ist.
+    // 7.1.7: die 25 Strahlen verteilt auf 5 Bilder (eine Zeile je Bild) – alle auf einmal kosteten im Mittelklasse-Profil
+    // (Mandelbox) bis ~20 ms Prozessorzeit und ließen alle 250 ms ein Bild ausfallen
     function probe(now) {
-        F.tProbe = now;
         const W = ctx.cssW, H = ctx.cssH, mn = Math.min(W, H), N = 5, st = mn * 0.11;
-        const D = V.len(V.sub(B.pos, F.T));
+        if (PACEON) {
+            if (!F.pg) F.pg = { g: [], j: 0 };
+            const pg = F.pg, j = pg.j++;
+            for (let i = 0; i < N; i++) pg.g.push(pick(W / 2 + (i - 2) * st, H / 2 + (j - 2) * st));
+            if (pg.j < N) return;
+            F.pg = null; probeEval(now, pg.g, N);
+            return;
+        }
         const g = [];
         for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) g.push(pick(W / 2 + (i - 2) * st, H / 2 + (j - 2) * st));
+        probeEval(now, g, N);
+    }
+    function probeEval(now, g, N) {
+        F.tProbe = now;
+        const D = V.len(V.sub(B.pos, F.T));
         let best = null;
         for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
             const h = g[j * N + i];
@@ -1178,7 +1295,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     function startFly(place) {
         const FLY = ctx.FLY;
         if (!canFly()) return false;
-        B.anim = null; B.inertia = null;
+        B.anim = null; B.inertia = null; F.vT = null; F.vC = null; F.npP = null; F.Pi = null; F.pg = null; F.wy = 0; F.wp = 0;
         if (place && place.b) { tourTo(place.b, 6); FLY.mode = 'bulbtour'; }
         else {
             const h = pick(ctx.cssW / 2, ctx.cssH / 2) || pick(ctx.cssW / 2, ctx.cssH * 0.4) || pick(ctx.cssW / 2, ctx.cssH * 0.6);
@@ -1197,6 +1314,7 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
     }
     function flyUpdate(now, dt) {
         const FLY = ctx.FLY;
+        F.simT = (F.simT || 0) + dt;            // Messung: Flugzeit der Kamera (auf Bildschirmtakte gerundet, flight.js)
         if (FLY.mode === 'bulbtour') { if (!B.anim) { ctx.stopFly(); } return; }
         if (!F.T) return;
         const sp = FLY.sp || 0;
@@ -1214,33 +1332,65 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
                 setPos(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))));
                 lookAt(F.T, dt, 2.5);
             }
+            F.Pi = null; F.npP = null; F.vC = null;
             ctx.camDirty = true;
             updateZoom();
             if (B.zoom <= 1.02) { FLY.out = true; ctx.setFlySpeed(0); toast(t('fly_out'), 2000); }
             return;
         }
-        if (now - F.tProbe > 250) probe(now);
+        // 7.1.7: die Bahn wird an der Ideal-Stelle F.Pi weitergerechnet, die Kamera folgt ihr über die Feder (unten). Ginge
+        // die nachlaufende Kamera selbst wieder in die Rechnung ein, stieße jeder ausgefallene Takt eine kleine Schwingung an
+        // (gemessen: +27 % Tempo, über ~0,1 s abklingend)
+        const Pc = PACEON && F.Pi ? F.Pi : B.pos, Dc = V.len(V.sub(Pc, F.T));
+        if (now - F.tProbe > 250 || F.pg) probe(now);
         // Ziel gleitet weich zur gewählten Stelle (höchstens 0,5 Abstände je Sekunde)
-        const d = V.sub(F.Tg, F.T), dl = V.len(d), mx = 0.3 * D * dt * Math.max(0.3, Math.abs(sp) / 0.5);
-        if (dl > 0) F.T = V.add(F.T, V.mul(d, Math.min(1, mx / dl)));
+        const d = V.sub(F.Tg, F.T), dl = V.len(d), mx = 0.3 * Dc * dt * Math.max(0.3, Math.abs(sp) / 0.5);
+        if (PACEON) {
+            // 7.1.7: Ziel mit gedämpfter Geschwindigkeit (die neue Zielwahl alle 250 ms ließ es sonst sprunghaft anfahren)
+            const vd = dl > 0 && dt > 0 ? V.mul(d, Math.min(1, mx / dl) / dt) : [0, 0, 0];
+            F.vT = F.vT ? V.add(F.vT, V.mul(V.sub(vd, F.vT), Math.min(1, dt * 5))) : vd;
+            F.T = V.add(F.T, V.mul(F.vT, dt));
+        } else if (dl > 0) F.T = V.add(F.T, V.mul(d, Math.min(1, mx / dl)));
         // Abstand: um sp Zehnerpotenzen/s kleiner; an der Grenze gleiten (gleicher Abstand)
-        let Dn = D * Math.pow(10, -sp * dt);
+        let Dn = Dc * Math.pow(10, -sp * dt);
         const lim = minDist() * 1.6;
         F.glide = Dn < lim;
-        if (F.glide) Dn = Math.max(D, lim);
+        if (F.glide) Dn = Math.max(Dc, lim);
         // Schrägsicht: Richtung Ziel->Kamera dreht langsam auf ~40° zur Normale
         const n = nrmAt(F.T);
-        let dir = V.norm(V.sub(B.pos, F.T));
+        let dir = V.norm(V.sub(Pc, F.T));
         const cn = V.dot(dir, n);
         const tang = V.norm(V.sub(dir, V.mul(n, cn)));
         const ideal = V.norm(V.add(V.mul(n, 0.87), V.mul(V.len(tang) > 1e-6 ? tang : [1, 0, 0], 0.5)));
         dir = V.norm(V.lerp(dir, ideal, Math.min(1, dt * 0.35)));
         let np = V.add(F.T, V.mul(dir, Dn));
-        // Kollision: Abstand zur Oberfläche an der Kamera mindestens 12 % des Zielabstands (sonst entlang der Normale weg)
-        const P = params();
-        for (let k = 0; k < 6 && deJS(np, P) < 0.12 * Dn; k++) np = V.add(np, V.mul(nrmAt(np), 0.06 * Dn));
+        // Kollision: Abstand zur Oberfläche an der Kamera mindestens 12 % des Zielabstands. 7.1.7: genau um das Defizit
+        // entlang der Normale (bis 7.1.6 in festen Sprüngen von 6 % – die Kamera fuhr 3 Bilder vor und sprang 1 Bild zurück,
+        // ein Sägezahn, der als Ruckeln zu sehen war; gemessen: Kamera-Schritt ±40 % trotz gleichmäßigem Takt)
+        const P = params(), mD = 0.12 * Dn;
+        for (let k = 0; k < 4; k++) { const de = deJS(np, P); if (de >= mD) break; np = V.add(np, V.mul(nrmAt(np), (mD - de) * (PACEON ? 1.02 : 0) + (PACEON ? 0 : 0.06 * Dn))); }
+        if (PACEON && dt > 0) {
+            // 7.1.7: Kamera folgt der berechneten Stelle über eine kritisch gedämpfte Feder (ω = 10/s): Knicke in der Bahn
+            // (Kollision schiebt, Wand wechselt in engen Räumen, Gleiten beginnt) ändern nur die Beschleunigung, nie sprunghaft
+            // das Tempo; harte Untergrenze: halber Mindestabstand
+            // (in Takt-Schritten: fiel ein Takt aus, rechnet die Feder zwei kleine Schritte zur Zwischenstelle statt eines großen,
+            // der überschwang)
+            let p2 = B.pos;
+            if (!F.vC || !F.npP) { F.vC = V.mul(V.sub(np, B.pos), 1 / dt); p2 = V.add(B.pos, V.mul(F.vC, dt)); }
+            else {
+                const w = 10, m = Math.max(1, Math.round(dt / ((ctx.RC.vsync || 16.67) / 1000))), h = dt / m;
+                for (let i = 1; i <= m; i++) {
+                    const tg = V.lerp(F.npP, np, i / m);
+                    F.vC = V.add(F.vC, V.mul(V.sub(V.mul(V.sub(tg, p2), w * w), V.mul(F.vC, 2 * w)), h));
+                    p2 = V.add(p2, V.mul(F.vC, h));
+                }
+            }
+            F.npP = np; F.Pi = np;
+            for (let k = 0; k < 3; k++) { const de = deJS(p2, P); if (de >= mD * 0.5) break; p2 = V.add(p2, V.mul(nrmAt(p2), (mD * 0.5 - de) * 1.02)); }
+            np = p2;
+        }
         B.pos = np;
-        lookAt(F.T, dt, 3);
+        if (PACEON) lookSpring(F.T, dt); else lookAt(F.T, dt, 3);
         ctx.camDirty = true;
         updateZoom();
         trailRec();
@@ -1253,11 +1403,28 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         const a = Math.min(1, dt * k);
         B.yaw += angD(yaw, B.yaw) * a; B.pitch += (Math.max(-1.45, Math.min(1.45, pitch)) - B.pitch) * a;
     }
+    // 7.1.7 Blick als kritisch gedämpfte Feder (Peter: „Flug ist noch zu unruhig“): Gieren/Nicken haben eine eigene
+    // Drehgeschwindigkeit (F.wy, F.wp), die der Zielrichtung weich folgt – ein neues Ziel ändert erst die Beschleunigung,
+    // nie sprunghaft die Drehrate; Drehrate höchstens LOOK_MAX (20°/s), Drehbeschleunigung höchstens LOOK_ACC.
+    // Bis 7.1.6: Blick exponentiell (k = 3/s) – jeder Zielwechsel ein Sprung in der Drehrate.
+    const LOOK_W = 2.2, LOOK_MAX = 20 * Math.PI / 180, LOOK_ACC = 40 * Math.PI / 180;
+    function lookSpring(P, dt) {
+        if (!(dt > 0)) return;
+        const dir = V.norm(V.sub(P, B.pos));
+        const yaw = Math.atan2(dir[0], dir[2]), pitch = Math.max(-1.45, Math.min(1.45, Math.asin(Math.max(-1, Math.min(1, dir[1])))));
+        const ey = angD(yaw, B.yaw) * Math.cos(B.pitch), ep = pitch - B.pitch;     // Gieren auf dem Bildschirm (cos Nicken)
+        let ay = LOOK_W * LOOK_W * ey - 2 * LOOK_W * F.wy, ap = LOOK_W * LOOK_W * ep - 2 * LOOK_W * F.wp;
+        const al = Math.hypot(ay, ap); if (al > LOOK_ACC) { ay *= LOOK_ACC / al; ap *= LOOK_ACC / al; }
+        F.wy += ay * dt; F.wp += ap * dt;
+        const wl = Math.hypot(F.wy, F.wp); if (wl > LOOK_MAX) { F.wy *= LOOK_MAX / wl; F.wp *= LOOK_MAX / wl; }
+        B.yaw += F.wy * dt / Math.max(0.2, Math.cos(B.pitch)); B.pitch = Math.max(-1.45, Math.min(1.45, B.pitch + F.wp * dt));
+    }
     // Lenken im Flug: Ziehen dreht die Kamera um das Ziel (wie die Orbit-Geste), das Ziel wird danach neu gesucht
     function flySteer(dx, dy) {
         if (!F.T) return;
         const k = Math.PI / Math.max(320, ctx.cssW) * 0.9;
         orbit({ pos: B.pos, yaw: B.yaw, pitch: B.pitch, pivot: F.T }, dx * k, -dy * k);
+        F.Pi = null; F.npP = null; F.wy = 0; F.wp = 0;      // (gelenkt: Bahn ab der neuen Stelle, Blick folgt ohne Nachlauf)
         F.tProbe = 0; F.score = -9;
     }
     function flyStopped() { F.trailEnd = B.pos.slice(); }
@@ -1377,9 +1544,10 @@ root.FKBulb = { BULB_FS, POST_FS, deJS, marchJS, anchorJS, tPow, boundOf, V, cre
         B, G, V, update, present, redraw, bench, startFly, flyUpdate, flySteer, flyStopped, canFly, stateString, applyState, applyLegacy, tourTo, capTile,
         goHome, keyOrbit, keyZoom,
         capK: () => Math.max(8, tier().K),
-        flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
+        paceLog: () => PACE.log, flyInfo: () => ({ T: F.T, Tg: F.Tg, glide: F.glide, trail: F.trail.length, simT: F.simT || 0 }), moving, home, invalidate, reset, ready, pick, camBasis, rayAt, pivotNow, flyToPoint, setPos, orbit,
         params, iterFor, minDist, zoomToward,
-        info: () => Object.assign({ ok: B.ok, why: B.why, zoom: B.zoom, dSurf: B.dSurf, iter: iterFor(B.zoom), limit: B.limit, anchor: !!ANC && B.zoom >= 60 }, B.info),
+        info: () => Object.assign({ ok: B.ok, why: B.why, zoom: B.zoom, dSurf: B.dSurf, iter: iterFor(B.zoom), limit: B.limit, anchor: !!ANC && B.zoom >= 60,
+                                    nMot: B.nMot || 0, flyD: F.T ? V.len(V.sub(B.pos, F.T)) : null }, B.info),
         link() { ({ R, S, HP, look, toast, t, emit, canvas } = ctx); Z0 = deJS(HOME.pos, { kind: 0, power: 8, julia: false, jc: [0, 0, 0], iter: 10 }); },
         setBoxS(v) { B.boxS = v; setHome(); invalidate(); },
         kindOf,

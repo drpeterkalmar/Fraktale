@@ -1,12 +1,12 @@
 {
  "2D": {
   "events": {
-   "fs_an": 6654.199999928474,
-   "groesse": 6940.899999976158,
-   "quer": 11090.5,
-   "hoch": 14107.899999976158,
-   "fs_aus": 17173.099999904633,
-   "ende": 19965.399999976158
+   "fs_an": 6836.600000023842,
+   "groesse": 7160,
+   "quer": 11291.399999976158,
+   "hoch": 14353.700000047684,
+   "fs_aus": 17432.5,
+   "ende": 20248
   },
   "sizes": [
    [
@@ -23,63 +23,63 @@
    ]
   ],
   "fps": {
-   "ohne_vollbild": 57.0,
-   "vollbild": 58.3
+   "ohne_vollbild": 60.0,
+   "vollbild": 59.4
   },
   "jerk_base": [
-   4.59005027024284e-05,
-   0.0001238229749904508
+   0.0013198504339982057,
+   0.00024744207887600133
   ],
   "jerk_events": [
    [
-    1.6932569027327166e-05,
-    6.694688236928286e-05
+    0.001275454777832751,
+    0.00014383864790751423
    ],
    [
-    1.4181894381071202e-09,
-    3.750449503738363e-05
+    0.0033139895753181966,
+    0.0001888563851054078
    ],
    [
-    1.3844907032859824e-07,
-    4.741687355247426e-05
+    0.001275390064539747,
+    0.00012057096542604578
    ],
    [
-    4.015042394389656e-08,
-    2.366273609683379e-05
+    0.0012277212820066042,
+    0.00018801607170665333
    ]
   ],
   "steps_base": [
-   0.024860310964630816,
-   0.007021015956707633,
-   49.899999999999636
+   0.005001000000000477,
+   0.0011039022377762366,
+   18.699999999999818
   ],
   "steps_events": [
    [
-    0.016640712883093656,
-    0.00466705565355531,
-    33.400000000000546
+    0.0048603908194473355,
+    0.0006242698581751277,
+    18.800000000000182
    ],
    [
-    0.016649970237027745,
-    0.001039602747860939,
-    33.30000000000109
+    0.0099982079134735,
+    0.0006277723122492559,
+    38.400000000001455
    ],
    [
-    0.01664999969616421,
-    0.004429185545677744,
-    33.30000000000109
+    0.015002991750501238,
+    0.0011677891052260267,
+    50.399999999999636
    ],
    [
-    0.016649685761832345,
-    0.0012347929570364076,
-    33.29999999999927
+    0.010001999805747452,
+    0.0012904765865817745,
+    32.0
    ]
   ],
-  "n": 946,
+  "n": 976,
   "gov_min": 1,
   "lz": [
-   2.8184874920188467,
-   10.901769116201868
+   2.708807862256392,
+   7.441648651191425
   ],
   "resizes": 6,
   "hold_frames": 175,
@@ -111,18 +111,18 @@
    ]
   ],
   "zoomtempo": {
-   "ohne_vollbild": 0.4783378636816103,
-   "vollbild": 0.499945455932325
+   "ohne_vollbild": 0.25203953771343024,
+   "vollbild": 0.2994617387796973
   }
  },
  "3D": {
   "events": {
-   "fs_an": 8827.800000071526,
-   "groesse": 9167,
-   "quer": 13321.600000023842,
-   "hoch": 16364.300000071526,
-   "fs_aus": 19451.399999976158,
-   "ende": 22182.200000047684
+   "fs_an": 8811.700000047684,
+   "groesse": 9208.600000023842,
+   "quer": 13361.900000095367,
+   "hoch": 16528.300000071526,
+   "fs_aus": 19622.600000023842,
+   "ende": 22570.100000023842
   },
   "sizes": [
    [
@@ -139,146 +139,154 @@
    ]
   ],
   "fps": {
-   "ohne_vollbild": 52.2,
-   "vollbild": 54.5
+   "ohne_vollbild": 58.4,
+   "vollbild": 56.5
   },
   "jerk_base": [
-   0.0011744391955438073,
-   0.001503367172439301
+   0.0010604737579297068,
+   0.0012134148318649171
   ],
   "jerk_events": [
    [
-    0.0029693171754094504,
-    0.003853300977262627
+    0.0009372071539572758,
+    0.0012867562705772449
    ],
    [
-    0.0018147513022732924,
-    0.0017359664339566005
+    0.0003562662214584435,
+    0.0004463997893660145
    ],
    [
-    0.002362317162835427,
-    0.0024319980656144213
+    0.0007034737707574221,
+    0.0008264483296802008
    ],
    [
-    0.0019855519484368424,
-    0.002095932065648976
+    0.0007464033727636705,
+    0.0006999071491993924
    ]
   ],
   "steps_base": [
-   0.02102781365044315,
-   0.028387838702135272,
-   116.69999999999982
+   0.006478689882238431,
+   0.0073767433055732514,
+   34.19999999999982
   ],
   "steps_events": [
    [
-    0.02102781365044315,
-    0.028387838702135272,
-    67.5
+    0.01096374501297559,
+    0.015285152505443591,
+    66.60000000000036
    ],
    [
-    0.008295632043652468,
-    0.008171302777568125,
-    84.89999999999964
+    0.0029572782876239323,
+    0.0037145465754299,
+    35.29999999999927
    ],
    [
-    0.013749567380940242,
-    0.013428612377445207,
-    68.40000000000146
+    0.008431243231508123,
+    0.010024862694625323,
+    50.29999999999927
    ],
    [
-    0.016385135825282227,
-    0.016883026275973528,
-    68.70000000000073
+    0.004500894228170793,
+    0.004253028120865573,
+    99.89999999999782
    ]
   ],
-  "n": 871,
+  "n": 936,
   "gov_min": 0.3,
   "lz": [
-   2.845573515877338,
-   6.691548918155349
+   2.4718399835276963,
+   4.607104639280317
   ],
-  "resizes": 6,
-  "hold_frames": 154,
+  "resizes": 8,
+  "hold_frames": 165,
   "jumps": [],
   "gov_hold": [
    [
-    0.736,
-    0.736
+    1,
+    1
    ],
    [
-    0.736,
-    0.736
+    1,
+    1
    ],
    [
-    0.393,
-    0.393
+    1,
+    1
    ],
    [
-    0.553,
-    0.553
+    0.3,
+    0.3
    ],
    [
-    0.477,
-    0.477
+    0.562,
+    0.562
    ],
    [
-    0.477,
-    0.477
+    0.3,
+    0.3
+   ],
+   [
+    0.3,
+    0.3
+   ],
+   [
+    0.3,
+    0.3
    ]
   ],
   "zoomtempo": {
-   "ohne_vollbild": 0.22135663501159858,
-   "vollbild": 0.23250918029759893
+   "ohne_vollbild": 0.18099740455322227,
+   "vollbild": 0.1153050751667672
   }
  },
  "iphone": {
   "canFly2d": true,
-  "n": 647,
+  "n": 604,
   "off": 0,
   "steps": [
-   0.017999842168302305,
-   0.012625503455381454,
-   36
+   0.01500272397006075,
+   0.004940951014493036,
+   154
   ],
   "lz": [
-   0.7992492068698316,
-   5.429786661786811
+   0.32596422655509105,
+   2.412492733672053
   ],
-  "fps": 59.8
+  "fps": 54.1
  },
  "checks": [
   "ok 2D: im Vollbild, HUD aus ({'hudless': True, 'peek': False, 'fs': True, 'on': True, 'paused': False})",
   "ok 2D: Vollbild verlassen ({'hudless': False, 'peek': False, 'fs': False, 'on': True, 'paused': False})",
   "ok 2D: Canvas-Größe hat gewechselt [(824, 1678), (824, 1790), (1790, 824)]",
-  "ok 2D: Flug läuft durchgehend (946 Bilder, 0 ohne Flug/pausiert)",
-  "ok 2D: Zoom steigt weiter (log10 2.82 → 10.90)",
+  "ok 2D: Flug läuft durchgehend (976 Bilder, 0 ohne Flug/pausiert)",
+  "ok 2D: Zoom steigt weiter (log10 2.71 → 7.44)",
   "ok 2D: 6 Größenänderungen, in den 0,6 s danach kein Bild mit Sprung (175 Bilder, Zoomschritt ≤ Tempo/30 s; Sprünge: [])",
   "ok 2D: Tempo-Bremse hält in den 1,5 s nach jeder Größenänderung ihren Wert ([[1, 1], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]])",
-  "ok 2D: Zoomtempo im Vollbild 0.500 / ohne 0.478 log10/s",
-  "ok 2D: Bildrate im Vollbild 58.3 wie ohne 57.0 (≥ 90 %)",
+  "ok 2D: Zoomtempo im Vollbild 0.299 / ohne 0.252 log10/s",
+  "ok 2D: Bildrate im Vollbild 59.4 wie ohne 60.0 (≥ 90 %)",
   "ok 2D: Leertaste im Vollbild ohne HUD: Flug aus, wieder an (True → False → True, HUD aus True)",
-  "ok 2D: R kehrt um (-0.5 / ist -0.50), R wieder vorwärts (0.5), ↑ Tempo 0.5 → 0.6",
+  "ok 2D: R kehrt um (-0.3 / ist -0.30), R wieder vorwärts (0.3), ↑ Tempo 0.3 → 0.4",
   "ok 2D: Tasten holen das HUD nicht zurück ({'hudless': True, 'peek': False, 'fs': True, 'on': True, 'paused': False})",
   "ok 2D: Doppeltipp ohne HUD: Flug aus (False), wieder an (True), HUD bleibt aus",
-  "ok 2D: einfacher Tipp zeigt das HUD, Flug läuft weiter ({'hudless': True, 'peek': True, 'fs': True, 'on': True, 'paused': False}, Zoom 6.71e+13 → 2.21e+14)",
+  "ok 2D: einfacher Tipp zeigt das HUD, Flug läuft weiter ({'hudless': True, 'peek': True, 'fs': True, 'on': True, 'paused': False}, Zoom 2.36e+09 → 5.5e+09)",
   "ok 3D eingeblendet",
   "ok 3D: im Vollbild, HUD aus ({'hudless': True, 'peek': False, 'fs': True, 'on': True, 'paused': False})",
   "ok 3D: Vollbild verlassen ({'hudless': False, 'peek': False, 'fs': False, 'on': True, 'paused': False})",
   "ok 3D: Canvas-Größe hat gewechselt [(824, 1678), (824, 1790), (1790, 824)]",
-  "ok 3D: Flug läuft durchgehend (871 Bilder, 0 ohne Flug/pausiert)",
-  "ok 3D: Zoom steigt weiter (log10 2.85 → 6.69)",
-  "ok 3D: 6 Größenänderungen, in den 0,6 s danach kein Bild mit Sprung (154 Bilder, Zoomschritt ≤ Tempo/30 s; Sprünge: [])",
-  "ok 3D: Tempo-Bremse hält in den 1,5 s nach jeder Größenänderung ihren Wert ([[0.736, 0.736], [0.736, 0.736], [0.393, 0.393], [0.553, 0.553], [0.477, 0.477], [0.477, 0.477]])",
-  "ok 3D: Zoomtempo im Vollbild 0.233 / ohne 0.221 log10/s",
-  "ok 3D: Bildrate im Vollbild 54.5 wie ohne 52.2 (≥ 90 %)",
+  "ok 3D: Flug läuft durchgehend (936 Bilder, 0 ohne Flug/pausiert)",
+  "ok 3D: Zoom steigt weiter (log10 2.47 → 4.61)",
+  "ok 3D: 8 Größenänderungen, in den 0,6 s danach kein Bild mit Sprung (165 Bilder, Zoomschritt ≤ Tempo/30 s; Sprünge: [])",
+  "ok 3D: Tempo-Bremse hält in den 1,5 s nach jeder Größenänderung ihren Wert ([[1, 1], [1, 1], [1, 1], [0.3, 0.3], [0.562, 0.562], [0.3, 0.3], [0.3, 0.3], [0.3, 0.3]])",
+  "ok 3D: Zoomtempo im Vollbild 0.115 / ohne 0.181 log10/s",
+  "ok 3D: Bildrate im Vollbild 56.5 wie ohne 58.4 (≥ 90 %)",
   "ok 3D: Leertaste im Vollbild ohne HUD: Flug aus, wieder an (True → False → True, HUD aus True)",
-  "ok 3D: R kehrt um (-0.5 / ist -0.50), R wieder vorwärts (0.5), ↑ Tempo 0.5 → 0.6",
+  "ok 3D: R kehrt um (-0.3 / ist -0.30), R wieder vorwärts (0.3), ↑ Tempo 0.3 → 0.4",
   "ok 3D: Tasten holen das HUD nicht zurück ({'hudless': True, 'peek': False, 'fs': True, 'on': True, 'paused': False})",
   "ok 3D: Doppeltipp ohne HUD: Flug aus (False), wieder an (True), HUD bleibt aus",
-  "ok 3D: einfacher Tipp zeigt das HUD, Flug läuft weiter ({'hudless': True, 'peek': True, 'fs': True, 'on': True, 'paused': False}, Zoom 1.63e+08 → 2.44e+08)",
+  "ok 3D: einfacher Tipp zeigt das HUD, Flug läuft weiter ({'hudless': True, 'peek': True, 'fs': True, 'on': True, 'paused': False}, Zoom 2.82e+05 → 5.6e+05)",
   "ok iPhone: Kino-Modus an (True) und wieder aus (False)",
-  "ok iPhone Kino-Modus: Flug läuft durch Kino an, Drehen, Kino aus (647 Bilder, 0 ohne Flug, log10 Zoom 0.80 → 5.43)",
-  "ok iPhone: größter Zoomschritt je Bild 0.0180 (längste Bildzeit 36 ms)",
+  "ok iPhone Kino-Modus: Flug läuft durch Kino an, Drehen, Kino aus (604 Bilder, 0 ohne Flug, log10 Zoom 0.33 → 2.41)",
+  "ok iPhone: größter Zoomschritt je Bild 0.0150 (längste Bildzeit 154 ms)",
   "ok Fehler: []"
  ]
 }

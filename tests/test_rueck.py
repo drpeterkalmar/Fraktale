@@ -26,7 +26,7 @@ REC_JS = """() => { const A = window.__fraktal; const R = window.__rec = { on: t
   const tick = (t) => { if (!R.on) return; requestAnimationFrame(tick);
     const c = A.S.cam, u = 1.5 / c.zoom;
     const e = { t, lz: Math.log10(c.zoom), dx: prev ? A.HP.toNumber(c.cx - prev.cx) / u : 0, dy: prev ? A.HP.toNumber(c.cy - prev.cy) / u : 0,
-                h: A.V3.heading, sp: A.FLY.sp, out: !!A.FLY.out, on: A.FLY.on, nan: !isFinite(c.zoom) || !isFinite(A.HP.toNumber(c.cx)) || !isFinite(A.HP.toNumber(c.cy)) };
+                h: A.V3.heading, sp: A.FLY.sp, st: (A.FLY.simT || 0) * 1000, out: !!A.FLY.out, on: A.FLY.on, nan: !isFinite(c.zoom) || !isFinite(A.HP.toNumber(c.cx)) || !isFinite(A.HP.toNumber(c.cy)) };
     if (prev && e.lz === prev.lz && e.dx === 0 && e.dy === 0 && t - prev.t < 1) return;   // doppeltes rAF
     R.f.push(e);
     if (A.FLY.sp > 0) R.fwd.push({ lz: e.lz, cx: c.cx, cy: c.cy, h: A.V3.heading });
@@ -41,7 +41,7 @@ REC_JS = """() => { const A = window.__fraktal; const R = window.__rec = { on: t
 
 
 def frames(pg):
-    return pg.evaluate("() => window.__rec.f.map(e => [e.t, e.lz, e.dx, e.dy, e.h, e.sp, e.out, e.on, e.nan, e.dev === undefined ? null : e.dev, e.dh === undefined ? null : e.dh])")
+    return pg.evaluate("() => window.__rec.f.map(e => [e.t, e.lz, e.dx, e.dy, e.h, e.sp, e.out, e.on, e.nan, e.dev === undefined ? null : e.dev, e.dh === undefined ? null : e.dh, e.st])")
 
 
 def fps_of(fr):
@@ -55,8 +55,11 @@ def jerk(fr, t0, t1):
     bezogen auf 1/60 s (Bildzeit-Schwankungen herausgerechnet)"""
     w = [f for f in fr if t0 <= f[0] <= t1]
     mz = ml = 0.0
+    # 7.1.7: Zeitbasis = Flugzeit (FLY.simT, auf Bildschirmtakte gerundet): die Kamera bewegt sich in ganzen Takten, die
+    # rAF-Zeitstempel zittern unter Last um ±8 ms
+    k = 11 if w and w[0][11] is not None else 0
     for a, b, c in zip(w, w[1:], w[2:]):
-        dta, dtb = (b[0] - a[0]) / 1000, (c[0] - b[0]) / 1000
+        dta, dtb = (b[k] - a[k]) / 1000, (c[k] - b[k]) / 1000
         if dta <= 0 or dtb <= 0:
             continue
         vz0, vz1 = (b[1] - a[1]) / dta, (c[1] - b[1]) / dtb
@@ -78,6 +81,7 @@ def main():
         # ------------------------------------------------------------ 2D
         a = App(p).open(); pg = a.page
         a.set_view('-0.5', '0', 1); a.wait_done(60)
+        pg.evaluate("() => { __fraktal.S.flySpeed = 0.5; }")      # (7.1.7: Standard 0,3 – der Test misst bei 0,5)
         pg.click('#btn-fly2d')
         time.sleep(0.5)
         need(pg.is_visible('#btn-rev'), '2D-Flug: ⇄ in der Flug-Leiste sichtbar')

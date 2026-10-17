@@ -1,0 +1,300 @@
+{
+ "tag": "a716",
+ "speed": 0.5,
+ "query": "bulbpace=0",
+ "ori": "hoch",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "headed": true,
+ "runs": {
+  "Mandelbulb": {
+   "fps": 48.4,
+   "median_ms": 16.7,
+   "sd_ms": 9.67,
+   "p95_ms": 48.9,
+   "p95_rel": 2.93,
+   "gt50": 14,
+   "n": 847,
+   "scale_changes_s": 34.51,
+   "scale_min": 0.28,
+   "scale_max": 0.7,
+   "cam_cv": 0.399,
+   "cam_ac1": -0.2,
+   "cam_zz": 0.492,
+   "look_max": 31.6,
+   "look_p95": 26.7,
+   "ljerk_p99": 4.89,
+   "ljerk_max": 6.93,
+   "pjerk_p99": 2.14,
+   "pjerk_max": 2.223,
+   "N": [
+    1
+   ],
+   "lvl": [
+    0
+   ],
+   "ok": false,
+   "ab6s": {
+    "fps": 48.1,
+    "median_ms": 16.7,
+    "sd_ms": 9.87,
+    "p95_rel": 2.96,
+    "gt50": 13,
+    "scale_changes_s": 34.14,
+    "cam_cv": 0.411,
+    "cam_zz": 0.514,
+    "N": [
+     1
+    ],
+    "lvl": [
+     0
+    ],
+    "ok": false
+   },
+   "pacelog": [],
+   "js_gt25": 4,
+   "js_max": 59.900000000000006
+  },
+  "Mandelbox": {
+   "fps": 48.0,
+   "median_ms": 16.7,
+   "sd_ms": 10.8,
+   "p95_ms": 35.2,
+   "p95_rel": 2.11,
+   "gt50": 23,
+   "n": 838,
+   "scale_changes_s": 33.32,
+   "scale_min": 0.28,
+   "scale_max": 0.7,
+   "cam_cv": 0.447,
+   "cam_ac1": -0.23,
+   "cam_zz": 0.566,
+   "look_max": 22.7,
+   "look_p95": 17.7,
+   "ljerk_p99": 3.24,
+   "ljerk_max": 4.74,
+   "pjerk_p99": 2.103,
+   "pjerk_max": 2.224,
+   "N": [
+    1
+   ],
+   "lvl": [
+    0
+   ],
+   "ok": false,
+   "ab6s": {
+    "fps": 47.9,
+    "median_ms": 16.7,
+    "sd_ms": 10.93,
+    "p95_rel": 2.11,
+    "gt50": 16,
+    "scale_changes_s": 33.54,
+    "cam_cv": 0.432,
+    "cam_zz": 0.557,
+    "N": [
+     1
+    ],
+    "lvl": [
+     0
+    ],
+    "ok": false
+   },
+   "pacelog": [],
+   "js_gt25": 2,
+   "js_max": 147.79999999999998
+  },
+  "Menger": {
+   "fps": 59.5,
+   "median_ms": 16.7,
+   "sd_ms": 2.27,
+   "p95_ms": 18.4,
+   "p95_rel": 1.1,
+   "gt50": 1,
+   "n": 1039,
+   "scale_changes_s": 0.69,
+   "scale_min": 0.567,
+   "scale_max": 0.7,
+   "cam_cv": 0.17,
+   "cam_ac1": -0.05,
+   "cam_zz": 0.159,
+   "look_max": 25.2,
+   "look_p95": 17.8,
+   "ljerk_p99": 1.15,
+   "ljerk_max": 6.52,
+   "pjerk_p99": 0.986,
+   "pjerk_max": 2.061,
+   "N": [
+    1
+   ],
+   "lvl": [
+    0
+   ],
+   "ok": false,
+   "ab6s": {
+    "fps": 59.4,
+    "median_ms": 16.7,
+    "sd_ms": 2.51,
+    "p95_rel": 1.1,
+    "gt50": 1,
+    "scale_changes_s": 0.86,
+    "cam_cv": 0.134,
+    "cam_zz": 0.13,
+    "N": [
+     1
+    ],
+    "lvl": [
+     0
+    ],
+    "ok": false
+   },
+   "pacelog": [],
+   "js_gt25": 2,
+   "js_max": 43.6
+  },
+  "Quaternionen-Julia": {
+   "fps": 49.6,
+   "median_ms": 16.7,
+   "sd_ms": 9.13,
+   "p95_ms": 34.0,
+   "p95_rel": 2.04,
+   "gt50": 15,
+   "n": 868,
+   "scale_changes_s": 30.69,
+   "scale_min": 0.28,
+   "scale_max": 0.7,
+   "cam_cv": 0.44,
+   "cam_ac1": -0.2,
+   "cam_zz": 0.538,
+   "look_max": 29.1,
+   "look_p95": 20.1,
+   "ljerk_p99": 3.68,
+   "ljerk_max": 6.81,
+   "pjerk_p99": 2.082,
+   "pjerk_max": 2.217,
+   "N": [
+    1
+   ],
+   "lvl": [
+    0
+   ],
+   "ok": false,
+   "ab6s": {
+    "fps": 49.4,
+    "median_ms": 16.7,
+    "sd_ms": 9.07,
+    "p95_rel": 2.04,
+    "gt50": 13,
+    "scale_changes_s": 31.9,
+    "cam_cv": 0.42,
+    "cam_zz": 0.523,
+    "N": [
+     1
+    ],
+    "lvl": [
+     0
+    ],
+    "ok": false
+   },
+   "pacelog": [],
+   "js_gt25": 7,
+   "js_max": 120.39999999999999
+  },
+  "Kaleidoskop-IFS": {
+   "fps": 53.0,
+   "median_ms": 16.7,
+   "sd_ms": 5.8,
+   "p95_ms": 33.4,
+   "p95_rel": 2.0,
+   "gt50": 1,
+   "n": 926,
+   "scale_changes_s": 4.74,
+   "scale_min": 0.4593,
+   "scale_max": 0.7,
+   "cam_cv": 0.38,
+   "cam_ac1": 0.06,
+   "cam_zz": 0.366,
+   "look_max": 13.6,
+   "look_p95": 10.6,
+   "ljerk_p99": 1.64,
+   "ljerk_max": 2.75,
+   "pjerk_p99": 0.307,
+   "pjerk_max": 0.358,
+   "N": [
+    1
+   ],
+   "lvl": [
+    0
+   ],
+   "ok": false,
+   "ab6s": {
+    "fps": 51.8,
+    "median_ms": 16.7,
+    "sd_ms": 6.22,
+    "p95_rel": 2.0,
+    "gt50": 1,
+    "scale_changes_s": 5.93,
+    "cam_cv": 0.417,
+    "cam_zz": 0.4,
+    "N": [
+     1
+    ],
+    "lvl": [
+     0
+    ],
+    "ok": false
+   },
+   "pacelog": [],
+   "js_gt25": 1,
+   "js_max": 30.299999999999997
+  },
+  "Mandelbulb (GPU ×4)": {
+   "fps": 32.4,
+   "median_ms": 33.3,
+   "sd_ms": 15.56,
+   "p95_ms": 66.5,
+   "p95_rel": 2.0,
+   "gt50": 59,
+   "n": 567,
+   "scale_changes_s": 0.91,
+   "scale_min": 0.28,
+   "scale_max": 0.3685,
+   "cam_cv": 0.408,
+   "cam_ac1": -0.15,
+   "cam_zz": 0.517,
+   "look_max": 35.3,
+   "look_p95": 25.1,
+   "ljerk_p99": 6.15,
+   "ljerk_max": 8.11,
+   "pjerk_p99": 1.996,
+   "pjerk_max": 2.287,
+   "N": [
+    1
+   ],
+   "lvl": [
+    0
+   ],
+   "ok": false,
+   "ab6s": {
+    "fps": 30.5,
+    "median_ms": 33.3,
+    "sd_ms": 15.59,
+    "p95_rel": 2.0,
+    "gt50": 53,
+    "scale_changes_s": 0.0,
+    "cam_cv": 0.403,
+    "cam_zz": 0.525,
+    "N": [
+     1
+    ],
+    "lvl": [
+     0
+    ],
+    "ok": false
+   },
+   "pacelog": [],
+   "js_gt25": 5,
+   "js_max": 96.0
+  }
+ },
+ "errors": []
+}

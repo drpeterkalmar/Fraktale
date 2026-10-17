@@ -1,14 +1,14 @@
 {
  "G_2D": {
-  "t_reach_ms": 1835,
-  "sp_250ms": 0.033,
-  "max_rate_jump_rel": 0.044,
+  "t_reach_ms": 1832,
+  "sp_250ms": 0.038,
+  "max_rate_jump_rel": 0.013,
   "dips": 0
  },
  "G_3D": {
-  "t_reach_ms": 1831,
-  "sp_250ms": 0.022,
-  "max_rate_jump_rel": 0.042,
+  "t_reach_ms": 1830,
+  "sp_250ms": 0.024,
+  "max_rate_jump_rel": 0.015,
   "dips": 0
  }
 }

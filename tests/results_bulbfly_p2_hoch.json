@@ -1,0 +1,148 @@
+{
+ "tag": "p2",
+ "ori": "hoch",
+ "throttle": 4.0,
+ "dpr": 2.6,
+ "headed": true,
+ "runs": {
+  "Mandelbulb": {
+   "fps": 59.5,
+   "median_ms": 16.7,
+   "sd_ms": 1.77,
+   "p95_ms": 18.2,
+   "p95_rel": 1.09,
+   "gt50": 0,
+   "n": 564,
+   "scale_changes_s": 0.53,
+   "scale_min": 0.5117,
+   "scale_max": 0.7,
+   "cam_cv": 0.058,
+   "N": [
+    1
+   ],
+   "lvl": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "ok": true
+  },
+  "Mandelbox": {
+   "fps": 44.8,
+   "median_ms": 16.8,
+   "sd_ms": 8.1,
+   "p95_ms": 33.8,
+   "p95_rel": 2.01,
+   "gt50": 2,
+   "n": 423,
+   "scale_changes_s": 0.53,
+   "scale_min": 0.4401,
+   "scale_max": 0.7,
+   "cam_cv": 0.225,
+   "N": [
+    1,
+    2
+   ],
+   "lvl": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "ok": false
+  },
+  "Menger": {
+   "fps": 52.1,
+   "median_ms": 16.7,
+   "sd_ms": 6.02,
+   "p95_ms": 33.4,
+   "p95_rel": 2.0,
+   "gt50": 0,
+   "n": 494,
+   "scale_changes_s": 0.21,
+   "scale_min": 0.595,
+   "scale_max": 0.7,
+   "cam_cv": 0.063,
+   "N": [
+    1,
+    2
+   ],
+   "lvl": [
+    2,
+    3
+   ],
+   "ok": false
+  },
+  "Quaternionen-Julia": {
+   "fps": 60.0,
+   "median_ms": 16.7,
+   "sd_ms": 0.59,
+   "p95_ms": 17.8,
+   "p95_rel": 1.07,
+   "gt50": 0,
+   "n": 569,
+   "scale_changes_s": 0.42,
+   "scale_min": 0.4401,
+   "scale_max": 0.595,
+   "cam_cv": 0.084,
+   "N": [
+    1
+   ],
+   "lvl": [
+    3,
+    4,
+    5
+   ],
+   "ok": true
+  },
+  "Kaleidoskop-IFS": {
+   "fps": 60.0,
+   "median_ms": 16.7,
+   "sd_ms": 0.69,
+   "p95_ms": 18.0,
+   "p95_rel": 1.08,
+   "gt50": 0,
+   "n": 568,
+   "scale_changes_s": 0.21,
+   "scale_min": 0.5117,
+   "scale_max": 0.7,
+   "cam_cv": 0.168,
+   "N": [
+    1
+   ],
+   "lvl": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "ok": false
+  },
+  "Mandelbulb (GPU ×4)": {
+   "fps": 27.7,
+   "median_ms": 33.3,
+   "sd_ms": 11.96,
+   "p95_ms": 51.1,
+   "p95_rel": 1.53,
+   "gt50": 24,
+   "n": 261,
+   "scale_changes_s": 0.74,
+   "scale_min": 0.4401,
+   "scale_max": 0.7,
+   "cam_cv": 0.095,
+   "N": [
+    1,
+    2
+   ],
+   "lvl": [
+    2,
+    3,
+    4,
+    5
+   ],
+   "ok": false
+  }
+ },
+ "errors": []
+}

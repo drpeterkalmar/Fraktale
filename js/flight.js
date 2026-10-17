@@ -55,6 +55,7 @@ root.FKFlight = { create(ctx) {
     const START_MS = 2000, STOP_MS = 1000;
     function rampStart() {
         const now = performance.now();
+        FLY.kPrev = null;
         FLY.t0 = now; FLY.stopping = false;
         if (ANFAHRT) { FLY.sp = 0; FLY.ramp = { from: 0, to: S.flySpeed, t0: now, ms: START_MS }; FLY.ease = 0; }
         else { FLY.sp = S.flySpeed; FLY.ramp = null; FLY.ease = 1; }
@@ -77,7 +78,7 @@ root.FKFlight = { create(ctx) {
             stopAnims();
             if (S.formula !== fm) setMode(fm, true);
             if (!ctx.BULB.startFly(place)) return;
-            if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && S.cam.zoom < 1.5)) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.5);
+            if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && S.cam.zoom < 1.5)) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.3);
             rampStart(); FLY.rev = S.flySpeed < 0; FLY.out = false; FLY.lastDir = Math.sign(S.flySpeed) || 1;
             FLY.on = true; FLY.paused = false; FLY.d3 = false; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0;
             emit('fly');
@@ -105,7 +106,7 @@ root.FKFlight = { create(ctx) {
         } else { FLY.mode = 'random'; FLY.target = null; }
         if (d3) set3d(true); else if (in3d()) set3d(false);     // 2D-Flug aus 3D heraus: 3D aus, der Flug läuft flach
         // 6.8: Start mit dem eingestellten Tempo; steht der Regler auf 0 (oder rückwärts in der Übersicht), vorwärts
-        if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && (place || S.cam.zoom < 1.5))) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.5);
+        if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && (place || S.cam.zoom < 1.5))) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.3);
         rampStart(); FLY.rev = S.flySpeed < 0; FLY.out = false; FLY.lastDir = Math.sign(S.flySpeed) || 1;
         // Kursverlauf: weiter benutzen, wenn der Flug genau dort weitergeht, wo der letzte endete (sonst neu)
         const te = FLY.trailEnd, c0 = S.cam;
@@ -141,11 +142,11 @@ root.FKFlight = { create(ctx) {
         if (FLY.on) stopFlySoft(); else if (canFly()) startFly(place);
     }
     function pauseFly(p) { if (!FLY.on) return; FLY.paused = p === undefined ? !FLY.paused : p; emit('fly'); }
-    // 6.8: Richtung wechseln (⇄, Taste R): Tempo in 0,6 s über 0 auf den Gegenwert (steht der Regler auf 0: 0,5 gegen die
+    // 6.8: Richtung wechseln (⇄, Taste R): Tempo in 0,6 s über 0 auf den Gegenwert (steht der Regler auf 0: 0,3 gegen die
     // zuletzt geflogene Richtung). Ein pausierter Flug läuft dabei weiter.
     function reverseFly() {
         if (!RUECK || !FLY.on) return;
-        const v = Math.abs(S.flySpeed) >= 0.05 ? -S.flySpeed : -(FLY.lastDir || 1) * 0.5;
+        const v = Math.abs(S.flySpeed) >= 0.05 ? -S.flySpeed : -(FLY.lastDir || 1) * 0.3;
         S.flySpeed = v;
         FLY.ramp = { from: FLY.sp, to: v, t0: performance.now() };
         if (FLY.paused) FLY.paused = false;
@@ -303,7 +304,27 @@ root.FKFlight = { create(ctx) {
         if (!FLY.d3) FLY.A = [0, 0];
         if (!rev) FLY.out = false;
     }
+    // 7.1.7 Zeitschritt des Flugs auf ganze Bildschirmtakte gerundet (Peter: „Flug ist noch zu unruhig“): das Bild erscheint
+    // ohnehin im Takt des Displays – so macht die Kamera je gezeigtem Bild gleich große Schritte, das Zittern der rAF-Zeit-
+    // stempel (unter Last ±8 ms) geht nicht in den Weg ein. Absolut gerundet an einem Raster, dessen Phase den Zeitstempeln
+    // nachgeführt wird (je Schritt gerundet summierten sich Fehler; mit fester Phase flatterte die Rundung bei Zeitstempeln
+    // nahe einer halben Periode zwischen 0 und 2 Takten). Ein Bild, das einen Takt später kommt, zeigt die Kamera auch einen
+    // Takt weiter (zeitrichtig). FLY.simT = Flugzeit (Messung). ?takt=0 (bzw. ?bulbpace=0) = roher Zeitschritt wie bis 7.1.6.
+    const TAKT = ctx.Q.get('takt') !== '0' && ctx.Q.get('bulbpace') !== '0';
+    function taktDt(now, dt) {
+        if (!TAKT) return dt;
+        const vs = (ctx.RC.vsync || 16.67) / 1000, ts = now / 1000;
+        if (FLY.kPrev === null || FLY.kPrev === undefined) { FLY.tRef = ts - vs; FLY.kPrev = 0; }
+        const kf = (ts - FLY.tRef) / vs, k = Math.round(kf);
+        FLY.tRef += (kf - k) * vs * 0.1;
+        const dk = k - FLY.kPrev;                       // (nach Pause/Hänger > 6 Takte: ein Takt, kein Sprung)
+        if (k > FLY.kPrev) FLY.kPrev = k;
+        return dk > 6 ? vs : Math.max(0, Math.min(3, dk)) * vs;
+    }
     function flyUpdate(now, dt) {
+        dt = taktDt(now, dt);
+        if (!(dt > 0)) return;
+        FLY.simT = (FLY.simT || 0) + dt;
         if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { flySpeedStep(now, dt); ctx.BULB.flyUpdate(now, dt); return; }
         flyMode();
         flySpeedStep(now, dt);

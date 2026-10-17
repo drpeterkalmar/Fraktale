@@ -64,7 +64,7 @@ def case_B(p):
     stored = pg.evaluate("() => JSON.parse(localStorage.getItem('fraktal_v5_settings'))")
     hud = pg.evaluate("() => window.__fraktal.S.hudFs")
     check(all(s[k] == v for k, v in NEW.items()), f'nach Migration neue Standards {s}')
-    check(abs(s['density'] - 1.7) < 1e-9 and hud is False and stored.get('sv') == 2, f'eigene Werte bleiben (Dichte {s["density"]}, HUD {hud}), sv={stored.get("sv")}')
+    check(abs(s['density'] - 1.7) < 1e-9 and hud is False and (stored.get('sv') or 0) >= 2, f'eigene Werte bleiben (Dichte {s["density"]}, HUD {hud}), sv={stored.get("sv")}')
     pg.evaluate("() => { const A = window.__fraktal; A.S.palette = A.PAL.indexOf('neon'); A.S.edgeW = 40; A.S.setCol = 'black'; A.saveSettings(); }")
     pg.goto('about:blank'); a.open(); s2 = pg.evaluate(STD)
     check(s2['pal'] == 'neon' and s2['edgeW'] == 40 and s2['setCol'] == 'black', f'eigene Änderung nach der Migration bleibt {s2}')
@@ -161,7 +161,8 @@ def case_F(p):
 
 
 REC = """(n) => new Promise(res => { const A = window.__fraktal, out = []; let k = 0;
-    const f = () => { const B = A.BULB; out.push([performance.now(), A.FLY.sp, A.isRay() ? Math.log10(B.B.zoom || B.info().zoom || 1) : Math.log10(A.S.cam.zoom), A.FLY.on]);
+    const f = () => { const B = A.BULB; out.push([performance.now(), A.FLY.sp, A.isRay() ? Math.log10(B.B.zoom || B.info().zoom || 1) : Math.log10(A.S.cam.zoom), A.FLY.on,
+        A.FLY.simT !== undefined ? A.FLY.simT * 1000 : null]);
         if (++k < n) requestAnimationFrame(f); else res(out); }; requestAnimationFrame(f); })"""
 
 
@@ -172,7 +173,10 @@ def ramp_check(rec, sp, tag):
     first = [r for r in rec if r[0] - t0 < 250]
     t_reach = next((r[0] - t0 for r in rec if r[1] >= sp * 0.98), None)
     # Kamera-Schritt je Sekunde (Zehnerpotenzen/s) aus den Bild-Deltas: steigt mit, ohne Sprung
-    rates = [(rec[i + 1][2] - rec[i][2]) / max(1e-3, (rec[i + 1][0] - rec[i][0]) / 1000) for i in range(len(rec) - 1)]
+    # 7.1.7: je Flugzeit (FLY.simT: auf Bildschirmtakte gerundet) – die rAF-Zeitstempel zittern unter Last um ±8 ms, die
+    # Kamera selbst nicht
+    tc = 4 if rec[0][4] is not None else 0
+    rates = [(rec[i + 1][2] - rec[i][2]) / max(1e-3, (rec[i + 1][tc] - rec[i][tc]) / 1000) for i in range(len(rec) - 1)]
     # über 5 Bilder geglättet (der Messtakt zittert 14–19 ms gegen den App-Takt); bewertet die Anfahrt (erste 1,8 s)
     sm = [sum(rates[max(0, i - 2):i + 3]) / len(rates[max(0, i - 2):i + 3]) for i in range(len(rates))]
     early = [r for i, r in enumerate(sm) if rec[i][0] - t0 < 1800]

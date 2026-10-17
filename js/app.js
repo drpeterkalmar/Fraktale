@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.6';
+const APP_VERSION = '7.1.7';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -184,7 +184,7 @@ const S = {
     // 1 Umlauf in 20 s (bis 7.1.5: 6,7 s); wer schon Einstellungen hat, bekommt sie einmal per Migration (SETTINGS_V)
     palette: Math.max(0, PAL.indexOf('ice')), density: 1, anim: true, speed: 0.05, relief: false, reliefStrength: 0.7, banded: false, particles: true,
     cycle: 0, time: 0, ctime: 0,                                            // ctime: Farbzeit (Leuchten/Pulsieren) im Farbtempo
-    quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.5,
+    quality: 'balanced', renderer: 'auto', precise: true, minimap: false, rectMode: false, lang: 'de', zoomFormat: 'sci', governor: true, h3d: 0.6, flySpeed: 0.3,
     deOn: true, aa: true,     // 6.1: Menge glatt (Distanzschätzung), Glatte Kanten (3D-Mittelung im Stillstand)
     setCol: 'bunt', setHex: '#e8f0ff', alpine: false, valley: 'forest',   // 6.2: Farbe der Menge, Alpin-Look (3D) mit Tal (forest/lake/meadow)
     inMode: 1,                                                              // 6.4: Bunte Menge (setCol 'bunt'): 1 Inseln, 2 Ringe
@@ -265,7 +265,7 @@ for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f]);
 const listeners = [];
 function emit(what) { for (const f of listeners) f(what); }
 
-const SETTINGS_V = 2;          // 7.1.6: Version der Standards (Migration in loadSettings)
+const SETTINGS_V = 3;          // Version der Standards (Migration in loadSettings): 2 = 7.1.6, 3 = 7.1.7
 let SETTINGS_MIGRATED = false;
 function loadSettings() {
     PAL.loadCustom();
@@ -276,11 +276,13 @@ function loadSettings() {
         for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f], S.wp[f] || {});
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
         // 7.1.6: neue Standards einmalig übernehmen (nur diese Felder; danach gelten wieder die eigenen Änderungen)
-        if (Object.keys(s).length && (s.sv | 0) < SETTINGS_V) {
+        if (Object.keys(s).length && (s.sv | 0) < 2) {
             S.palette = Math.max(0, PAL.indexOf('ice')); S.wpal = Object.assign({}, S.wpal, { c: 'ice' });
             S.setCol = 'bunt'; S.inMode = 1; S.outMode = 'edge'; S.edgeW = 100; S.speed = 0.05;
             SETTINGS_MIGRATED = true;
         }
+        // 7.1.7 (Peter: „Anfangsgeschwindigkeit etwas langsamer“): Flug-Tempo 0,5 -> 0,3, nur wenn noch der alte Standard steht
+        if (Object.keys(s).length && (s.sv | 0) < 3 && S.flySpeed === 0.5) { S.flySpeed = 0.3; SETTINGS_MIGRATED = true; }
     } catch (e) { /* ignorieren */ }
     if (!TRANSLATIONS[S.lang]) S.lang = 'de';
     try { if (!localStorage.getItem('fraktal_v5_settings')) S.minimap = window.innerWidth >= 900; } catch (e) {}
@@ -634,7 +636,7 @@ function jmorphStep(now, dt) {
     const f = RC.front;
     if (f && f.sig !== contentSig() && now - (JM.t || 0) < 400) return;
     JM.t = now;
-    JM.th += Math.min(dt, 0.05) * 0.2 * S.flySpeed;            // Tempo 0,5 -> eine Runde in ~1 min
+    JM.th += Math.min(dt, 0.05) * 0.2 * S.flySpeed;            // Tempo 0,5 -> eine Runde in ~1 min (Standard seit 7.1.7: 0,3 -> ~1,7 min)
     const c = cardioid(JM.th);
     S.julia = { x: HP.fromNumber(+c[0].toFixed(9)), y: HP.fromNumber(+c[1].toFixed(9)) };
     invalidate('julia'); emit('julia');
