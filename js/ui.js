@@ -236,10 +236,32 @@ function buildModes() {
             const b = el('button', 'mode-card' + (i === S.formula ? ' on' : ''));
             b.innerHTML = `<span class="thumb" style="background-image:url('assets/modes/${i}.jpg${V}')"></span><span class="name">${cap(names[i])}</span><span class="formula">${t('f_' + k)}</span>`;
             b.addEventListener('click', () => { if (i !== S.formula) crossfade(650); A.setMode(i); buildModes(); });
-            g.appendChild(b);
+            // 7.1.10 ⓘ: eigener Knopf neben der Kachel (nicht in ihr – sonst wählte der Tipp auch die Welt)
+            const w = el('div', 'mode-wrap'), inf = el('button', 'mode-info', '<span aria-hidden="true">i</span>');
+            inf.dataset.world = i; inf.title = t('fx_info') + ': ' + cap(names[i]); inf.setAttribute('aria-label', inf.title);
+            inf.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openFacts(i); });
+            w.appendChild(b); w.appendChild(inf);
+            g.appendChild(w);
         }
     }
 }
+// 7.1.10 ⓘ-Faktenkarte (Inhalt und Quellen: js/weltfakten.js); schließen per ✕, Tipp daneben oder Esc
+const escH = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function openFacts(i) {
+    const F = self.FKFacts && self.FKFacts.CARDS[i];
+    if (!F) return;
+    const c = F[S.lang === 'de' ? 'de' : 'en'];
+    $('facts-body').innerHTML = `<h3 id="facts-title">${escH(cap(MODE_NAMES()[i]))}</h3><div class="fx-f">${escH(c.f)}</div>`
+        + `<p><b>${t('fx_who')}:</b> ${escH(c.who)}</p><ul>${c.nums.map(n => `<li>${escH(n)}</li>`).join('')}</ul>`
+        + `<p><b>${t('fx_see')}:</b> ${escH(c.see)}</p><p class="fx-fun"><b>${t('fx_fun')}</b> ${escH(c.fun)}</p>`
+        + `<p class="fx-src">${t('fx_src')}: ${F.src.map(escH).join(' · ')}</p>`;
+    $('facts').dataset.world = i;
+    $('facts').hidden = false; $('facts-backdrop').hidden = false;
+    $('facts-close').focus({ preventScroll: true });
+}
+function closeFacts() { if ($('facts').hidden) return false; $('facts').hidden = true; $('facts-backdrop').hidden = true; return true; }
+$('facts-close').addEventListener('click', closeFacts);
+$('facts-backdrop').addEventListener('click', closeFacts);
 // 7.1 Parameter der Welt: Burning-Ship-Familie, Multibrot (Exponent, Morph), Newton (Polynom), Lyapunov (Folge), Phoenix,
 // Nova, Magnet. Änderungen rechnen sofort neu (wie das c-Pad); Regler live, gespeichert beim Loslassen
 const LYA_SEQ = ['AB', 'AABAB', 'BBBBBBAAAAAA', 'AABB', 'ABBAB', 'BBABAA'];
@@ -971,6 +993,7 @@ $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) close
 const KEY = { space: false };
 window.addEventListener('keyup', (e) => { if ((e.key === ' ' || e.key === 'Spacebar') && KEY.space) { e.preventDefault(); KEY.space = false; } });
 window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && closeFacts()) { e.preventDefault(); return; }       // 7.1.10 Faktenkarte zuerst
     if (SP.mode) { if (e.key === 'Escape') $('shot-x').click(); else if (e.key === 'Enter' && SP.mode === 'ask') $('shot-go').click(); return; }   // 6.8.1 Screenshot-Leiste
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;

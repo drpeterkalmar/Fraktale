@@ -1,0 +1,234 @@
+{
+ "A": [
+  [
+   0,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   1,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   2,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   3,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   4,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   5,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   10,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   11,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   12,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   13,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   6,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   8,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   9,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   16,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   17,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   18,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   14,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   15,
+   48,
+   48,
+   0,
+   0
+  ],
+  [
+   7,
+   48,
+   48,
+   0,
+   0
+  ]
+ ],
+ "C": [
+  [
+   65,
+   4,
+   "Quellen: Wikipedia: Mandelbrot set · Douady & Hubbard 1982 · Shishikura 1998, Annals of Math. 147"
+  ],
+  [
+   56,
+   3,
+   "Quellen: Wikipedia: Julia set · Wikipedia: Gaston Julia"
+  ],
+  [
+   28,
+   2,
+   "Quellen: Wikipedia: Burning Ship fractal · Michelitsch & Rössler 1992, Computers & Graphics 16"
+  ],
+  [
+   40,
+   2,
+   "Quellen: Wikipedia: Tricorn (mathematics) · Crowe et al. 1989, Nonlinearity 2 · Hubbard & Schleicher 2014"
+  ],
+  [
+   42,
+   3,
+   "Quellen: Wikipedia: Multibrot set"
+  ],
+  [
+   36,
+   3,
+   "Quellen: Wikipedia: Newton fractal · Wikipedia: Newton’s method · Cayley 1879, Amer. J. Math. 2"
+  ],
+  [
+   56,
+   2,
+   "Quellen: Wikipedia: Mandelbulb"
+  ],
+  [
+   58,
+   3,
+   "Quellen: Wikipedia: Buddhabrot"
+  ],
+  [
+   58,
+   2,
+   "Quellen: Wikipedia: Mandelbox"
+  ],
+  [
+   73,
+   3,
+   "Quellen: Wikipedia: Menger sponge"
+  ],
+  [
+   49,
+   2,
+   "Quellen: Wikipedia: Lyapunov fractal · Markus & Hess 1989, Computers & Graphics 13"
+  ],
+  [
+   23,
+   3,
+   "Quellen: Ushiki 1988, IEEE Trans. Circuits and Systems 35"
+  ],
+  [
+   28,
+   2,
+   "Quellen: Wikipedia: Newton fractal (Nova fractal)"
+  ],
+  [
+   42,
+   2,
+   "Quellen: Peitgen & Richter 1986, The Beauty of Fractals"
+  ],
+  [
+   68,
+   2,
+   "Quellen: Wikipedia: Fractal flame · Draves & Reckase 2003, The Fractal Flame Algorithm"
+  ],
+  [
+   64,
+   2,
+   "Quellen: Wikipedia: Lorenz system · Pickover 1994, Chaos in Wonderland · paulbourke.net: Clifford / Peter de Jong attractors"
+  ],
+  [
+   62,
+   3,
+   "Quellen: Wikipedia: Quaternion · Norton 1982, SIGGRAPH · Hart, Sandin & Kauffman 1989, SIGGRAPH"
+  ],
+  [
+   64,
+   2,
+   "Quellen: fractalforums.com: Knighty, Kaleidoscopic (escape time) IFS, 2010"
+  ],
+  [
+   78,
+   2,
+   "Quellen: Wikipedia: Apollonian gasket · iquilezles.org (Inigo Quilez)"
+  ]
+ ]
+}

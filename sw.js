@@ -4,7 +4,7 @@
 //  * Neue Version -> neuer sw.js-Inhalt -> Browser installiert neu; aktiv (und alte Caches gelöscht) erst beim nächsten Start.
 //  * HTML (Navigation) immer zuerst frisch aus dem Netz (no-cache), offline aus dem Cache.
 //  * VERSION MUSS APP_VERSION in js/app.js entsprechen (tests/test_release.py prüft das).
-const VERSION = '7.1.9';
+const VERSION = '7.1.10';
 const CACHE = 'fraktale-' + VERSION;
 const Q = '?v=' + VERSION;
 const ASSETS = [
@@ -17,6 +17,7 @@ const ASSETS = [
     'js/cpu-pool.js',
     'js/density.js',
     'js/flames.js',
+    'js/weltfakten.js',
     'js/flight.js',
     'js/fractal-core.js',
     'js/gestures.js',

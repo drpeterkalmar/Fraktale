@@ -674,10 +674,12 @@ for (const l of Object.keys(TRANSLATIONS_V71)) TRANSLATIONS_UI[l] = Object.assig
 const TRANSLATIONS_V719 = {
     de: { bulb_flight: "Flug", fly_durch: "Durchflug", fly_tauch: "Tauchen", fly_mode_title: "Flug-Art: ✈ Durchflug (durch Gänge, über Strukturen) / 🔍 Tauchen (hinein in die Tiefe)",
           fly_back_start: "Am Anfang des Wegs", bulb_sway: "Sanft schwanken (Fluglage)",
-          fly_mode_hint: "✈ Durchflug: fliegt wie ein Flugzeug durch Gänge und Löcher, an Oberflächen gleitet er darüber hinweg. 🔍 Tauchen: zoomt endlos in die Tiefe." },
+          fly_mode_hint: "✈ Durchflug: fliegt wie ein Flugzeug durch Gänge und Löcher, an Oberflächen gleitet er darüber hinweg. 🔍 Tauchen: zoomt endlos in die Tiefe.",
+          fx_info: "Fakten zu dieser Welt", fx_who: "Entdeckt", fx_see: "Im Bild", fx_fun: "Wusstest du?", fx_src: "Quellen", close: "Schließen" },
     en: { bulb_flight: "Flight", fly_durch: "Fly-through", fly_tauch: "Dive", fly_mode_title: "Flight mode: ✈ fly-through (through corridors, over structures) / 🔍 dive (into the depths)",
           fly_back_start: "Back at the start of the path", bulb_sway: "Gentle sway (attitude)",
-          fly_mode_hint: "✈ Fly-through: flies like a plane through corridors and holes and glides over surfaces. 🔍 Dive: zooms endlessly into the depths." }
+          fly_mode_hint: "✈ Fly-through: flies like a plane through corridors and holes and glides over surfaces. 🔍 Dive: zooms endlessly into the depths.",
+          fx_info: "Facts about this world", fx_who: "Discovered", fx_see: "In the picture", fx_fun: "Did you know?", fx_src: "Sources", close: "Close" }
 };
 for (const l of Object.keys(TRANSLATIONS_V719)) TRANSLATIONS_UI[l] = Object.assign(TRANSLATIONS_UI[l] || {}, TRANSLATIONS_V719[l]);
 (function () {

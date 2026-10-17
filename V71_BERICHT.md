@@ -16,7 +16,8 @@ Dieser Bericht wächst mit jeder Etappe; Einzelheiten zu jeder Version stehen im
 | 7.1.6 | Neue Standards nach Peter (Eis, Bunt, Grenznah 100 px, Farbtempo 20 s), Vollbild beim ersten Tipp, Zufalls-Startwelt, Neuladen = Neustart, sanfter Flugstart |
 | 7.1.7 | Ruhiger 3D-Flug: gleichmäßiger Takt, Kamera und Blick ohne Zittern, Flug-Tempo 0,3 |
 | 7.1.8 | Im Flug immer scharf: volle Auflösung, Zwischenbilder, Streifen, Vorausrendern, langsamer statt unscharf |
-| **7.1.9** | **Durchflug, Gleiten, sanfte Fluglage** (Abschnitt unten) |
+| 7.1.9 | Durchflug, Gleiten, sanfte Fluglage |
+| **7.1.10** | **ⓘ-Faktenkarte je Welt** (Abschnitt unten) |
 
 Galerie-Bögen der Welten: `tests/shots/v71/blatt_*.jpg`.
 
@@ -328,3 +329,35 @@ Schwanken: Horizont neigt sich langsam um einige Grad, in Kurven deutlicher – 
 - Angepasst: test_v71 (Apollonian: Tauchen – Zoom steigt; Durchflug – Weg in Abständen zur Oberfläche).
 - Regression grün: test_v70, test_v71, test_v716, test_v717, test_v718, test_shader_fail, test_rueck, test_fs_fly, test_shot,
   test_hud_fs, Unit-Tests.
+
+
+## 7.1.10 – ⓘ-Faktenkarte je Welt
+
+Peter, 10.10.: „… im Eck jedes Welt-Buttons ein kleines Informationszeichen, welches beim Draufttippen genaue Fakten zu dieser
+Welt erzählt.“
+
+- Jede der 19 Welten-Kacheln im Welt-Wähler hat oben rechts ein ⓘ – ein eigener Knopf neben der Kachel (nicht in ihr), so wählt
+  der Tipp die Welt nicht. Tippfläche 48 px (Auftrag ≥ 32 px; die Touch-Regel der App, `test_ui`, verlangt 48), sichtbar ein
+  22-px-Punkt. Das ✓ der gewählten Welt (Deko-Stil) ist dafür nach links gewandert.
+- Karte im Glas-Look: Formel bzw. Regel, „Entdeckt“, 2–4 Zahlen/Eigenschaften, „Im Bild“ mit Verweis auf die Tour-Orte (und bei
+  den 3D-Welten der Flug-Art), „Wusstest du?“, Quellen. Schließen per ✕, Tipp daneben, Esc. Deutsch und Englisch (andere Sprachen:
+  Englisch), hoch und quer vollständig sichtbar.
+- **Nur belegte Fakten**: Quellen je Karte in `js/weltfakten.js` (kommentiert) und sichtbar am Kartenende – Wikipedia-Artikel
+  der jeweiligen Fraktale sowie Originalarbeiten (Douady & Hubbard 1982, Shishikura 1998, Michelitsch & Rössler 1992, Crowe et al.
+  1989, Hubbard & Schleicher 2014, Cayley 1879, Markus & Hess 1989, Ushiki 1988, Peitgen & Richter 1986, Draves & Reckase 2003,
+  Pickover 1994, Norton 1982, Hart/Sandin/Kauffman 1989, Knighty 2010). Bewusst weggelassen, weil nicht sicher belegt: Herkunft der
+  Burning-Ship-Untervarianten (Celtic, Büffel …), Urheber des Svensson-Attraktors, Namensherkunft „Phoenix“. Eigenes der App ist
+  markiert („Variante der App“): gebrochene Multibrot-Exponenten und Morph, Burning-Ship-Untervarianten, Phoenix-Mandelbrot-Form,
+  Nova-Formen, KIFS-Parameter, der 3D-Kugelschaum „Apollonian“.
+- Länge: 45–88 Wörter je Karte (Ziel ≤ ~90).
+- Sichtprüfung der Bildschirmfotos (`tests/shots/v7110/waehler_{hoch,quer}.png`, `karte_{mandelbrot,menger}_{hoch,quer}.png`,
+  durch mich): ⓘ klein und eindeutig in der Ecke, stört die Kachel nicht; Karten gut lesbar, gegliedert, nicht überladen.
+- Tests: Unit `tests/unit/weltfakten.test.js`; `tests/test_v7110.py` A–D; test_ui (Touch-Ziele) grün.
+
+## Stand des Gesamtauftrags 7.1
+
+Alle Etappen und Nachträge sind umgesetzt und live: Färbe-Stile (7.1.0), neue 2D-Welten (7.1.1), Lichtbilder (7.1.2), weitere
+3D-Fraktale (7.1.3), Julia-Lupe/-Morph (7.1.4), Feinschliff und Sehenswürdigkeiten (7.1.5), neue Standards (7.1.6), ruhiger
+3D-Flug (7.1.7), im Flug immer scharf (7.1.8), Durchflug/Gleiten/Fluglage (7.1.9), ⓘ-Faktenkarte (7.1.10). Offene Grenzen stehen
+in den Abschnitten „Ehrlich zu den Grenzen“ (vor allem: Tempo-Einbußen auf schwachen Geräten, Mandelbox wird selten von innen
+durchflogen, kein 120-Hz-Messgerät, Messungen unter Fremdlast streuen).

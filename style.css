@@ -426,3 +426,23 @@ html.deko body.ready #gl { animation: glIn .9s ease-out; }
 #shot-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .1); overflow: hidden; }
 #shot-bar[hidden] { display: none; }
 #shot-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #a78bfa, #f0abfc); transition: width .25s linear; }
+
+/* 7.1.10 ⓘ-Faktenkarte je Welt: ⓘ oben rechts auf jeder Welten-Kachel, Karte im Glas-Look */
+.mode-wrap { position: relative; display: grid; }
+.mode-info { position: absolute; z-index: 3; top: 0; right: 0; width: 48px; height: 48px; padding: 9px; border: 0; background: none; display: flex; align-items: flex-start; justify-content: flex-end; cursor: pointer; }   /* Tippfläche 48 px (Regel der App), sichtbar ein 22-px-Punkt in der Ecke */
+.mode-info span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 13px/1 Georgia, 'Times New Roman', serif; font-style: italic;
+    color: #fff; background: rgba(15, 12, 30, 0.62); border: 1px solid rgba(255, 255, 255, 0.35); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+.mode-info:hover span, .mode-info:focus-visible span { background: rgba(124, 58, 237, 0.75); }
+html.deko .mode-card.on::before { right: auto; left: 14px; }
+#facts-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.35); }
+#facts { position: fixed; z-index: 81; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100vw - 28px)); max-height: calc(100vh - 40px - var(--sa-b));
+    overflow: auto; padding: 16px 18px 14px; font-size: 14px; line-height: 1.45; }
+#facts-close { position: absolute; top: 8px; right: 8px; }
+#facts h3 { margin: 0 40px 4px 0; font-size: 18px; text-transform: none; letter-spacing: 0; color: #fff; }
+#facts .fx-f { font-family: var(--mono); font-size: 13px; color: #d8ccff; margin-bottom: 8px; }
+#facts p { margin: 6px 0; }
+#facts ul { margin: 4px 0 6px; padding-left: 18px; }
+#facts li { margin: 2px 0; }
+#facts .fx-fun { border-left: 2px solid rgba(167, 139, 250, 0.7); padding-left: 8px; }
+#facts .fx-src { font-size: 11px; color: var(--dim); margin-top: 8px; }
+@media (orientation: landscape) and (max-height: 540px) { #facts { width: min(620px, calc(100vw - 28px)); font-size: 13px; padding: 12px 16px 10px; } #facts h3 { font-size: 16px; } }
