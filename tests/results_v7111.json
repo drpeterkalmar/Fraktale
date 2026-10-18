@@ -1,0 +1,126 @@
+{
+ "cases": {
+  "Mandelbrot Start": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 434162,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Mandelbrot tief (GPU-Perturbation)": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 414019,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Julia": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 481478,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Seide (Färbe-Stil)": {
+   "ndiff": 182,
+   "maxdiff": 1,
+   "mean": 0.00026331018518518516,
+   "vals": 691200,
+   "lit": 516164,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Kreuz-Falle + Relief": {
+   "ndiff": 4,
+   "maxdiff": 1,
+   "mean": 5.787037037037037e-06,
+   "vals": 691200,
+   "lit": 237760,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Burning Ship (Staub-Korrektur)": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 306154,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Burning Ship + Stil (Staub + Stil)": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 289413,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Bunt Inseln": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 534972,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Außen grenznah": {
+   "ndiff": 4,
+   "maxdiff": 1,
+   "mean": 5.787037037037037e-06,
+   "vals": 691200,
+   "lit": 261672,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  },
+  "Newton": {
+   "ndiff": 0,
+   "maxdiff": 0,
+   "mean": 0,
+   "vals": 691200,
+   "lit": 690464,
+   "W": 640,
+   "H": 360,
+   "broken": []
+  }
+ },
+ "screen": {
+  "same": true,
+  "la": 44966,
+  "keys": []
+ },
+ "checks": [
+  "ok Mandelbrot Start: Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Mandelbrot tief (GPU-Perturbation): Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Julia: Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Seide (Färbe-Stil): Schleife gegen Standard 182 von 691200 Werten abweichend, höchstens 1/255 (Mittel 0.00026); defekte Shader: keine",
+  "ok Kreuz-Falle + Relief: Schleife gegen Standard 4 von 691200 Werten abweichend, höchstens 1/255 (Mittel 0.00001); defekte Shader: keine",
+  "ok Burning Ship (Staub-Korrektur): Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Burning Ship + Stil (Staub + Stil): Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Bunt Inseln: Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Außen grenznah: Schleife gegen Standard 4 von 691200 Werten abweichend, höchstens 1/255 (Mittel 0.00001); defekte Shader: keine",
+  "ok Newton: Schleife gegen Standard 0 von 691200 Werten abweichend, höchstens 0/255 (Mittel 0.00000); defekte Shader: keine",
+  "ok Bildschirm-Anzeige mit Schleife: keine defekten Shader (gleiche PNG-Daten: True)",
+  "ok keine Seitenfehler ([])",
+  "ok ?dloop=1 -> R.dloop = True, defekte Shader: keine",
+  "ok ?dloop=0 -> R.dloop = False, defekte Shader: keine"
+ ],
+ "ok": true
+}

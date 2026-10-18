@@ -17,6 +17,31 @@ function create(canvas) {
     const R = { gl, canvas, lost: gl.isContextLost() };    // 6.5.2: kann schon beim Anlegen verloren sein (WebGL gesperrt)
     let programs = {};
     let vao = null;
+    // 7.1.11 Direct3D (Windows: Chrome/Edge/Firefox über ANGLE → HLSL → FXC): Anzeige-Pass als Schleife über die Ebenen.
+    // Die Standard-Variante setzt die Färbung achtmal ein – FXC brauchte dafür am rog 115 s (Chrome-Wächter beendet den
+    // Grafikprozess -> „WebGL2 nicht verfügbar“), die Schleife 2–5 s. Andere Geräte behalten den Shader bitgleich wie bis 7.1.10.
+    // ?dloop=1/0 erzwingt bzw. verbietet die Schleife (A/B, Tests).
+    R.dloop = (() => {
+        let q = null; try { q = new URLSearchParams(location.search).get('dloop'); } catch (e) {}
+        if (q === '1') return true;
+        if (q === '0') return false;
+        let r = '';
+        try { const ext = gl.getExtension('WEBGL_debug_renderer_info'); r = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || ''); } catch (e) {}
+        if (/Direct3D|D3D1[012]/i.test(r)) return true;
+        // Renderer verborgen (Datenschutz-Browser): Windows ohne OpenGL/Vulkan-Hinweis = ANGLE/D3D
+        const win = /Win/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+        return win && !/OpenGL|Vulkan/i.test(r);
+    })();
+    const DISP = {};
+    function displaySrc(sty, dust) {
+        const k = (sty ? 'S' : '') + (dust ? 'D' : '');
+        if (!R.dloop) return k === 'SD' ? SH.DISPLAY_FS_STD : k === 'S' ? SH.DISPLAY_FS_ST : k === 'D' ? SH.DISPLAY_FS_D : SH.DISPLAY_FS;
+        return DISP[k] || (DISP[k] = SH.displayFS(!!sty, !!dust, true));
+    }
+    // Programm-Schlüssel der Anzeige-Variante ('display', 'displayS', 'displayD', 'displaySD'; Schleife: + 'L')
+    const displayKey = (sty, dust) => 'display' + (sty ? 'S' : '') + (dust ? 'D' : '') + (R.dloop ? 'L' : '');
+    // fertig übersetzt? (nicht blockierend; stößt die Übersetzung an; defekt -> wirft wie programReady)
+    R.displayWarm = (sty, dust) => !!programs[displayKey(sty, dust)] || R.programReady(displayKey(sty, dust), displaySrc(sty, dust));
 
     function compile(type, src) {
         const s = gl.createShader(type);
@@ -485,8 +510,13 @@ function create(canvas) {
         // 7.1: Burning-Ship-Familie/Tricorn mit Menge glatt: Variante mit Staub-Korrektur (andere Welten: Shader wie bisher)
         const dust = !!look.dust && !!(opts.de);
         let pr = null;
-        if (dust) try { pr = sty ? program('displaySD', SH.DISPLAY_FS_STD) : program('displayD', SH.DISPLAY_FS_D); } catch (e) { if (!e.shaderKey) throw e; }   // defekt: ohne Korrektur
-        if (!pr) pr = sty ? program('displayS', SH.DISPLAY_FS_ST) : program('display', SH.DISPLAY_FS);
+        // 7.1.11: Sonder-Varianten (Staub-Korrektur, Stil) nicht blockierend übersetzen – bis sie fertig sind, zeichnet die
+        // Grundvariante (unter Direct3D dauert eine Variante 2–5 s; vorher stand das Bild beim ersten Wechsel so lange still).
+        // Defekt -> wie bisher ohne Korrektur bzw. ohne Stil.
+        const ready = (s2, d2) => { try { return R.displayWarm(s2, d2) ? program(displayKey(s2, d2), displaySrc(s2, d2)) : null; } catch (e) { if (!e.shaderKey) throw e; return null; } };
+        if (dust) pr = ready(sty, true);
+        if (!pr && sty) pr = ready(true, false);
+        if (!pr) pr = program(displayKey(false, false), displaySrc(false, false));
         const L = pr.loc;
         gl.useProgram(pr.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
@@ -743,12 +773,12 @@ function create(canvas) {
 
     // Kurzer Selbsttest: kompilieren die Perturbations-Shader auf diesem Gerät?
     R.selfTest = function () {
-        try { program('c0perturbd', SH.computeFS(0, 'perturb', false, true)); program('c0directd', SH.computeFS(0, 'direct', false, true)); program('display', SH.DISPLAY_FS); return true; }
+        try { program('c0perturbd', SH.computeFS(0, 'perturb', false, true)); program('c0directd', SH.computeFS(0, 'direct', false, true)); program(displayKey(false, false), displaySrc(false, false)); return true; }
         catch (e) { console.warn('GPU-Selbsttest:', e.message); return false; }
     };
     // 6.5.2: ohne Anzeige-Shader kann gar nichts gezeigt werden (harter Fehler -> Meldung statt leerer Fläche)
     R.displayOK = function () {
-        try { program('display', SH.DISPLAY_FS); return true; }
+        try { program(displayKey(false, false), displaySrc(false, false)); return true; }
         catch (e) { console.warn('Anzeige-Shader:', e.message); return gl.isContextLost(); }
     };
 

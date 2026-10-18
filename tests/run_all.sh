@@ -36,5 +36,6 @@ run python3 tests/test_bla_stall.py
 run python3 tests/test_deeplink.py
 run python3 tests/test_p3.py
 run python3 tests/test_shader_async.py
+run python3 tests/test_v7111.py
 run env FK_HEADED=1 python3 tests/test_memory3d.py
 exit $fail

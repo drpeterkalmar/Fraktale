@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>FXC-Probe</title>
+<!-- 7.1.11: misst die Übersetzungszeit der Rechen-Shader (Windows: ANGLE → HLSL → FXC). Jede Variante bekommt ein Salz,
+     damit kein Programm-Cache greift. Aufruf aus tests/fxc_probe.py über CDP: window.probe([namen]) -> {name: ms}. -->
+<script src="../js/shaders.js"></script>
+<script>
+const SH = self.FKShaders;
+const salt = () => '\n#define SALT_' + Math.floor(Math.random() * 1e9) + ' 1\n';
+function cut(src, from, to) { const a = src.indexOf(from), b = src.indexOf(to, a + 1); if (a < 0 || b < 0) throw new Error('cut: ' + from); return src.slice(0, a) + src.slice(b); }
+const V = {
+    base: () => SH.computeFS(0, 'perturb', false, true),
+    nodE: () => SH.computeFS(0, 'perturb', false, false),
+    err: () => SH.computeFS(0, 'perturb', true, true),
+    direct: () => SH.computeFS(0, 'direct', false, true),
+    directJ: () => SH.computeFS(1, 'direct', false, true),
+    ship: () => SH.computeFS(2, 'perturb', false, true),
+    julia: () => SH.computeFS(1, 'perturb', false, true),
+    bunt: () => SH.computeFS(0, 'perturb', false, true, true),
+    stil: () => SH.computeFS(0, 'perturb', false, true, false, 1),
+    display: () => SH.DISPLAY_FS,
+    displayL: () => SH.displayFS(false, false, true),
+    displaySL: () => SH.displayFS(true, false, true),
+    displayDL: () => SH.displayFS(false, true, true),
+    displaySDL: () => SH.displayFS(true, true, true),
+    guardU: () => SH.computeFS(0, 'perturb', false, true).replace('guard < 4000000', 'guard < u_guard').replace('uniform int u_maxIter;', 'uniform int u_maxIter;\nuniform int u_guard;'),
+    noBLA: () => cut(SH.computeFS(0, 'perturb', false, true), '        if (u_blaOn != 0', '        vec2 Z = Zc;'),
+};
+for (const k of Object.keys(V)) { const f = V[k]; V[k] = () => { const s = f(); return s.replace('#version 300 es\n', '#version 300 es\n' + salt()); }; }
+self.V = V;
+self.extra = {};       // Varianten aus dem Treiber: extra[name] = Quelltext
+self.probe = function (names, timeoutMs) {
+    const c = document.createElement('canvas'), gl = c.getContext('webgl2');
+    if (!gl) return Promise.resolve({ error: 'no webgl2' });
+    const PSC = gl.getExtension('KHR_parallel_shader_compile');
+    const jobs = names.map(n => {
+        const src = self.extra[n] ? self.extra[n].replace('#version 300 es\n', '#version 300 es\n' + salt()) : V[n]();
+        const p = gl.createProgram();
+        const mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); gl.attachShader(p, sh); return sh; };
+        mk(gl.VERTEX_SHADER, SH.VS); const fs = mk(gl.FRAGMENT_SHADER, src);
+        const t0 = performance.now(); gl.linkProgram(p);
+        return { n, p, fs, t0, ms: null, len: src.length };
+    });
+    return new Promise(res => {
+        const T = performance.now();
+        const tick = () => {
+            for (const j of jobs) if (j.ms === null && (!PSC || gl.getProgramParameter(j.p, PSC.COMPLETION_STATUS_KHR))) {
+                j.ms = Math.round(performance.now() - j.t0);
+                j.ok = !!gl.getProgramParameter(j.p, gl.LINK_STATUS);
+                if (!j.ok) j.log = (gl.getShaderInfoLog(j.fs) || '') + (gl.getProgramInfoLog(j.p) || '');
+            }
+            if (jobs.every(j => j.ms !== null) || performance.now() - T > (timeoutMs || 300000) || gl.isContextLost()) {
+                const out = {}; for (const j of jobs) out[j.n] = { ms: j.ms, ok: j.ok, len: j.len, log: j.log ? j.log.slice(0, 300) : undefined };
+                out._lost = gl.isContextLost(); out._psc = !!PSC;
+                res(out);
+            } else setTimeout(tick, 50);
+        };
+        tick();
+    });
+};
+</script>

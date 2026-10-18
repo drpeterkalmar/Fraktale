@@ -1091,11 +1091,40 @@ const STYLE_STUB = `
 vec3 extC(float v, float a) { return exteriorColor(v); }
 vec4 styleHeight(vec4 a) { return vec4(0.0); }
 `;
+// 7.1.11 Schleifen-Variante (LOOP 1) für Direct3D (Windows: ANGLE übersetzt nach HLSL, FXC übersetzt weiter): Die Standard-
+// Variante ruft sampleLayerN achtmal mit verschiedenen Samplern auf. HLSL kennt keine Sampler-Parameter, also wird die ganze
+// Färbung achtmal eingesetzt – FXC brauchte dafür am rog (RTX 3070 Ti, Chrome 155) 115 s, der Chrome-Wächter beendete den
+// Grafikprozess, danach sperrte Chrome WebGL für die Seite („WebGL2 nicht verfügbar“). Hier steht die Färbung EINMAL in einer
+// Schleife über die Ebenen (Grenze u_n = Uniform, FXC kann nicht entrollen); nur das Texel-Lesen verzweigt nach der Ebene.
+// Rechenweg und Reihenfolge sind dieselben (T fällt nur, also ist break = die alten Einzel-Abfragen).
+function loopFetch(sty) {
+    const sw = (pre, sfx) => `switch (i) {\n${Array.from({ length: NL }, (_, k) => `        ${k < NL - 1 ? `case ${k}:` : 'default:'} return texelFetch(${pre}${k}, c, 0)${sfx};`).join('\n')}\n    }`;
+    return `
+uint rawT(int i, ivec2 c) {
+    ${sw('u_t', '.r')}
+}
+vec4 rawD(int i, ivec2 c) {
+    ${sw('u_d', '')}
+}
+// gleiche Dekodierung wie fetchV/fetchDE/fetchA oben, nur mit Ebenen-Nummer statt Sampler
+float fetchV(int t, ivec2 c) {
+    float v = uintBitsToFloat(rawT(t, c));
+    if (v <= -3.0) return -v - 4.0;
+    return v < -1.5 ? -1.0 : v;
+}
+float fetchDE(int t, ivec2 c, float v) {
+    if (v < 0.0) return 0.0;
+    float e = rawD(t, c).r * 255.0;
+    return e < 0.5 ? 1e4 : exp2(e * 0.0625 - 6.0);
+}
+${sty ? 'float fetchA(int t, ivec2 c) { vec4 d = rawD(t, c); return d.g * (65280.0 / 65535.0) + d.b * (255.0 / 65535.0); }' : ''}
+`;
+}
 // 7.1: zwei Varianten – ohne Stil (STY 0: Code wie bis 7.0, gleich schnell) und mit Stil (STY 1); die App wählt je Bild
-function displayFS(sty, dust) { return `#version 300 es
+function displayFS(sty, dust, loop) { const TX = loop ? 'int' : 'usampler2D', DX = loop ? 'int' : 'sampler2D'; return `#version 300 es
 #define STY ${sty ? 1 : 0}
 #define DUST ${dust ? 1 : 0}
-${COMMON}
+${loop ? '#define LOOP 1\n#define N4 (4 + min(u_n, 0))   // = 4, aber für FXC keine Konstante: Schleife bleibt Schleife (Code einmal statt viermal)\n' : ''}${COMMON}
 ${Array.from({ length: NL }, (_, i) => `uniform usampler2D u_t${i};`).join('\n')}
 ${Array.from({ length: NL }, (_, i) => `uniform sampler2D u_d${i};`).join('\n')}
 uniform int u_deOn;             // 6.1: Menge glatt (Distanzschätzung)
@@ -1139,7 +1168,7 @@ float rimShade(float d00, float d10, float d01, float d11, vec2 f, float pxPerTe
     return 1.0 - 0.5 * smoothstep(0.35, 0.8, sl) * (1.0 - smoothstep(1.25, 4.0, d));
 }
 
-${PAL_GLSL}${sty ? STYLE_GLSL : STYLE_STUB}
+${PAL_GLSL}${sty ? STYLE_GLSL : STYLE_STUB}${loop ? loopFetch(sty) : ''}
 vec4 g_relA = vec4(0.0);        // 7.1: Stil-Werte der vier Texel (Relief: Streifen/Falten als Höhe)
 vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float kx) {
     float h00 = heightN(v00), h10 = heightN(v10), h01 = heightN(v01), h11 = heightN(v11);
@@ -1161,11 +1190,14 @@ vec3 relief(vec3 col, float v00, float v10, float v01, float v11, vec2 f, float 
 
 // bilinear eingefärbte Probe aus 4 Texeln (Verhalten 5.0.1; bei Ausrichtung 1:1 exakt der Texel)
 vec3 shade4(float v00, float v10, float v01, float v11, vec2 f, float kx, vec3 voidCol) {
-    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : extC(v00, g_relA.x) * g_outK;
+${loop ? `    vec4 vv = vec4(v00, v10, v01, v11);
+    vec3 cc[4];
+    for (int k = 0; k < N4; k++) { float v = vv[k]; cc[k] = v < 0.0 ? inCol(v, voidCol) : extC(v, g_relA[k]) * g_outK; }
+    vec3 col = mix(mix(cc[0], cc[1], f.x), mix(cc[2], cc[3], f.x), f.y);` : `    vec3 c00 = v00 < 0.0 ? inCol(v00, voidCol) : extC(v00, g_relA.x) * g_outK;
     vec3 c10 = v10 < 0.0 ? inCol(v10, voidCol) : extC(v10, g_relA.y) * g_outK;
     vec3 c01 = v01 < 0.0 ? inCol(v01, voidCol) : extC(v01, g_relA.z) * g_outK;
     vec3 c11 = v11 < 0.0 ? inCol(v11, voidCol) : extC(v11, g_relA.w) * g_outK;
-    vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+    vec3 col = mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);`}
     if (u_relief > 0.0 && v00 >= 0.0 && v10 >= 0.0 && v01 >= 0.0 && v11 >= 0.0)
         col = relief(col, v00, v10, v01, v11, f, kx);
     return col;
@@ -1193,10 +1225,11 @@ float coverage(vec2 tc, vec2 size, vec4 xf) {
 // Menge leuchteten als „Sternenhimmel“. Ein Außenpixel mit mindestens 3 von 4 Nachbarn in der Menge liegt aber sicher
 // unter einem Pixel vor ihr: dann zählt es für den Saum als Rand (wie bei einer richtigen Distanzschätzung im Mandelbrot),
 // bei 2 von 4 als halber Saum.
-float dustDE(usampler2D t, ivec2 c, ivec2 mx, float v, float e) {
+float dustDE(${TX} t, ivec2 c, ivec2 mx, float v, float e) {
     if (v < 0.0 || e < 0.3) return e;
-    float n = step(0.0, fetchV(t, clamp(c + ivec2(1, 0), ivec2(0), mx))) + step(0.0, fetchV(t, clamp(c - ivec2(1, 0), ivec2(0), mx)))
-            + step(0.0, fetchV(t, clamp(c + ivec2(0, 1), ivec2(0), mx))) + step(0.0, fetchV(t, clamp(c - ivec2(0, 1), ivec2(0), mx)));
+${loop ? `    float n = 0.0;
+    for (int k = 0; k < N4; k++) n += step(0.0, fetchV(t, clamp(c + (k == 0 ? ivec2(1, 0) : k == 1 ? ivec2(-1, 0) : k == 2 ? ivec2(0, 1) : ivec2(0, -1)), ivec2(0), mx)));` : `    float n = step(0.0, fetchV(t, clamp(c + ivec2(1, 0), ivec2(0), mx))) + step(0.0, fetchV(t, clamp(c - ivec2(1, 0), ivec2(0), mx)))
+            + step(0.0, fetchV(t, clamp(c + ivec2(0, 1), ivec2(0), mx))) + step(0.0, fetchV(t, clamp(c - ivec2(0, 1), ivec2(0), mx)));`}
     return n <= 1.0 ? 0.0 : n <= 2.0 ? min(e, 0.6) : e;      // 2 von 4 in der Menge: höchstens ein halbes Pixel
 }
 #endif
@@ -1208,7 +1241,7 @@ vec4 cubicW(float t) {
 
 // Probe einer Ebene (neu): gefedert; vergrößerte Ebenen (Vorschau) auf dem Iterationswert rekonstruiert;
 // 6.1: Mengen-Saum aus der Distanzschätzung (dtex) pro Zielpixel
-vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidCol, float acc, out float w) {
+vec3 sampleLayerN(${TX} tex, ${DX} dtex, vec2 size, vec4 xf, vec3 voidCol, float acc, out float w) {
     vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
     w = coverage(tc, size, xf);
     if (w <= 0.0) return vec3(0.0);
@@ -1218,27 +1251,39 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
     ivec2 b = ivec2(fl);
     ivec2 mx = ivec2(size) - 1;
     ivec2 i0 = clamp(b, ivec2(0), mx), i1 = clamp(b + 1, ivec2(0), mx);
-    float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);
+${loop ? `    // Texel-Ecken 00, 10, 01, 11 (je eine Lese-Stelle in Schleifen statt vier)
+    ivec2 cq[4];
+    cq[0] = i0; cq[1] = ivec2(i1.x, i0.y); cq[2] = ivec2(i0.x, i1.y); cq[3] = i1;
+    vec4 vq;
+    for (int k = 0; k < N4; k++) vq[k] = fetchV(tex, cq[k]);
+    float v00 = vq.x, v10 = vq.y, v01 = vq.z, v11 = vq.w;` : `    float v00 = fetchV(tex, i0), v10 = fetchV(tex, ivec2(i1.x, i0.y)), v01 = fetchV(tex, ivec2(i0.x, i1.y)), v11 = fetchV(tex, i1);`}
     float dm = 0.0, rim = 1.0;
 #if STY
     g_st = acc > 0.5 ? u_style : 0;
-    if (g_st > 0) g_relA = vec4(fetchA(dtex, i0), fetchA(dtex, ivec2(i1.x, i0.y)), fetchA(dtex, ivec2(i0.x, i1.y)), fetchA(dtex, i1));
+${loop ? `    if (g_st > 0) for (int k = 0; k < N4; k++) g_relA[k] = fetchA(dtex, cq[k]);` : `    if (g_st > 0) g_relA = vec4(fetchA(dtex, i0), fetchA(dtex, ivec2(i1.x, i0.y)), fetchA(dtex, ivec2(i0.x, i1.y)), fetchA(dtex, i1));`}
 #endif
     // 6.4: Mengenfarbe dieses Pixels = Innenfarben der Innentexel (bilinear); keine Innentexel -> Mengenfarbe (Saum)
     if (u_inMode > 0) {
         vec4 wq = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y) * (1.0 - step(0.0, vec4(v00, v10, v01, v11)));
         float wi = wq.x + wq.y + wq.z + wq.w;
-        if (wi > 0.0) voidCol = (wq.x * inCol(v00, voidCol) + wq.y * inCol(v10, voidCol) + wq.z * inCol(v01, voidCol) + wq.w * inCol(v11, voidCol)) / wi;
+${loop ? `        if (wi > 0.0) { vec4 vq = vec4(v00, v10, v01, v11); vec3 s = vec3(0.0); for (int k = 0; k < N4; k++) s += wq[k] * inCol(vq[k], voidCol); voidCol = s / wi; }` : `        if (wi > 0.0) voidCol = (wq.x * inCol(v00, voidCol) + wq.y * inCol(v10, voidCol) + wq.z * inCol(v01, voidCol) + wq.w * inCol(v11, voidCol)) / wi;`}
     }
     g_outK = u_outM == 2 ? 0.0 : 1.0;
     if (u_deOn == 1 || u_outM == 1) {
-        float e00 = fetchDE(dtex, i0, v00), e10 = fetchDE(dtex, ivec2(i1.x, i0.y), v10), e01 = fetchDE(dtex, ivec2(i0.x, i1.y), v01), e11 = fetchDE(dtex, i1, v11);
+${loop ? `        vec4 eq;
+        for (int k = 0; k < N4; k++) {
+            eq[k] = fetchDE(dtex, cq[k], vq[k]);
+#if DUST
+            if (u_deOn == 1) eq[k] = dustDE(tex, cq[k], mx, vq[k], eq[k]);
+#endif
+        }
+        float e00 = eq.x, e10 = eq.y, e01 = eq.z, e11 = eq.w;` : `        float e00 = fetchDE(dtex, i0, v00), e10 = fetchDE(dtex, ivec2(i1.x, i0.y), v10), e01 = fetchDE(dtex, ivec2(i0.x, i1.y), v01), e11 = fetchDE(dtex, i1, v11);
 #if DUST
         if (u_deOn == 1) {
             e00 = dustDE(tex, i0, mx, v00, e00); e10 = dustDE(tex, ivec2(i1.x, i0.y), mx, v10, e10);
             e01 = dustDE(tex, ivec2(i0.x, i1.y), mx, v01, e01); e11 = dustDE(tex, i1, mx, v11, e11);
         }
-#endif
+#endif`}
         if (u_deOn == 1) {
             dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);
             rim = rimShade(e00, e10, e01, e11, f, 1.0 / xf.x);
@@ -1269,9 +1314,9 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
             vec4 wx = cubicW(f.x), wy = cubicW(f.y);
             float s = 0.0, mn = lo, mxv = hi;
             bool ok = true;
-            for (int j = 0; j < 4; j++) {
+            for (int j = 0; j < ${loop ? 'N4' : '4'}; j++) {
                 float r = 0.0;
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < ${loop ? 'N4' : '4'}; i++) {
                     float t = fetchV(tex, clamp(b + ivec2(i - 1, j - 1), ivec2(0), mx));
                     if (t < 0.0) ok = false;
                     mn = min(mn, t); mxv = max(mxv, t);
@@ -1284,7 +1329,7 @@ vec3 sampleLayerN(usampler2D tex, sampler2D dtex, vec2 size, vec4 xf, vec3 voidC
         col = (g_st > 0 ? extC(mu, dot(wb * ext, g_relA) / wo) : exteriorColor(mu)) * g_outK;
     } else {
         vec3 c = vec3(0.0);
-        for (int i = 0; i < 4; i++) if (v[i] >= 0.0) c += wb[i] * extC(v[i], g_relA[i]);
+        for (int i = 0; i < ${loop ? 'N4' : '4'}; i++) if (v[i] >= 0.0) c += wb[i] * extC(v[i], g_relA[i]);
         col = c / wo * g_outK;
     }
     if (u_relief > 0.0 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
@@ -1322,7 +1367,10 @@ void main() {
     // von oben (schärfste Ebene) nach unten auftragen, bis das Pixel deckt
     vec3 acc = vec3(0.0);
     float T = 1.0;
-${Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, ${sty ? `u_acc[${i}]` : '0.0'}, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
+${loop ? `    for (int i = 0; i < u_n; i++) {
+        if (T <= 0.003) break;
+        float w; vec3 c = sampleLayerN(i, i, u_size[i], u_xf[i], vc, ${sty ? 'u_acc[i]' : '0.0'}, w); float a = w * u_alpha[i]; acc += T * a * c; T *= 1.0 - a;
+    }` : Array.from({ length: NL }, (_, i) => `    if (u_n > ${i} && T > 0.003) { float w; vec3 c = sampleLayerN(u_t${i}, u_d${i}, u_size[${i}], u_xf[${i}], vc, ${sty ? `u_acc[${i}]` : '0.0'}, w); float a = w * u_alpha[${i}]; acc += T * a * c; T *= 1.0 - a; }`).join('\n')}
     col = acc + T * col;
     // Sättigung, Vignette, Gamma wie v4
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -1538,5 +1586,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, exoticFS, DISPLAY_FS, DISPLAY_FS_ST, DISPLAY_FS_D, DISPLAY_FS_STD, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, exoticFS, displayFS, DISPLAY_FS, DISPLAY_FS_ST, DISPLAY_FS_D, DISPLAY_FS_STD, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

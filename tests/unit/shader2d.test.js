@@ -30,6 +30,16 @@ test('Anzeige-Pass fehlerfrei (ohne und mit Stil)', () => {
     assert.deepEqual(L.lintProgram(SH.VS, SH.DISPLAY_FS_STD, 'displaySD'), []);
     assert.ok(SH.DISPLAY_FS.includes('#define DUST 0') && SH.DISPLAY_FS_D.includes('#define DUST 1'), 'Standard-Anzeige ohne Staub-Korrektur');
 });
+test('7.1.11 Anzeige-Pass als Schleife (Direct3D): alle 4 Varianten fehlerfrei, Standard-Varianten unverändert', () => {
+    for (const [sty, dust] of [[false, false], [true, false], [false, true], [true, true]]) {
+        const src = SH.displayFS(sty, dust, true), key = `display${sty ? 'S' : ''}${dust ? 'D' : ''}L`;
+        assert.deepEqual(L.lintProgram(SH.VS, src, key), []);
+        assert.ok(src.includes('#define LOOP 1') && src.includes('for (int i = 0; i < u_n; i++)'), key + ': Ebenen-Schleife');
+        assert.ok(!/sampleLayerN\(u_t\d/.test(src), key + ': keine eingesetzten Einzelaufrufe je Sampler');
+        assert.equal(SH.displayFS(sty, dust), [SH.DISPLAY_FS, SH.DISPLAY_FS_ST, SH.DISPLAY_FS_D, SH.DISPLAY_FS_STD][(sty ? 1 : 0) + (dust ? 2 : 0)]);
+    }
+    assert.ok(!SH.DISPLAY_FS.includes('LOOP'), 'Standard-Anzeige ohne Schleifen-Schalter (bitgleich zu 7.1.10)');
+});
 test('7.1 Julia-Lupe-Shader fehlerfrei', () => {
     assert.deepEqual(L.lintProgram(SH.VS, SH.LUPE_FS, 'lupe'), []);
 });
