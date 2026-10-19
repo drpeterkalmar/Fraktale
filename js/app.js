@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.1.12';
+const APP_VERSION = '7.1.13';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -1253,6 +1253,8 @@ function checkInside(fr) {
 let lastT = performance.now();
 const PROF = Q.has('prof') ? [] : null;   // Test: Frames > 25 ms JS mit Teilzeiten
 const VS = { buf: new Array(90).fill(0), i: 0 };
+// übliche Bildraten 360/240/165/144/120/100/90/75/60/50/30 Hz als Perioden (ms)
+const VS_PERIODS = [2.78, 4.17, 6.06, 6.94, 8.33, 10, 11.11, 13.33, 16.67, 20, 33.33];
 // Test (6.4, tests/measure_fly.py): ?fpscap=N begrenzt die Bildrate (langsames Gerät nachstellen)
 const FPSCAP = +Q.get('fpscap') || 0;
 let capT = 0;
@@ -1286,8 +1288,13 @@ function frame(now) {
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
     // Vsync-Periode schätzen: 25-%-Quantil der letzten 90 Frame-Zeiten, eingerastet auf übliche
-    // Bildraten (120/90/60/30 Hz). 5.0.1 nahm das Minimum (driftend) – einzelne kurze Frames drückten
+    // Bildraten. 5.0.1 nahm das Minimum (driftend) – einzelne kurze Frames drückten
     // die Schätzung auf ~8 ms, der Häppchen-Regler schrumpfte dann die Vorschau-Arbeit auf 1024 px/Frame.
+    // 7.1.13 (Peter: „Mausrad super smooth, der Flug ruckelt massiv“, rog mit 240 Hz): RC.vsync kennt nur 120/90/60/30 Hz
+    // (größte Periode ≤ 1,12 × Quantil) – bei 240/165/144 Hz bleibt es bei 16,7 ms, bei 100 Hz bei 11,1 ms. Der Flug-Takt
+    // (flight.js taktDt) bewegte die Kamera damit nur in 60-Hz-Schritten (bei 240 Hz: 4,4,4,3,5 Bilder je Schritt) bzw.
+    // ließ jedes ~10. Bild aus. RC.vsyncT = nächste übliche Bildrate (±8 %), sonst der Messwert – nur für den Flug-Takt;
+    // die übrigen Regler behalten RC.vsync (darauf abgestimmt, das Mausrad lief damit schon glatt).
     const dms = dt * 1000;
     if (dms > 2) { VS.buf[VS.i++ % VS.buf.length] = dms; }
     if (stats.frames % 10 === 0 || RC.vsync === undefined) {
@@ -1296,7 +1303,11 @@ function frame(now) {
             const q = a[Math.floor(a.length * 0.25)];
             let best = 16.67;
             for (const per of [8.33, 11.11, 16.67, 33.33]) if (per <= q * 1.12) best = per;
-            RC.vsync = best;
+            RC.vsync = best;          // Häppchen-/Vorschau-Regler und 3D-Körper-Takt wie bis 7.1.12 (dort abgestimmt)
+            // 7.1.13: echter Bildschirmtakt für den Flug-Takt (flight.js taktDt)
+            let bt = q, err = 0.08;
+            for (const per of VS_PERIODS) { const e = Math.abs(per - q) / per; if (e < err) { err = e; bt = per; } }
+            RC.vsyncT = Math.max(2, Math.min(50, bt));
         } else if (RC.vsync === undefined) RC.vsync = 16.67;
     }
     if (camChanged) RC.lastMoveT = now;

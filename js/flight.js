@@ -313,7 +313,14 @@ root.FKFlight = { create(ctx) {
     const TAKT = ctx.Q.get('takt') !== '0' && ctx.Q.get('bulbpace') !== '0';
     function taktDt(now, dt, hold) {
         if (!TAKT) return dt;
-        const vs = (ctx.RC.vsync || 16.67) / 1000, ts = now / 1000;
+        // 7.1.13: echter Bildschirmtakt (RC.vsyncT, auch 100/144/165/240 Hz); 3D-Körper (eigener Takt mit N-fachen Schritten,
+        // auf RC.vsync abgestimmt) wie bisher
+        const bulbM = FLY.mode === 'bulb' || FLY.mode === 'bulbtour';
+        const vs = ((bulbM ? ctx.RC.vsync : (ctx.RC.vsyncT || ctx.RC.vsync)) || 16.67) / 1000, ts = now / 1000;
+        // 7.1.13: neue Takt-Schätzung (anderer Bildschirm, Schätzung korrigiert) -> Raster neu ansetzen. Vorher rechnete k mit
+        // der neuen Periode gegen den alten Zähler: von 11,1 auf 16,7 ms fiel k um ein Drittel, die Kamera stand, bis die
+        // Zeit den alten Zähler wieder einholte (gemessen am rog: Stillstände von 0,1 bis 3,9 s, 52 % aller Bilder ohne Bewegung)
+        if (FLY.vsT !== vs) { FLY.vsT = vs; FLY.kPrev = null; }
         if (FLY.kPrev === null || FLY.kPrev === undefined) { FLY.tRef = ts - vs; FLY.kPrev = 0; }
         const kf = (ts - FLY.tRef) / vs, k = Math.round(kf);
         FLY.tRef += (kf - k) * vs * 0.1;

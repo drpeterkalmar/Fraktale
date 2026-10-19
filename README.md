@@ -180,6 +180,13 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 7.1.13** – Flug so ruhig wie das Mausrad (Peter: „Mausrad super smooth, aber der Flug ruckelt massiv“, Chrome am rog, Burning Ship)
+- Ursache (gemessen am rog, Kamera je Bild aufgezeichnet): Der Flug-Takt (`flight.js` `taktDt`, seit 7.1.7) rastet die Kamera auf die geschätzte Bildschirm-Periode ein. Die Schätzung kannte nur 120/90/60/30 Hz – Peters Bildschirm läuft mit 240 Hz (Schätzung 16,7 ms: Kamera nur in 60-Hz-Schritten, 4,4,4,3,5 Bilder je Schritt), der Testbrowser mit 100 Hz (11,1 ms: jedes ~10. Bild ohne Bewegung). Sprang die Schätzung (11,1 ↔ 16,7 ms), stand die Kamera, bis die Zeit den alten Zähler einholte: **52 % aller Flugbilder ohne Bewegung, Stillstände bis 3,9 s**. Das Mausrad rechnet mit der echten Bildzeit und lief deshalb glatt.
+- `js/app.js`: `RC.vsyncT` = echter Bildschirmtakt (nächste übliche Bildrate 360/240/165/144/120/100/90/75/60/50/30 Hz ±8 %, sonst der Messwert) – nur für den Flug-Takt; Häppchen-/Vorschau-Regler und der 3D-Körper-Takt behalten `RC.vsync` (dort abgestimmt).
+- `js/flight.js` `taktDt`: 2D- und Landschaftsflug auf `RC.vsyncT`; wechselt die Schätzung, wird das Raster neu angesetzt (ein Takt Schritt statt Stillstand).
+- Gemessen am rog (Chrome, RTX 3070 Ti, Burning Ship, 2D-Flug 20 s): Bilder ohne Kamerabewegung 52 % → 0 %, kein Stillstand mehr.
+- Geprüft: `tests/test_v7113.py` (Takt-Schätzung im Flug zweimal umgeschaltet: 7.1.12 32 % Bilder ohne Bewegung und 230 Bilder Stillstand, jetzt 0 %), test_fly2d, test_rueck, test_v717, test_fly64, test_fs_fly.
+
 **Version 7.1.12** – Absolutes Vollbild (Peter: „es fehlt ein absoluter no-HUD-Fullscreen-Modus für immersive Flüge und Zooms“)
 - Mit Maus und Tastatur holen im Vollbild bzw. Kino-Modus weder Mausbewegung noch Klick ins Bild noch Mausrad die Bedienung zurück (bis 7.1.11 zeigte jede Mausbewegung sie 3 s – beim Zoomen mit dem Rad bewegt sich die Maus fast immer mit). Der Mauszeiger ist ausgeblendet.
 - Taste **H** zeigt die Bedienung (bleibt, bis H wieder gedrückt wird) bzw. versteckt sie; außerhalb des Vollbilds öffnet H wie bisher die Hilfe (auch `?`). Esc bzw. F verlassen das Vollbild. Hinweis beim ersten Vollbild: „H zeigt die Bedienung · Esc beendet das Vollbild“.
