@@ -180,6 +180,12 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 7.1.12** – Absolutes Vollbild (Peter: „es fehlt ein absoluter no-HUD-Fullscreen-Modus für immersive Flüge und Zooms“)
+- Mit Maus und Tastatur holen im Vollbild bzw. Kino-Modus weder Mausbewegung noch Klick ins Bild noch Mausrad die Bedienung zurück (bis 7.1.11 zeigte jede Mausbewegung sie 3 s – beim Zoomen mit dem Rad bewegt sich die Maus fast immer mit). Der Mauszeiger ist ausgeblendet.
+- Taste **H** zeigt die Bedienung (bleibt, bis H wieder gedrückt wird) bzw. versteckt sie; außerhalb des Vollbilds öffnet H wie bisher die Hilfe (auch `?`). Esc bzw. F verlassen das Vollbild. Hinweis beim ersten Vollbild: „H zeigt die Bedienung · Esc beendet das Vollbild“.
+- Touch (Handy, Tablet) unverändert: kurzer Tipp zeigt die Bedienung 3 s.
+- Geprüft: `tests/test_hud_fs.py` (Desktop: Bewegung, Klick, Mausrad, Ziehen holen das HUD nicht zurück, Zeiger `cursor: none`, H zeigt > 4 s, H versteckt, keine Hilfe im Vollbild; Pixel 7 hoch/quer und iPhone-Kino-Modus wie bisher).
+
 **Version 7.1.11** – Windows: schneller Start statt „WebGL2 nicht verfügbar“ (Peter: „lädt ewig, dann WebGL2 nicht verfügbar“ in Chrome am rog)
 - Ursache (gemessen am rog, Chrome 155, RTX 3070 Ti, frisches Profil): Chrome und Firefox übersetzen WebGL unter Windows über ANGLE nach HLSL, der Direct3D-Compiler FXC übersetzt weiter. Der Anzeige-Pass rief die Färbung je Ebene einzeln mit 8 verschiedenen Samplern auf; HLSL setzt so etwas achtmal ein. FXC brauchte dafür **115 s**, die Seite stand so lange still (`getProgramParameter` blockierte 104–108 s). Chromes GPU-Wächter beendete dabei den Grafikprozess (6 Absturzberichte `gpu_watchdog_thread` mit der Fraktale-Adresse) und sperrte danach WebGL für die Seite.
 - `js/shaders.js` `displayFS(sty, dust, loop)`: Schleifen-Variante (`#define LOOP 1`): Färbung einmal in einer Schleife über die Ebenen (Grenze `u_n` als Uniform, FXC kann nicht entrollen), Texel-Lesen per `switch` nach der Ebene, die Vierer-Schleifen (Texel-Ecken, Catmull-Rom, Bunt, Staub-Korrektur) mit nicht konstanter Grenze `N4`. FXC am rog: Grundvariante 115 s → 2,6 s, mit Stil 4,6 s, Staub-Korrektur 2,0 s, beides 4,9 s.

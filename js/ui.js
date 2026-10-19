@@ -883,7 +883,12 @@ if (!FS_API) {
 // Ein kurzer Tipp (ohne Wischen; app.js fragt A.tapHook) bzw. eine Mausbewegung zeigt sie für 3 s (body.hud-peek). Gesten
 // (Zoomen, Schieben, Flug-Lenkung) holen sie nicht zurück, ein laufender Flug läuft weiter (der Tipp pausiert ihn dann nicht).
 // Solange ein Menü offen ist oder die Maus über der Bedienung steht, bleibt sie sichtbar. Esc/F verlassen Vollbild bzw. Kino.
-const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, overT: 0, hinted: false };
+// 7.1.12 Absolutes Vollbild (Peter: „es fehlt ein absoluter no-HUD-Fullscreen-Modus für immersive Flüge und Zooms“): Mit Maus
+// und Tastatur holt weder Mausbewegung noch Klick noch Mausrad die Bedienung zurück (vorher zeigte jede Mausbewegung sie 3 s –
+// beim Zoomen mit dem Rad bewegt sich die Maus fast immer mit). Nur die Taste H zeigt/versteckt sie (bleibt, bis H wieder
+// gedrückt wird), Esc bzw. F verlassen das Vollbild. Der Mauszeiger ist ausgeblendet. Touch (Handy, Tablet) unverändert:
+// kurzer Tipp zeigt die Bedienung 3 s – ohne Tastatur gäbe es sonst keinen Weg zurück.
+const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, overT: 0, hinted: false, ptr: '', pinned: false };
 const hudless = () => (HUD.fs && S.hudFs) || HUD.cine;
 const peeking = () => document.body.classList.contains('hud-peek');
 function hudApply() {
@@ -894,18 +899,26 @@ function hudApply() {
         if (!S.chrome) setChrome(true);
     }
     b.classList.toggle('hudless', on);
-    if (!on) { b.classList.remove('hud-peek'); clearTimeout(HUD.peekT); }
-    else if (!was && !HUD.hinted) { HUD.hinted = true; hudPeek(2200); toast(t('hud_hint'), 2200); }     // einmal pro Sitzung: kurz zeigen, wie es zurückkommt
+    if (!on) { b.classList.remove('hud-peek'); clearTimeout(HUD.peekT); HUD.pinned = false; }
+    else if (!was && !HUD.hinted) { HUD.hinted = true; hudPeek(2200); toast(t(mouseUser() ? 'hud_hint_key' : 'hud_hint'), 2200); }     // einmal pro Sitzung: kurz zeigen, wie es zurückkommt
     const fb = $('btn-fullscreen'), act = HUD.fs || HUD.cine;
     fb.classList.toggle('on', act); fb.setAttribute('aria-pressed', String(act));
 }
+// Maus/Tastatur statt Touch? (zuletzt benutzter Zeiger; vor dem ersten: feiner Zeiger = Maus/Touchpad)
+const mouseUser = () => HUD.ptr ? HUD.ptr === 'mouse' : !!(window.matchMedia && matchMedia('(pointer: fine)').matches);
 function hudPeek(ms) {
     if (!hudless()) return;
     document.body.classList.add('hud-peek');
     clearTimeout(HUD.peekT);
-    HUD.peekT = setTimeout(hudHide, ms || 3000);
+    if (!HUD.pinned) HUD.peekT = setTimeout(hudHide, ms || 3000);
+}
+// 7.1.12: Taste H im Vollbild/Kino-Modus – Bedienung zeigen (bleibt) bzw. wieder ausblenden
+function hudToggleKey() {
+    if (HUD.pinned || peeking()) { HUD.pinned = false; hudHide(true); }
+    else { HUD.pinned = true; hudPeek(); }
 }
 function hudHide(force) {
+    if (HUD.pinned && !force) return;
     clearTimeout(HUD.peekT);
     // (Maus über der Bedienung zählt nur, solange sie sich bewegt – eine ruhende Maus auf dem Vollbild-Knopf hielte sonst alles fest)
     const busy = !sheet.hidden || !$('share-pop').hidden || !$('modal').hidden || !$('hud-details').hidden || (HUD.over && performance.now() - HUD.overT < 3000);
@@ -916,6 +929,7 @@ function setCinema(on) { A.noteResize(); HUD.cine = !!on; hudApply(); }
 // Tipp auf das Bild: ausgeblendet -> nur zeigen (true = erledigt); sichtbar im Flug -> pausieren wie immer, Zeit neu
 A.tapHook = () => {
     if (!hudless()) return false;
+    if (HUD.ptr === 'mouse' && !HUD.pinned && !peeking()) return true;     // 7.1.12: Mausklick ins Bild holt die Bedienung nicht zurück (nur H)
     if (!peeking()) { hudPeek(); return true; }
     if (A.FLY.on) hudPeek();
     return false;
@@ -952,12 +966,12 @@ addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     HUD.over = e.target !== A.R.canvas && !!(e.target.closest && e.target.closest('body > :not(#gl):not(#xfade)'));
     if (HUD.over) HUD.overT = performance.now();
-    if (e.buttons || !hudless()) { HUD.mx = e.clientX; HUD.my = e.clientY; return; }    // Ziehen mit der Maus ist eine Geste
-    if (HUD.mx >= 0 && Math.hypot(e.clientX - HUD.mx, e.clientY - HUD.my) > 4) hudPeek();
+    // 7.1.12: Mausbewegung zeigt die Bedienung nicht mehr (absolutes Vollbild, nur Taste H); steht sie schon (H oder Menü),
+    // hält eine Bewegung über ihr sie offen (HUD.over, siehe hudHide)
     HUD.mx = e.clientX; HUD.my = e.clientY;
 }, { passive: true });
 // Bedienung angefasst (Knopf, Regler, Menü): sichtbar lassen, Zeit neu
-addEventListener('pointerdown', (e) => { if (hudless() && peeking() && e.target !== A.R.canvas) hudPeek(); }, { passive: true, capture: true });
+addEventListener('pointerdown', (e) => { HUD.ptr = e.pointerType || 'mouse'; if (hudless() && peeking() && e.target !== A.R.canvas) hudPeek(); }, { passive: true, capture: true });
 $('btn-reset').addEventListener('click', () => { A.goHome(); });
 $('btn-help').addEventListener('click', () => openModal('help'));
 $('btn-gestures').addEventListener('click', () => openModal('gestures'));
@@ -1036,7 +1050,8 @@ window.addEventListener('keydown', (e) => {
                 case 'z': S.rectMode = !S.rectMode; syncControls(); break;
                 case 'f': if (HUD.cine) setCinema(false); else toggleFullscreen(); break;
                 case 'i': setChrome(!S.chrome); break;
-                case 'h': case '?': openModal('help'); break;
+                case 'h': if (hudless()) hudToggleKey(); else openModal('help'); break;      // 7.1.12: im Vollbild = Bedienung zeigen/verstecken
+                case '?': openModal('help'); break;
                 case 'l': { const ks = Object.keys(TRANSLATIONS); S.lang = ks[(ks.indexOf(S.lang) + 1) % ks.length]; $('sel-lang').value = S.lang; A.saveSettings(); applyI18n(); break; }
                 case 'escape': closeSheet(); closeModal(); if (HUD.cine) setCinema(false); break;
                 case 'd': toggle3d(); break;

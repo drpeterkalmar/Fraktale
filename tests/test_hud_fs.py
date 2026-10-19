@@ -5,7 +5,8 @@ Prüft:  * Vollbild (Fullscreen-API, Pixel 7 hoch und quer): nach dem Einblend-H
           (wirksame Deckkraft 0) und nicht klickbar (an jeder Knopfstelle liegt das Bild obenauf); nur das Bild bleibt
         * kurzer Tipp zeigt die Bedienung (≈ 3 s), danach blendet sie wieder aus; Wischen und Zwei-Finger-Zoom holen sie NICHT
           zurück; ein laufender Flug läuft weiter (der Tipp pausiert ihn nicht)
-        * Mausbewegung (Desktop) zeigt sie, Ziehen mit der Maus nicht; F verlässt das Vollbild, die Bedienung ist wieder da
+        * Desktop (7.1.12 absolut): Mausbewegung, Klick ins Bild, Mausrad und Ziehen zeigen sie NICHT, der Mauszeiger ist weg;
+          Taste H zeigt sie (bleibt), H versteckt sie wieder; F verlässt das Vollbild, die Bedienung ist wieder da
         * Einstellung „HUD im Vollbild ausblenden“ aus: Vollbild mit Bedienung wie bis 6.7
         * iPhone (WebKit, ohne Vollbild-Schnittstelle): Knopf „Kino-Modus“ statt Vollbild, gleiches Ausblenden und Zurückholen,
           Kino-Modus per Knopf wieder verlassen
@@ -128,15 +129,26 @@ def main():
         a = App(p, device='Desktop Chrome').open(); pg = a.page
         a.set_view('-0.5', '0', 1); a.wait_done(60)
         pg.mouse.move(300, 300)
-        pg.click('#btn-fullscreen'); time.sleep(3.2)
+        pg.click('#btn-fullscreen'); time.sleep(4.2)     # Hinweis 2,2 s (+1 s, solange die Maus auf dem Knopf steht) + Ausblenden
         s0 = state(pg)
+        # 7.1.12 absolutes Vollbild: Mausbewegung, Klick ins Bild und Mausrad holen das HUD NICHT zurück, nur die Taste H
         pg.mouse.move(400, 300, steps=5); time.sleep(0.6)
         s1 = state(pg)
-        time.sleep(3.6); s2 = state(pg)
+        pg.mouse.click(420, 320); time.sleep(0.6); s1c = state(pg)
+        pg.mouse.wheel(0, -240); time.sleep(0.8); s1w = state(pg)
         pg.mouse.down(); pg.mouse.move(520, 330, steps=6); pg.mouse.up(); time.sleep(0.6)     # Ziehen ab der Ruhelage
         s3 = state(pg)
-        need(s0['hudless'] and not s0['peek'] and s1['peek'] and not s2['peek'], f'Maus: Bewegung zeigt das HUD, danach wieder aus ({s0} {s1} {s2})')
+        cur = pg.evaluate("() => getComputedStyle(document.getElementById('gl')).cursor")
+        need(s0['hudless'] and not s0['peek'] and not s1['peek'] and not s1c['peek'] and not s1w['peek'],
+             f'Maus (7.1.12 absolut): Bewegung, Klick und Mausrad holen das HUD nicht zurück ({s0} {s1} {s1c} {s1w})')
         need(not s3['peek'], f'Maus: Ziehen (Bild verschieben) holt das HUD nicht zurück ({s3})')
+        need(cur == 'none', f'Mauszeiger im Vollbild ausgeblendet ({cur})')
+        pg.keyboard.press('h'); time.sleep(0.5); h1 = state(pg)
+        time.sleep(3.8); h2 = state(pg)
+        modal = pg.evaluate("() => !document.getElementById('modal').hidden")
+        pg.keyboard.press('h'); time.sleep(0.6); h3 = state(pg)
+        need(h1['peek'] and h2['peek'] and not h3['peek'] and h3['hudless'] and not modal,
+             f'Taste H: zeigt das HUD (bleibt > 4 s), H versteckt es wieder, keine Hilfe im Vollbild ({h1} {h2} {h3}, Hilfe offen: {modal})')
         pg.keyboard.press('f'); time.sleep(0.5)
         need(not state(pg)['hudless'], 'Desktop: F verlässt das Vollbild')
         errors += a.errors
