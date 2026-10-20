@@ -266,6 +266,9 @@ root.FKCapture = { create(ctx) {
         if (P.kind === '3d') { C.phase = 'settle'; RC.capHold = true; return false; }     // RC.capHold: Planer darf noch fertig rechnen
         if (P.kind === 'bulb') { C.look = look(); if (P.time !== undefined) C.look.time = P.time; P.bulbK = ctx.BULB.capK(); }
         if (P.kind === 'dens') { C.look = look(); if (P.time !== undefined) C.look.time = P.time; }
+        // 7.1.14 Farbverlauf einfrieren (Peter: Striche im 46449×21528-Bild): look() je Kachel lief mit der Animationszeit
+        // weiter → jede Kachelzeile eine andere Farbphase. Einmal zu Beginn festhalten, alle Kacheln färben gleich.
+        if (P.kind === '2d') { C.look = look(); if (P.time !== undefined) C.look.time = P.time; }
         if (P.kind === '2d' && P.mode === 'perturb') { C.phase = 'ref'; return true; }
         C.phase = 'tiles';
         return true;
@@ -464,10 +467,9 @@ root.FKCapture = { create(ctx) {
             // Kachelmitte = Puffermitte (symmetrischer Rand): Abbildung 1:1, Texel = Pixel + Rand
             const cx = P.cam.cx + HP.fromNumber(job.pxoff[0] * P.s), cy = P.cam.cy + HP.fromNumber(job.pxoff[1] * P.s);
             const layer = { buf: job.buf, view: { cx, cy }, scale: P.s, alpha: 1 };
-            const lk = look();
+            const lk = Object.assign({}, C.look);  // 7.1.14: eingefrorener Farbverlauf (prep), nicht look() je Kachel
             lk.maxIter = P.maxIter;
             lk.outW *= P.W / canvas.width;      // 6.9 Grenznah: Saumbreite wie am Bildschirm, relativ zur Bildgröße
-            if (P.time !== undefined) lk.time = P.time;
             R.present([layer], { cx, cy, zoom: 3 / (P.s * tile.h) }, lk, { w: tile.w, h: tile.h, fbo: ct.fbo }, { feather: 0, recon: true, de: P.deMask ? [0.25, 1.25] : null, vp: [tile.gx, tile.gy, P.W, P.H] });
             T.st = 'read';
             const buf = job.buf;

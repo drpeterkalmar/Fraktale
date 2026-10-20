@@ -180,6 +180,11 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 7.1.14** – Screenshot in hoher Auflösung ohne Streifen (Peter: waagrechte Striche im 46449 × 21528-Bild)
+- Ursache: `js/capture.js` färbte jede 2D-Kachel mit dem Farbverlauf im Moment dieser Kachel – bei laufender Farbanimation bekam jede Kachelzeile eine andere Farbphase.
+- Fix: Farbverlauf (Phase, Zeit, Leuchten) wird zu Beginn des Screenshots einmal festgehalten, alle Kacheln färben gleich (Mandelbulb, Lichtbilder und 3D machten das schon).
+- Test `tests/test_v7114.py` (Farbanimation an, 64-px-Kacheln): Sprung an den Kachelkanten 7.1.13 44,3 gegen 1,6 im übrigen Bild, jetzt 1,7 gegen 1,5.
+
 **Version 7.1.13** – Flug so ruhig wie das Mausrad (Peter: „Mausrad super smooth, aber der Flug ruckelt massiv“, Chrome am rog, Burning Ship)
 - Ursache (gemessen am rog, Kamera je Bild aufgezeichnet): Der Flug-Takt (`flight.js` `taktDt`, seit 7.1.7) rastet die Kamera auf die geschätzte Bildschirm-Periode ein. Die Schätzung kannte nur 120/90/60/30 Hz – Peters Bildschirm läuft mit 240 Hz (Schätzung 16,7 ms: Kamera nur in 60-Hz-Schritten, 4,4,4,3,5 Bilder je Schritt), der Testbrowser mit 100 Hz (11,1 ms: jedes ~10. Bild ohne Bewegung). Sprang die Schätzung (11,1 ↔ 16,7 ms), stand die Kamera, bis die Zeit den alten Zähler einholte: **52 % aller Flugbilder ohne Bewegung, Stillstände bis 3,9 s**. Das Mausrad rechnet mit der echten Bildzeit und lief deshalb glatt.
 - `js/app.js`: `RC.vsyncT` = echter Bildschirmtakt (nächste übliche Bildrate 360/240/165/144/120/100/90/75/60/50/30 Hz ±8 %, sonst der Messwert) – nur für den Flug-Takt; Häppchen-/Vorschau-Regler und der 3D-Körper-Takt behalten `RC.vsync` (dort abgestimmt).
