@@ -1,0 +1,223 @@
+{
+ "tag": "v721",
+ "base": "http://localhost:8472/index.html",
+ "secs": 60.0,
+ "query": "",
+ "speed": 0.3,
+ "runs": [
+  {
+   "n": 3107,
+   "secs": 60.0,
+   "coarse": 0.0,
+   "still": 0.0,
+   "jz95": 0.119,
+   "jzmax": 0.365,
+   "jp95": 0.217,
+   "jpmax": 0.409,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 0,
+   "sharp_mean": 0,
+   "episodes": 0,
+   "lz0": 2.26,
+   "lz1": 16.16,
+   "cruise": 0.3,
+   "phases": {
+    "cruise": 2985,
+    "brake": 122
+   },
+   "name": "seepferd",
+   "plan": {
+    "kind": "gpu",
+    "mode": "perturb"
+   },
+   "errors": []
+  },
+  {
+   "n": 3598,
+   "secs": 60.0,
+   "coarse": 0.0,
+   "still": 0.0,
+   "jz95": 0.0,
+   "jzmax": 0.003,
+   "jp95": 0.186,
+   "jpmax": 0.489,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 0,
+   "sharp_mean": 0,
+   "episodes": 0,
+   "lz0": 1.78,
+   "lz1": 19.49,
+   "cruise": 0.3,
+   "phases": {
+    "cruise": 3598
+   },
+   "name": "ship",
+   "plan": {
+    "kind": "gpu",
+    "mode": "perturb"
+   },
+   "errors": []
+  },
+  {
+   "n": 3601,
+   "secs": 60.0,
+   "coarse": 0.1061,
+   "still": 0.0,
+   "jz95": 0.051,
+   "jzmax": 0.139,
+   "jp95": 0.137,
+   "jpmax": 0.881,
+   "hard": 0,
+   "flips": 4,
+   "flips_min": 4.0,
+   "minGap": 14.5,
+   "sharp_max": 2.5,
+   "sharp_mean": 1.06,
+   "episodes": 6,
+   "lz0": 4.48,
+   "lz1": 3.06,
+   "cruise": 0.09,
+   "phases": {
+    "cruise": 1447,
+    "brake": 159,
+    "hover": 345,
+    "rev": 1270,
+    "wait": 380
+   },
+   "name": "phoenix",
+   "plan": {
+    "kind": "gpu",
+    "mode": "direct"
+   },
+   "errors": []
+  },
+  {
+   "n": 3600,
+   "secs": 60.0,
+   "coarse": 0.155,
+   "still": 0.0,
+   "jz95": 0.05,
+   "jzmax": 0.139,
+   "jp95": 0.135,
+   "jpmax": 1.071,
+   "hard": 0,
+   "flips": 4,
+   "flips_min": 4.0,
+   "minGap": 12.8,
+   "sharp_max": 2.3,
+   "sharp_mean": 0.28,
+   "episodes": 33,
+   "lz0": 4.48,
+   "lz1": 2.76,
+   "cruise": 0.09,
+   "phases": {
+    "cruise": 1120,
+    "brake": 90,
+    "hover": 395,
+    "rev": 1293,
+    "wait": 702
+   },
+   "name": "phoenix",
+   "plan": {
+    "kind": "gpu",
+    "mode": "direct"
+   },
+   "errors": []
+  },
+  {
+   "n": 3588,
+   "secs": 60.0,
+   "coarse": 0.0,
+   "still": 0.0,
+   "jz95": 4.207,
+   "jzmax": 28.473,
+   "jp95": 7.255,
+   "jpmax": 53.973,
+   "hard": 1,
+   "flips": 2,
+   "flips_min": 2.0,
+   "minGap": null,
+   "sharp_max": 0,
+   "sharp_mean": 0,
+   "episodes": 0,
+   "lz0": 0.0,
+   "lz1": 4.7,
+   "cruise": 0.288,
+   "phases": {
+    "cruise": 1128,
+    "brake": 154,
+    "hover": 209,
+    "rev": 1737,
+    "wait": 360
+   },
+   "name": "bulb",
+   "plan": {
+    "kind": "bulb"
+   },
+   "errors": []
+  },
+  {
+   "n": 3601,
+   "secs": 60.0,
+   "coarse": 0.0,
+   "still": 0.0,
+   "jz95": 0.103,
+   "jzmax": 58.739,
+   "jp95": 0.149,
+   "jpmax": 8.314,
+   "hard": 1,
+   "flips": 2,
+   "flips_min": 2.0,
+   "minGap": null,
+   "sharp_max": 0,
+   "sharp_mean": 0,
+   "episodes": 0,
+   "lz0": 0.0,
+   "lz1": 2.36,
+   "cruise": 0.231,
+   "phases": {
+    "cruise": 3601
+   },
+   "name": "menger",
+   "plan": {
+    "kind": "bulb"
+   },
+   "errors": []
+  },
+  {
+   "n": 909,
+   "secs": 27.6,
+   "coarse": 0.0396,
+   "still": 0.0264,
+   "jz95": 2.846,
+   "jzmax": 8.544,
+   "jp95": 1.733,
+   "jpmax": 4.859,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 0.95,
+   "sharp_mean": 0.49,
+   "episodes": 2,
+   "lz0": 0.0,
+   "lz1": 9.48,
+   "cruise": 1.277,
+   "phases": {
+    "": 909
+   },
+   "name": "tour",
+   "plan": {
+    "kind": "gpu",
+    "mode": "perturb"
+   },
+   "errors": []
+  }
+ ]
+}

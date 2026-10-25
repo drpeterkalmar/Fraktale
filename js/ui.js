@@ -650,6 +650,7 @@ const toggles = [
     bindToggle('t-rect', () => S.rectMode, (v) => { S.rectMode = v; }),
     bindToggle('t-precise', () => S.precise, (v) => { S.precise = v; }),
     bindToggle('t-governor', () => S.governor, (v) => { S.governor = v; }),
+    bindToggle('t-lava', () => S.lava !== false, (v) => { S.lava = v; }),        // 7.2.1
     bindToggle('t-deon', () => S.deOn, (v) => { S.deOn = v; }),
     bindToggle('t-aa', () => S.aa, (v) => { S.aa = v; }),
     bindToggle('t-hudfs', () => S.hudFs, (v) => { S.hudFs = v; hudApply(); }),

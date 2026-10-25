@@ -1753,7 +1753,10 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         if (!F.T) return;
         // 7.1.8 Schärfe vor Tempo: kommen weniger echte Bilder (Takt N > 2), fliegt die Kamera weich langsamer (Faktor 2/N)
         F.spK = F.spK === undefined ? 1 : F.spK + ((F.spKT === undefined ? 1 : F.spKT) - F.spK) * Math.min(1, dt / 1.2);
-        const sp = (FLY.sp || 0) * F.spK;
+        // 7.2.1 Lavalampen-Flug (flight.js lavaStep): Tempo mit Vorzeichen; um 0 herum mit Hysterese (LV.rev), damit nicht jeder
+        // kleine Unterschwinger den Rückweg auslöst
+        const LV = FLY.lava && FLY.lava.on ? FLY.lava : null;
+        const sp = (LV ? (LV.rev ? Math.min(0, LV.r) : Math.max(0, LV.r)) : FLY.sp || 0) * F.spK;
         if (F.mode === 'durch' && F.du) { flyThrough(now, dt, sp); attitude(dt); return; }
         const D = V.len(V.sub(B.pos, F.T));
         if (sp < 0) {
@@ -1764,7 +1767,9 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
             if (!F.rev || F.rev.sp > 0) F.rev = { t: 0, lz, sp };
             F.rev.t += dt; F.rev.sp = sp;
             if (F.rev.t > 1) { if (Math.abs(sp) > 0.05 && F.rev.lz - lz < 0.1 * Math.abs(sp) * F.rev.t && tr.length) { tr.length = 0; F.revStuck = (F.revStuck || 0) + 1; } F.rev = { t: 0, lz, sp }; }
-            if (tr.length >= 2 && lz2 >= tr[0].lz && lz2 <= tr[tr.length - 1].lz + 0.02) {
+            // (Lavalampe: nicht auf der aufgezeichneten Bahn – nach dem Gleiten über die Oberfläche liegt sie woanders, die Kamera
+            // spränge dorthin; stattdessen stetig vom Ziel weg, der Abstand zur Oberfläche wächst)
+            if (!LV && tr.length >= 2 && lz2 >= tr[0].lz && lz2 <= tr[tr.length - 1].lz + 0.02) {
                 let k = tr.length - 1; while (k > 0 && tr[k - 1].lz > lz2) k--;
                 const a = tr[Math.max(0, k - 1)], b = tr[k], u = b.lz > a.lz ? Math.max(0, Math.min(1, (lz2 - a.lz) / (b.lz - a.lz))) : 0;
                 B.pos = V.lerp(a.pos, b.pos, u); B.yaw = a.yaw + angD(b.yaw, a.yaw) * u; B.pitch = a.pitch + (b.pitch - a.pitch) * u; F.T = V.lerp(a.T, b.T, u); F.Tg = F.T;
@@ -1775,8 +1780,19 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
                 // (unter dem Mindestabstand – etwa nach dem Gleiten an der Genauigkeitsgrenze – ist jeder Schritt erlaubt, der vom Rand
                 // wegführt; sonst kam der Rückflug dort nie los)
                 const away = (q) => setPos(q) || (deJS(q, params()) > deJS(B.pos, params()) && ((B.pos = q), (ctx.camDirty = true)));
-                if (!away(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))))) away(V.add(B.pos, V.mul(camBasis().fw, -D * (Math.pow(10, -sp * dt) - 1))));
-                lookAt(F.T, dt, 2.5);
+                if (LV) {
+                    // 7.2.1 Lavalampe: zurückweichen = Abstand zur OBERFLÄCHE vergrößern – entlang der geglätteten Normale aufsteigen,
+                    // um |Tempo| Zehnerpotenzen/s (der Zoom sinkt genau so), Blick bleibt weich beim Ziel. (Radial vom Ziel weg kam
+                    // die Kamera einer nahen Knospe sogar näher – gemessen Zoom 5·10³ -> 6·10⁴ – und blieb an der Grenze hängen)
+                    const P0 = params(), dS = Math.max(minDist(), deJS(B.pos, P0)), n0 = nrmAt(B.pos);
+                    F.gnR = F.gnR ? V.norm(V.lerp(F.gnR, n0, Math.min(1, dt * 2))) : n0;
+                    B.pos = V.add(B.pos, V.mul(F.gnR, dS * (Math.pow(10, -sp * dt) - 1)));
+                    ctx.camDirty = true;
+                    if (PACEON) lookSpring(F.T, dt); else lookAt(F.T, dt, 2.5);
+                } else {
+                    if (!away(V.add(F.T, V.mul(dir, D * Math.pow(10, -sp * dt))))) away(V.add(B.pos, V.mul(camBasis().fw, -D * (Math.pow(10, -sp * dt) - 1))));
+                    lookAt(F.T, dt, 2.5);
+                }
             }
             F.Pi = null; F.npP = null; F.vC = null;
             attitude(dt);
@@ -1788,7 +1804,7 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
         // 7.1.7: die Bahn wird an der Ideal-Stelle F.Pi weitergerechnet, die Kamera folgt ihr über die Feder (unten). Ginge
         // die nachlaufende Kamera selbst wieder in die Rechnung ein, stieße jeder ausgefallene Takt eine kleine Schwingung an
         // (gemessen: +27 % Tempo, über ~0,1 s abklingend)
-        F.rev = null;
+        F.rev = null; F.gnR = null;
         const Pc = PACEON && F.Pi ? F.Pi : B.pos, Dc = V.len(V.sub(Pc, F.T));
         if (now - F.tProbe > 250 || F.pg) probe(now);
         // Ziel gleitet weich zur gewählten Stelle (höchstens 0,5 Abstände je Sekunde)
@@ -1858,6 +1874,9 @@ root.FKBulb = { BULB_FS, POST_FS, SHADE_FS, RESOLVE_FS, deJS, marchJS, anchorJS,
             // (in Takt-Schritten: fiel ein Takt aus, rechnet die Feder zwei kleine Schritte zur Zwischenstelle statt eines großen,
             // der überschwang)
             let p2 = B.pos;
+            // (7.2.1 Lavalampe: nach dem Zurückweichen schwingt die Feder aus der Ruhe auf die Bahn ein – vorher sprang die Kamera
+            // im ersten Takt auf die Ideal-Stelle)
+            if (LV && (!F.vC || !F.npP)) { F.vC = [0, 0, 0]; F.npP = B.pos.slice(); }
             if (!F.vC || !F.npP) { F.vC = V.mul(V.sub(np, B.pos), 1 / dt); p2 = V.add(B.pos, V.mul(F.vC, dt)); }
             else {
                 const w = 10, m = Math.max(1, Math.round(dt / ((ctx.RC.vsync || 16.67) / 1000))), h = dt / m;

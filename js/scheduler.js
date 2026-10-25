@@ -222,7 +222,10 @@ root.FKScheduler = { create(ctx) {
             }
             // 6.8 Rückflug-Ebene (weiter als die Ansicht, daher nur ein kleiner Teil sichtbar): rechnen lassen, solange sie
             // noch weiter ist als die Ansicht und nicht zu grob wird
-            if (job.rev && !stale && zr < 1.05 && zr > 1 / 6 && now - job.t0 < 1500 && FLY.on && FLY.sp < 0) cancel = false;
+            if (job.rev && !stale && zr < 1.05 && zr > 1 / 6 && now - job.t0 < 1500 && FLY.on && (FLY.zr === undefined ? FLY.sp : FLY.zr) < 0) cancel = false;
+            // 7.2.1 Wendepunkt-Ebene (Lavalampe): tiefer als die Ansicht, aber in ihrer Mitte sichtbar – rechnen lassen, solange
+            // der Flug schwebt/herauszoomt und sie nicht zu tief liegt
+            if (job.wende && !stale && FLY.lava && FLY.lava.on && FLY.lava.phase !== 'cruise' && zr < 12 && now - job.t0 < 4000) cancel = false;
             if (cancel) { cancelJob(); job = null; }
         }
         if (job) {
@@ -259,7 +262,7 @@ root.FKScheduler = { create(ctx) {
                 // Vorschau-Auflösung. Nur wenn dort Lücken oder ein grobes Viertel drohen – die Ebenen des Hinflugs decken den
                 // Anfang des Rückflugs meist schon, die Zusatz-Ebene nähme sonst der normalen Vorschau den Platz (gemessen).
                 // A/B (Messung): ?revpf=0 = ohne diese Ebenen.
-                if (FLY.on && !FLY.paused && FLY.sp < -0.02 && Q.get('revpf') !== '0' && !(V3.on && RC.farTick % 3 === 0) && RC.farTick % 2 === 0) {
+                if (FLY.on && !FLY.paused && (FLY.zr === undefined ? FLY.sp : FLY.zr) < -0.02 && Q.get('revpf') !== '0' && !(V3.on && RC.farTick % 3 === 0) && RC.farTick % 2 === 0) {
                     const rd = RC.previewDiv[p.kind], zw = Math.max(FLY.mode === 'place' ? FLY.z0 : 1, view.zoom / (V3.on ? REV_W3 : REV_W)) * (1 + 1e-12);
                     let vw = { cx: view.cx, cy: view.cy, zoom: zw };
                     if (V3.on) { const u = 1.5 / view.zoom, h = V3.heading; vw = { cx: view.cx - HP.fromNumber(Math.sin(h) * u), cy: view.cy - HP.fromNumber(Math.cos(h) * u), zoom: zw }; }
@@ -268,6 +271,22 @@ root.FKScheduler = { create(ctx) {
                     if (need) {
                         const rj = startJob(viewKey(vw) + '|rev', rd, p, vw, { preview: true }); rj.part = true; rj.rev = true;
                         RC.revJobs = (RC.revJobs || 0) + 1;
+                        if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
+                        return;
+                    }
+                }
+                // 7.2.1 Lavalampe (Schweben, Herauszoomen, Warten): jede zweite Vorschau verfeinert die Ansicht am Wendepunkt –
+                // was dort fehlt, in der feinsten Stufe, die ins Budget passt (planPreview für diese Ansicht). So ist die Tiefe
+                // scharf vorgerechnet, wenn der Flug wieder hineinzoomt
+                const LV = FLY.lava;
+                if (LV && LV.on && !V3.on && LV.turn && (LV.phase === 'hover' || LV.phase === 'rev' || LV.phase === 'wait') && RC.farTick % 2 === 1 && LV.turn.zoom > S.cam.zoom * 1.05) {
+                    const keep = RC.previewDiv[p.kind];
+                    const tl = planPreview(now, LV.turn, p, sig);
+                    RC.previewDiv[p.kind] = keep;
+                    if (!tl.skip) {
+                        const tj = startJob(viewKey(LV.turn) + '|wende' + (tl.rect ? '|r' : ''), tl.div, p, tl.view || LV.turn, { preview: true, w: tl.w, h: tl.h, scale: tl.scale });
+                        tj.part = true; tj.wende = true;
+                        RC.wendeJobs = (RC.wendeJobs || 0) + 1;
                         if (RC.job && RC.job.kind === 'gpu') { const done = R.pump(RC.job, now, pumpCtl(moving)); if (done) { const j = RC.job; RC.job = null; jobFinished(j, now); } }
                         return;
                     }
@@ -386,6 +405,20 @@ root.FKScheduler = { create(ctx) {
                 else if (!fallback) fallback = { d, r };
             }
             if (!pick) pick = fallback;
+            // 7.2.1: Bedarf übers ganze Bild verteilt (langsame, gleichmäßige Bewegung im Deep Zoom – Lavalampe, langsame Tour)
+            // und kein Rechteck deckt ihn: statt eines schmalen Streifens (je ⅛ des Bildes; der Ebenen-Stapel mit höchstens 8
+            // Ebenen verdrängte die Streifen wieder, das Bild blieb bei ~0,5 Pufferpx je Bildpx) die ganze Ansicht in der
+            // feinsten Stufe, die in ~4 Budgets passt (gemessen: Tour mb_deep ab 10⁷ 35–80 % grob trotz 4 % Tempo)
+            if (pick && pick === fallback && Q.get('ganz') !== '0') {
+                let need = 0, cov = 0;
+                const kd = 0.95 / pick.d;
+                for (let i = 0; i < tk.length; i++) if (tk[i] < kd) need++;
+                for (let y = pick.r.y0; y <= pick.r.y1; y++) for (let x = pick.r.x0; x <= pick.r.x1; x++) if (tk[y * TGX + x] < kd) cov++;
+                if (need > 0.5 * tk.length && cov < 0.35 * need) {
+                    const all = { x0: 0, x1: TGX - 1, y0: 0, y1: TGY - 1 };
+                    for (let d = pick.d; d <= MAXDIV[k]; d++) if (cost(all, d) <= 4 * budget || d === MAXDIV[k]) { pick = { d, r: all }; break; }
+                }
+            }
         }
         if (!pick) return { skip: true };
         const d = pick.d, r = pick.r;
@@ -405,6 +438,23 @@ root.FKScheduler = { create(ctx) {
     // 0,43–0,5 – eine 0,5-Schwelle bremste auch dann, wenn die Rechnung gut mithält.
     // Pinch/Schieben unter dem Finger bleibt 1:1. Schalter: Mehr → „Tempo an Rechenleistung anpassen".
     function governorUpdate(now, dt) {
+        // 7.2.1 Lavalampen-Flug (2D, flight.js lavaStep): statt die Zeit zu dehnen, misst die Bremse nur noch die Schärfe des
+        // gezeigten Bildes (10-%-Quantil, GOV.lq; Anteil grob GOV.lc) und der Ansicht am Wendepunkt (GOV.lqT) – das Tempo regelt
+        // der Flug selbst (ruckbegrenzt)
+        const LV = FLY.lava;
+        if (LV && LV.on && FLY.on && !FLY.paused && FLY.mode !== 'bulb') {
+            GOV.g = Math.min(1, GOV.g + dt * 2);
+            // (6.8.1-Regel: kurz nach einer Größenänderung – Vollbild, Drehen – gilt die letzte Messung weiter; die neuen Ränder
+            // sind gleich gerechnet, ein Abbremsen wäre im Flug als Ruck zu sehen)
+            if (now - (RC.resizeT || -1e9) < ctx.RESIZE_GOV_HOLD && GOV.lq !== null && GOV.lq !== undefined) return;
+            const sig = contentSig();
+            const cov = coverage(orderLayers(now, S.cam), S.cam, { sig, gx: 10, gy: 20, quantile: 0.1 });
+            GOV.lq = cov.q; GOV.lc = cov.coarse; GOV.q = cov.q;
+            GOV.lqT = LV.turn && LV.phase !== 'cruise' ? coverage(orderLayers(now, LV.turn), LV.turn, { sig, gx: 8, gy: 16, quantile: 0.1 }).q : null;
+            return;
+        }
+        if (!(LV && LV.on)) GOV.lq = GOV.lqT = null;
+        if (tourLava(now, dt)) return;
         const on = S.governor;
         if (!on || !animating()) { GOV.g = Math.min(1, GOV.g + dt * 3); GOV.coarse = 0; return; }
         // 6.8.1: kurz nach einer Größenänderung (Vollbild, Drehen) Wert halten – die neuen Ränder sind gleich gerechnet,
@@ -421,6 +471,43 @@ root.FKScheduler = { create(ctx) {
         const gmin = FLY.on && !FLY.paused ? 0.3 : GOV.min;
         if (e > 0.1) GOV.g = Math.max(gmin, GOV.g - dt * 3 * Math.min(1, e));
         else if (e < -0.1) GOV.g = Math.min(1, GOV.g + dt * 0.8);
+    }
+
+    // 7.2.1 Lavalampe für Touren und lange Ziel-Fahrten (flyTo ab 2 s): Die Zeit-Dehnung GOV.g folgt ihrem Ziel als S-Kurve
+    // (Beschleunigung/Ruck begrenzt, abwärts schneller als aufwärts) und darf bis 4 % sinken (vorher 40 %) – die Fahrt wird
+    // lieber langsam scharf als grob. Ziel = min(Schärfe-Ziel, Dauertempo/Nenntempo): Das Dauertempo TL.rmax (Zehnerpotenzen/s)
+    // lernt, was die Grafik durchhält (droht grob: ×0,7, scharf und stabil: +15 %/s) – ein gleichmäßiges Gleiten statt
+    // Pumpen (gemessen 7.2.1-Entwurf ohne Dauertempo: Tempo schwang alle ~2 s zwischen 4 % und 80 %).
+    // Schärfe aus der vorausgesagten Ansicht (10-%-Quantil, 0,1 s voraus), über ~1 s geglättet, Trend 0,6 s voraus.
+    const TL = { a: 0, xs: null, dx: 0, rmax: 2, cut: 0 };
+    function tourLava(now, dt) {
+        const fl = ctx.flight;
+        if (!(S.lava !== false && Q.get('lava') !== '0' && S.governor && fl && fl.dur > 2000 && !FLY.on)) { TL.a = 0; TL.xs = null; if (!fl) TL.rmax = 2; return false; }
+        if (now - (RC.resizeT || -1e9) < ctx.RESIZE_GOV_HOLD) return true;
+        const c = predictCam(0.1, false);
+        const cov = coverage(orderLayers(now, c), c, { sig: contentSig(), gx: 10, gy: 20, quantile: 0.1 });
+        GOV.q = cov.q;
+        const x = Math.log10(Math.max(1e-3, cov.q));
+        if (TL.xs === null) { TL.xs = x; TL.dx = 0; }
+        const x0 = TL.xs;
+        // (geglättet über ~1 s: die Schärfe hat einen Sägezahn – sie sinkt mit dem Zoom und springt, wenn ein Bild fertig ist)
+        TL.xs += (x - TL.xs) * Math.min(1, dt / 0.8);
+        TL.dx += ((TL.xs - x0) / Math.max(1e-3, dt) - TL.dx) * Math.min(1, dt / 1.0);
+        const xF = TL.xs + Math.min(0, TL.dx) * 0.6, lo = Math.log10(0.5), ok = Math.log10(0.75);
+        // Nenntempo der Fahrt bei g = 1 (Zehnerpotenzen/s) an dieser Stelle
+        const u0 = fl.u || 0, du = 0.01, cA = ctx.flightCamAt(fl, u0), cB = ctx.flightCamAt(fl, Math.min(1, u0 + du));
+        const rn = Math.abs(Math.log10(cB.zoom / cA.zoom)) / (du * fl.dur / 1000);
+        // (Kürzen nur, wenn das Bild tatsächlich unscharf ist – nicht bei jedem Einblend-Knick der Prognose)
+        if (TL.xs < Math.log10(0.56) && now - TL.cut > 2000 && fl.u > 0.02) { TL.rmax = Math.max(0.05, Math.min(TL.rmax, rn * GOV.g) * 0.7); TL.cut = now; }
+        else if (TL.xs > Math.log10(0.68) && TL.dx > -0.05) TL.rmax = Math.min(4, TL.rmax * (1 + 0.15 * dt));
+        const u = Math.max(0, Math.min(1, (xF - lo) / (ok - lo)));
+        const tgt = Math.max(0.04, Math.min(u * u * (3 - 2 * u), rn > 1e-6 ? TL.rmax / rn : 1));
+        const up = tgt > GOV.g, A = up ? 0.3 : 0.8, J = up ? 0.4 : 1.5;
+        const e = tgt - GOV.g, ad = Math.sign(e) * Math.min(A, Math.sqrt(2 * J * Math.abs(e)));
+        TL.a += Math.max(-J * dt, Math.min(J * dt, ad - TL.a));
+        GOV.g = Math.max(0.04, Math.min(1, GOV.g + TL.a * dt));
+        if ((GOV.g <= 0.04 && TL.a < 0) || (GOV.g >= 1 && TL.a > 0)) TL.a = 0;
+        return true;
     }
 
     return { link() { ({ FADE_MOVE_MS, FLY, GOV, HP, INERTIA_TAU, Q, R, RC, REF, S, V3, addLayer, anchoredCam, animating, cancelFix, cancelJob, cancelPrefetch, canvas, checkInside, clampZoom, contentSig, coverage, cpuFeed, cpuPool, deActive, ensureRef, flightCamAt, fullDone, innActive, isMoving, jobFailed, jobProgress, layerK, layerRect, makeFrame, maxIterFor, orderLayers, plan, predictCam, refUsable, requestRefFor, startFix, stats, t, viewKey, worldPerCss } = ctx); },

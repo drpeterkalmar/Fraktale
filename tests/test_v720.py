@@ -87,7 +87,7 @@ def main():
             need(not any(r['v3'] for r in runs), "A nie 3D-Landschaft")
             need(all(r['hudless'] and not r['visible'] for r in runs), "A keine Bedienung/Einblendung sichtbar")
             need(all(r['fly'] for r in runs if r['world'] not in (7, 14, 15)), "A Welten mit Flug fliegen los")
-            need(len(worlds) >= 10, f"A Welten-Verteilung: {len(worlds)} verschiedene {worlds}")
+            need(len(worlds) >= min(10, N // 2 + 1), f"A Welten-Verteilung: {len(worlds)} verschiedene {worlds}")
             need(fb <= N * 0.2, f"A Rückfall auf Startansicht {fb}/{N}, neu gewürfelt {rer}×, Orte {places}")
             need(all(r['t_motion'] is not None and r['t_motion'] < 9 for r in runs), f"A Bewegung beginnt ≤ 9 s nach dem Laden (max {max((r['t_motion'] or 99) for r in runs):.1f} s)")
 

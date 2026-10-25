@@ -61,6 +61,30 @@ root.FKFlight = { create(ctx) {
         if (ANFAHRT) { FLY.sp = 0; FLY.ramp = { from: 0, to: S.flySpeed, t0: now, ms: FLY.rampMs, start: true }; FLY.ease = 0; }
         else { FLY.sp = S.flySpeed; FLY.ramp = null; FLY.ease = 1; }
     }
+    // 7.2.1 Lavalampen-Flug (Peter 21.10.2026: „wenn der flugmodus droht, unscharf oder pixelig zu werden: flug langsam anhalten
+    // und langsam rückwärts fliegen … alles viel smoother als jetzt, sollte entspannt aussehen wie sich eine lavalampe
+    // anfühlt“; Präzisierung: „mit Rückwärtsflug meinte ich eigentlich herauszoomen, falls der Autozoom vorm Abpixeln ist“).
+    // Ein Regler je Flug (2D-Flug und Flug der 3D-Körper, im Zufalls- und im Ziel-Flug, vorwärts eingestellt):
+    //  * Schärfe-Prognose statt Reaktion: 2D = 10-%-Quantil der Schärfe des gezeigten Bildes (Pufferpixel je Bildpixel aus dem
+    //    Ebenen-Stapel, scheduler.js governorUpdate -> GOV.lq), 3D-Körper = Abstand zur Genauigkeitsgrenze (dSurf/minDist);
+    //    log geglättet + Trend, Prognose 2 s voraus.
+    //  * Phasen: Reise (Tempo weich gedrosselt, wenn die Prognose sinkt) -> Bremsen (droht grob) -> Schweben (≥ 1,2 s) ->
+    //    Herauszoomen (−0,3 × Reisetempo, ≥ 4 s, über die schon gerechneten scharfen Ebenen; derweil rechnet der Planer die
+    //    Ansicht am Wendepunkt fertig) -> wieder hinein (der Autopilot wählt dabei ein neues Ziel am Rand). Wird das Bild im
+    //    Schweben schon scharf, geht es ohne Rückweg weiter. Ein neuer Rückweg frühestens 8 s nach dem letzten Wechsel.
+    //  * Ruckbegrenzt: das Zoomtempo (Zehnerpotenzen/s, mit Vorzeichen) folgt seinem Ziel über eine S-Kurve mit begrenzter
+    //    Beschleunigung und begrenztem Ruck (Zeitkonstante τ = 5 s, Bremsen 0,6 τ); auch Randsuche und „verloren“ gehen nur
+    //    noch über dieses Tempo. Im Schweben/Herauszoomen treibt die Bildmitte langsam seitlich (0,04 Bildhälften/s, Richtung
+    //    dreht gemächlich, Ein-/Ausblenden über eine gedämpfte Feder) – die Kamera steht nie.
+    // Regler: Einstellung „Lavalampen-Flug“ (S.lava), ?lava=0 = Verhalten 7.2.0, ?lavarueck= (Rückwärtstempo, Anteil),
+    // ?lavaseit= (Seitendrift, Bildhälften/s), ?lavatau= (Zeitkonstante, s).
+    const LAVA_Q = ctx.Q.get('lava') !== '0';
+    const qn = (k, d) => { const v = parseFloat(ctx.Q.get(k)); return isFinite(v) && v >= 0 ? v : d; };
+    const LV = { rueck: qn('lavarueck', 0.3), seit: qn('lavaseit', 0.04), tau: Math.max(0.5, qn('lavatau', 5)) };
+    FLY.lavaCfg = LV;             // (Test, Bericht)
+    // Schwellen: 2D Schärfe (Pufferpx je Bildpx) – grob ab 0,5; 3D-Körper Abstand zur Genauigkeitsgrenze (× minDist)
+    // (2D: Bewegungs-Vorschauen sind meist halb aufgelöst – 0,5 ist „in Bewegung normal“, darunter wird es grob)
+    const LQ = { d2: { lo: Math.log10(0.5), ok: Math.log10(0.62), sharp: Math.log10(0.72) }, bulb: { lo: Math.log10(3), ok: Math.log10(5), sharp: Math.log10(7) } };
     const REV_MS = 600;           // Richtungswechsel: Dauer der S-Kurve
     const TRAIL_STEP = 0.01;      // Kursverlauf: ein Eintrag je 1/100 Zehnerpotenz
     const REV_VMAX = 2;           // Rückflug: höchstens so schnell seitlich zum Verlauf (Bildhälften/s)
@@ -208,30 +232,35 @@ root.FKFlight = { create(ctx) {
     }
     // ein Flugschritt (rein rechnerisch, auch für die Vorhersage): liefert { cam, heading }
     function flyStep(cam, heading, dt) {
-        const g = GOV.g, sp = FLY.sp || 0, dec = sp * dt * g;
-        if (sp < 0) return revStep(cam, heading, dt, dec);
+        const LA = !!(FLY.lava && FLY.lava.on && !FLY.d3);
+        const g = LA ? 1 : GOV.g, sp = FLY.sp || 0, dec = LA ? FLY.lava.r * dt : sp * dt * g;
+        // (7.2.1 Lavalampe: auch herauszoomen um den Zoompunkt – derselbe Schritt mit negativem Tempo, ohne Umschalten)
+        if (!LA && sp < 0) return revStep(cam, heading, dt, dec);
         // 6.8: Seitengleiten mit dem Tempo bis 0,1 (wie bis 6.7 der kleinste Reglerwert) – bei 0 (Schweben) steht das Bild,
         // und beim Richtungswechsel läuft das Seitentempo stetig über 0
-        const ks = Math.min(1, sp / 0.1) * (FLY.ease === undefined ? 1 : FLY.ease);
+        // (7.2.1 Lavalampe: mit dem tatsächlichen Zoomtempo im Verhältnis zum Reisetempo)
+        const ks = LA ? lavaKs() : Math.min(1, sp / 0.1) * (FLY.ease === undefined ? 1 : FLY.ease);
         if (FLY.mode === 'place' && FLY.target) {
             const T = FLY.target;
-            const z1 = Math.min(T.zoom, cam.zoom * Math.pow(10, dec));
+            const z1 = Math.min(T.zoom, Math.max(LA && dec < 0 ? Math.min(cam.zoom, FLY.z0) : 0, cam.zoom * Math.pow(10, dec)));
             const p = Math.min(1, Math.log(z1 / FLY.z0) / Math.max(1e-9, Math.log(T.zoom / FLY.z0)));
             const off = FLY.off0 * Math.pow(1 - p, 1.5), u = 1.5 / z1;
             return { cam: { cx: T.cx - HP.fromNumber(FLY.dir[0] * off * u), cy: T.cy - HP.fromNumber(FLY.dir[1] * off * u), zoom: z1 }, heading, done: z1 >= T.zoom };
         }
         // über einer leeren Ebene "verloren": kaum noch tiefer, dafür seitlich zum nächsten Rand gleiten
-        const lost = Math.min(1, FLY.lost || 0);
+        const lost = Math.min(1, LA ? FLY.lostS || 0 : FLY.lost || 0);      // 7.2.1: „verloren“ geglättet (springt sonst in Stufen)
         const u = 1.5 / cam.zoom, f = [Math.sin(heading), Math.cos(heading)];
-        const z1 = clampZoom(cam.zoom * Math.pow(10, dec * (1 - 0.95 * lost) * (FLY.zf || 1)));
+        let z1 = clampZoom(cam.zoom * Math.pow(10, LA ? dec : dec * (1 - 0.95 * lost) * (FLY.zf || 1)));
+        if (LA && dec < 0) z1 = Math.max(Math.min(cam.zoom, lavaFloor()), z1);     // (Lavalampe: nie weiter hinaus als die Startansicht)
         // Ende: 3D bei 10²⁸ (wie bisher); 2D fliegt über die GPU-Tiefe 10³⁰ hinaus mit der CPU-Rechnung weiter (langsamer –
         // die Tempo-Bremse hält das Bild – und etwas weicher) bis zur Tiefengrenze der Welt. 6.6: Ende auch dort (Newton
         // 10¹³) – vorher stand der Flug an der Grenze still
-        const done = (FLY.d3 && z1 >= 1e28) || (dec > 0 && z1 <= cam.zoom);
+        const done = (FLY.d3 && z1 >= 1e28) || (dec > 0 && z1 <= cam.zoom && !LA) || (LA && FLY.lava.r > 0.02 && z1 <= cam.zoom);
         if (!FLY.d3) {
             // 2D: Zoom um den Zoompunkt A, dazu gleitet die Bildmitte zu A (verloren schneller: zum Randstück hin)
             const k = 1 - cam.zoom / z1, u1 = 1.5 / z1, c = Math.min(0.5, dt * g * (FLY_C2 + 1.2 * lost)) * ks;
             const pan = [FLY.A[0] * c, FLY.A[1] * c];
+            if (LA) { pan[0] += FLY.lava.dv[0] * dt; pan[1] += FLY.lava.dv[1] * dt; }    // 7.2.1 Seitendrift (Bildhälften)
             return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + pan[0] * u1), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + pan[1] * u1), zoom: z1 }, heading, done, lat: pan, pan: true };
         }
         // 6.4: verloren -> erst zum Randstück drehen, dann vorwärts dorthin gleiten (statt seitlich zu rutschen)
@@ -241,7 +270,7 @@ root.FKFlight = { create(ctx) {
     }
     // 6.8 ein Rückflug-Schritt (rein rechnerisch wie flyStep, auch für die Vorhersage): herauszoomen bis zur Startübersicht,
     // dabei dem Kursverlauf folgen (bzw. ohne Verlauf: 2D zentriert, 3D um den Zoompunkt vor dem Fokus -> rückwärts)
-    function revStep(cam, heading, dt, dec) {
+    function revStep(cam, heading, dt, dec, LA) {
         const place = FLY.mode === 'place' && FLY.target;
         const zf = place ? FLY.z0 : 1;
         // weich anhalten: in den letzten 0,6 Zehnerpotenzen Tempo ∝ √Abstand (konstante Verzögerung), Ende exakt bei zf
@@ -257,7 +286,7 @@ root.FKFlight = { create(ctx) {
         }
         const u0 = 1.5 / cam.zoom, u1 = 1.5 / z1, lz1 = Math.log10(z1);
         const cap = (x, y, m) => { const r = Math.hypot(x, y); return r > m ? [x * m / r, y * m / r] : [x, y]; };
-        const P1 = trailAt(lz1);
+        const P1 = LA ? null : trailAt(lz1);      // 7.2.1 Lavalampe: zentriert heraus (der Kursverlauf zöge gegen die Seitendrift)
         let cx, cy, h = heading, trail = false;
         if (P1) {
             // Kursverlauf: seiner Bewegung folgen (Vorsteuerung, gedeckelt – ein Sprung im Verlauf wird zum weichen Gleiten),
@@ -282,7 +311,122 @@ root.FKFlight = { create(ctx) {
                 cx += HP.fromNumber(e[0] * u1); cy += HP.fromNumber(e[1] * u1);
             }
         }
+        if (LA) { cx += HP.fromNumber(FLY.lava.dv[0] * dt * u1); cy += HP.fromNumber(FLY.lava.dv[1] * dt * u1); }
         return { cam: { cx, cy, zoom: z1 }, heading: h, done: false, out, rev: true, trail };
+    }
+    // ---- 7.2.1 Lavalampen-Regler (siehe oben bei LV)
+    const smooth = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+    function lavaWanted() {
+        const m = FLY.mode;
+        return LAVA_Q && S.lava !== false && FLY.on && !FLY.paused && !FLY.d3 && S.flySpeed > 0 && (m === 'random' || m === 'place' || m === 'bulb');
+    }
+    // Seitengleiten zum Zoompunkt: auf der Reise voll (auch „verloren“ über leerer Fläche – dann gleitet die Mitte zum Rand,
+    // während das Zoomtempo fast ruht), beim Schweben/Herauszoomen ruht es weich (Gegenstück zur Seitendrift)
+    function lavaKs() { const L = FLY.lava; return Math.max(0, Math.min(1, 1 - L.dw)) * Math.min(1, (FLY.sp || 0) / 0.1) * (FLY.ease === undefined ? 1 : FLY.ease); }
+    // Tempo folgt dem Ziel als S-Kurve: Beschleunigung ≤ A, Ruck ≤ J (Beschleunigung, aus der das Ziel ohne Überschwingen
+    // erreicht wird: √(2·J·|Fehler|))
+    function lavaFollow(L, tgt, A, J, dt) {
+        const e = tgt - L.r, ad = Math.sign(e) * Math.min(A, Math.sqrt(2 * J * Math.abs(e)));
+        L.a += Math.max(-J * dt, Math.min(J * dt, ad - L.a));
+        L.r += L.a * dt;
+    }
+    // tiefster Herauszoom-Punkt: Startansicht der Welt (Ziel-Flug: sein Start-Zoom)
+    function lavaFloor() { return FLY.mode === 'place' ? FLY.z0 || 1 : Math.max(0.2, ctx.homeOf(S.formula)[2]); }
+    function lavaPhase(L, ph, now) {
+        if (L.phase === ph) return;
+        if ((ph === 'rev') !== (L.phase === 'rev') && (ph === 'rev' || L.phase === 'rev')) L.flip = now;
+        L.phase = ph; L.t = now;
+        (L.log || (L.log = [])).push([Math.round(now), ph, +S.cam.zoom.toPrecision(4)]);
+        if (L.log.length > 200) L.log.shift();
+    }
+    function lavaStep(now, dt) {
+        const L = FLY.lava || (FLY.lava = { on: false, phase: 'cruise', r: 0, a: 0, t: now, flip: -1e9, dw: 0, dwv: 0, th: Math.random() * 6.283, dv: [0, 0], xs: null, dx: 0, rmax: 9 });
+        const bulb = FLY.mode === 'bulb';
+        // Zoomtempo ohne Lavalampe (Übergabe ohne Sprung beim Ein-/Ausschalten)
+        FLY.lostS = (FLY.lostS || 0) + ((FLY.lost || 0) - (FLY.lostS || 0)) * Math.min(1, dt / 0.8);
+        const lost = Math.min(1, L.on ? FLY.lostS : FLY.lost || 0);
+        const old = bulb ? (FLY.sp || 0) : (FLY.sp || 0) * GOV.g * (FLY.sp > 0 ? (1 - 0.95 * lost) * (FLY.zf || 1) : 1);
+        if (!lavaWanted()) { if (L.on) { L.on = false; lavaPhase(L, 'cruise', now); } L.r = old; L.a = 0; L.dw = 0; L.dwv = 0; L.dv = [0, 0]; L.xs = null; L.rev = old < 0; return; }
+        if (!L.on) { L.on = true; L.r = old; L.a = 0; L.xs = null; L.dx = 0; lavaPhase(L, 'cruise', now); L.flip = -1e9; L.rmax = 9; L.fastT = now; }
+        // Tempo vom Nutzer verstellt (Regler, Tasten, ⇄): 2 s lang folgt das Zoomtempo schnell (τ = 1 s) – eine Bedienung soll
+        // sofort wirken, nur die Automatik ist träge. Anfahrt (S-Kurve 7.1.6) und Ausrollen gehen direkt durch
+        if (L.sfs !== S.flySpeed) { if (L.sfs !== undefined) L.fastT = now; L.sfs = S.flySpeed; if (L.phase !== 'cruise') lavaPhase(L, 'cruise', now); L.rmax = 9; }
+        // Größenänderung (Vollbild, Drehen): 2,5 s lang gilt die letzte Messung (die neuen Ränder werden gerade gerechnet)
+        const hold = now - (ctx.RC.resizeT || -1e9) < 2500;
+        // Schärfe (log) + Trend
+        let x = null;
+        const T = bulb ? LQ.bulb : LQ.d2;
+        if (hold && L.xs !== null) x = L.xs;
+        if (x !== null) { /* gehalten */ }
+        else if (bulb) { const B = ctx.BULB, md = B.minDist(); if (md > 0 && B.B.dSurf > 0) x = Math.log10(B.B.dSurf / md); }
+        else if (GOV.lq !== undefined && GOV.lq !== null) x = Math.log10(Math.max(1e-3, GOV.lq));
+        if (x === null) x = T.sharp;
+        if (L.xs === null) { L.xs = x; L.dx = 0; }
+        const xs0 = L.xs;
+        L.xs += (x - L.xs) * Math.min(1, dt / 0.25);
+        L.dx += ((L.xs - xs0) / Math.max(1e-3, dt) - L.dx) * Math.min(1, dt / 0.6);
+        if (hold) L.dx = Math.max(0, L.dx);
+        const xF = L.xs + Math.min(0, L.dx) * 2, age = (now - L.t) / 1000;
+        const cruise = Math.max(0, FLY.sp || 0), cref = Math.max(0.1, Math.abs(S.flySpeed));
+        const base = bulb || FLY.mode === 'place' ? cruise : cruise * (1 - 0.95 * lost) * (FLY.zf || 1);
+        // Phasen
+        const qT = GOV.lqT === undefined || GOV.lqT === null ? 1 : GOV.lqT;
+        const outD = L.turnZ ? Math.log10(L.turnZ / S.cam.zoom) : 0;
+        // (an der Startansicht gibt es kein Heraus – dort nach kurzem Schweben weiter)
+        const nearFloor = !bulb && S.cam.zoom < lavaFloor() * 2;
+        switch (L.phase) {
+            case 'cruise':
+                if (cruise > 0.02 && FLY.ease >= 1 && (xF < T.lo || L.xs < T.lo)) {
+                    // Dauertempo lernen: was eben nicht durchhielt, gilt fürs Erste als Obergrenze (× 0,7)
+                    L.rmax = Math.max(0.03, Math.max(0, L.r) * 0.7);
+                    lavaPhase(L, 'brake', now); L.turnZ = S.cam.zoom; L.turn = S.cam;
+                }
+                else if (L.xs > T.ok && L.dx > -0.03) L.rmax = Math.min(9, L.rmax * (1 + 0.06 * dt));    // scharf und stabil: langsam mehr
+                // kriecht der Flug nur noch (Ziel < 25 % des Reisetempos, 3 s lang – 3D-Körper an der Genauigkeitsgrenze, sehr
+                // langsame Rechnung), ist die Tiefe für jetzt erreicht: wie oben bremsen, schweben, zurückweichen
+                L.slowT = cruise > 0.02 && FLY.ease >= 1 && L.tgt < 0.25 * cruise ? (L.slowT || 0) + dt : 0;
+                if (L.slowT > 3 && now - L.flip > 8000) { L.slowT = 0; lavaPhase(L, 'brake', now); L.turnZ = S.cam.zoom; L.turn = S.cam; }
+                break;
+            case 'brake':
+                if (L.xs >= T.sharp && L.dx >= 0) lavaPhase(L, 'cruise', now);
+                else if (Math.abs(L.r) < 0.02 * cref && Math.abs(L.a) < 0.05 * cref) { lavaPhase(L, 'hover', now); L.turnZ = S.cam.zoom; L.turn = S.cam; }
+                break;
+            case 'hover':
+                if (age > 1.2 && L.xs >= T.sharp && L.dx >= -0.02 && (bulb || qT >= 0.75)) lavaPhase(L, 'cruise', now);
+                else if (nearFloor && age > 2) lavaPhase(L, 'cruise', now);
+                else if (age > 1.5 && now - L.flip > 8000) lavaPhase(L, 'rev', now);
+                else if (age > 12) lavaPhase(L, 'cruise', now);
+                break;
+            case 'rev':
+                if (age > 4 && L.xs >= T.sharp && (bulb || qT >= 0.75)) lavaPhase(L, 'cruise', now);
+                else if (age > 15 || outD > (bulb ? 0.8 : 1.0)) lavaPhase(L, 'wait', now);
+                break;
+            case 'wait':
+                if ((L.xs >= T.sharp && (bulb || qT >= 0.75)) || age > (bulb || nearFloor ? 6 : 20)) lavaPhase(L, 'cruise', now);
+                break;
+        }
+        // Zieltempo + S-Kurve
+        let tgt;
+        if (L.phase === 'cruise') tgt = Math.min(base * smooth((xF - T.lo) / (T.ok - T.lo)), L.rmax);
+        else if (L.phase === 'rev') tgt = -LV.rueck * Math.max(cruise, 0.05) * (bulb ? 1 : smooth(Math.log10(S.cam.zoom / lavaFloor()) / 0.5));   // (vor der Startansicht weich auslaufen)
+        else tgt = 0;
+        L.tgt = tgt;
+        if (FLY.stopping || (FLY.ramp && (FLY.ramp.stop || FLY.ramp.start))) { L.a = (tgt - L.r) / Math.max(1e-3, dt); L.r = tgt; }   // Ausrollen per Knopf: wie gehabt
+        else {
+            const tau = now - (L.fastT || -1e9) < 2000 ? 1 : L.phase === 'brake' ? LV.tau * 0.6 : LV.tau, A = cref / (0.6 * tau), J = A / (0.4 * tau);
+            lavaFollow(L, tgt, A, J, dt);
+        }
+        // Seitendrift (nur 2D): Ein-/Ausblenden über eine kritisch gedämpfte Feder (ω = 1,2/s), Richtung dreht gemächlich
+        const dwT = bulb || L.phase === 'cruise' ? 0 : 1, w = 1.2;
+        L.dwv += (w * w * (dwT - L.dw) - 2 * w * L.dwv) * dt; L.dw += L.dwv * dt;
+        L.th += dt * (0.09 + 0.05 * Math.sin(now / 1000 * 0.071));
+        // Richtung mit Hysterese (um 0 herum kein Hin und Her zwischen Hinein- und Herauszoom-Schritt)
+        L.rev = L.rev ? L.r < 0.004 * cref : L.r < -0.004 * cref;
+        // (Prozessor-Rechnung – Exoten ab 2000×, Klassiker jenseits 10³⁰: jedes neue Randstück kostet Sekunden – nur ein Viertel)
+        // (Wechsel des Rechenwegs, z. B. Exoten bei 2000×: weich über ~1 s, sonst spränge das Drifttempo)
+        L.cpuK = (L.cpuK === undefined ? 1 : L.cpuK) + ((ctx.plan().kind === 'cpu' ? 0.25 : 1) - (L.cpuK === undefined ? 1 : L.cpuK)) * Math.min(1, dt / 1.0);
+        const amp = LV.seit * Math.max(0, L.dw) * L.cpuK;
+        L.dv = [Math.cos(L.th) * amp, Math.sin(L.th) * amp];
     }
     function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
     const rot2 = (v, a) => [v[0] * Math.cos(a) + v[1] * Math.sin(a), -v[0] * Math.sin(a) + v[1] * Math.cos(a)];   // Kurs +a (im Uhrzeigersinn)
@@ -302,7 +446,7 @@ root.FKFlight = { create(ctx) {
     function flyDir(rev, now) {
         FLY.rev = rev;
         FLY.T = null; FLY.VA = [0, 0]; FLY.glide = null; FLY.gap = false; FLY.lost = 0; FLY.dA = null; FLY.Tt = now;
-        if (!FLY.d3) FLY.A = [0, 0];
+        if (!FLY.d3 && !(FLY.lava && FLY.lava.on)) FLY.A = [0, 0];     // (Lavalampe: der Zoompunkt bleibt – kein Sprung in der Seitenbewegung)
         if (!rev) FLY.out = false;
     }
     // 7.1.7 Zeitschritt des Flugs auf ganze Bildschirmtakte gerundet (Peter: „Flug ist noch zu unruhig“): das Bild erscheint
@@ -335,10 +479,12 @@ root.FKFlight = { create(ctx) {
         dt = taktDt(now, dt, hold);
         if (!(dt > 0)) return;
         FLY.simT = (FLY.simT || 0) + dt;
-        if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { flySpeedStep(now, dt); ctx.BULB.flyUpdate(now, dt); return; }
+        if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { flySpeedStep(now, dt); lavaStep(now, dt); FLY.zr = FLY.lava.r; ctx.BULB.flyUpdate(now, dt); return; }
         flyMode();
         flySpeedStep(now, dt);
-        const rev = FLY.sp < 0;
+        lavaStep(now, dt);
+        FLY.zr = FLY.lava.r;                        // tatsächliches Zoomtempo (Planer: Rückflug-Ebenen, Messung)
+        const rev = FLY.lava.on ? FLY.lava.rev : FLY.sp < 0;
         if (rev !== !!FLY.rev) flyDir(rev, now);
         const ks = Math.min(1, Math.abs(FLY.sp) / 0.1) * (FLY.ease === undefined ? 1 : FLY.ease);
         let revTrail = false;
@@ -360,7 +506,7 @@ root.FKFlight = { create(ctx) {
             // von der neuen Richtung aus weiter (2D: Schieben verschiebt das Bild, siehe flyPanned)
             const du = (FLY.user || 0) - (FLY.userPrev || 0);
             if (du && FLY.d3) { FLY.A = rot2(FLY.A, du); if (FLY.T) FLY.T = rot2(FLY.T, du); FLY.userPrev = FLY.user; FLY.userT = now; FLY.Tt = now; }
-            const g = GOV.g, sp = Math.max(0, FLY.sp) * g;
+            const g = FLY.lava.on ? 1 : GOV.g, sp = Math.max(0, FLY.lava.on ? FLY.lava.r : FLY.sp) * g;
             // Zoompunkt gleitet zum Ziel: Geschwindigkeit begrenzt, Änderung der Geschwindigkeit weich
             if (FLY.T) {
                 const dx = FLY.T[0] - FLY.A[0], dy = FLY.T[1] - FLY.A[1], d = Math.hypot(dx, dy);
@@ -376,7 +522,7 @@ root.FKFlight = { create(ctx) {
                 // den Rand. Datenlücke: langsam weiter, bis das Bild voraus gerechnet ist.
                 if (FLY.gap) zfT *= 0.3;
                 if (FLY.dA !== null && FLY.dA !== undefined) zfT *= 1 - 0.85 * smooth01((FLY.dA * Math.pow(10, sp * 0.4) - 0.08) / 0.3);
-                // bremsen schnell, beschleunigen weich
+                // bremsen schnell, beschleunigen weich (7.2.1 Lavalampe: das Zoomtempo läuft danach ohnehin durch die S-Kurve)
                 FLY.zf += (zfT - FLY.zf) * Math.min(1, dt * (zfT < FLY.zf ? 5 : 1.5));
             }
             // Zoompunkt im Vorwärtsbereich halten (0,25–0,7 Bildhälften; 2D: höchstens 0,9 von der Mitte)

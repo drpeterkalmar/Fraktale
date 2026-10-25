@@ -1,0 +1,96 @@
+{
+ "tag": "stash_a",
+ "base": "http://localhost:8480/index.html",
+ "secs": 60.0,
+ "query": "",
+ "speed": 0.3,
+ "runs": [
+  {
+   "n": 3148,
+   "secs": 60.0,
+   "coarse": 0.0159,
+   "still": 0.0,
+   "jz95": 2.394,
+   "jzmax": 9.686,
+   "jp95": 0.887,
+   "jpmax": 4.563,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 0.3,
+   "sharp_mean": 0.15,
+   "episodes": 6,
+   "lz0": 2.26,
+   "lz1": 11.76,
+   "cruise": 0.295,
+   "phases": {
+    "": 3148
+   },
+   "name": "seepferd",
+   "plan": {
+    "kind": "gpu",
+    "mode": "perturb"
+   },
+   "errors": []
+  },
+  {
+   "n": 3599,
+   "secs": 60.0,
+   "coarse": 0.5904,
+   "still": 0.898,
+   "jz95": 0.002,
+   "jzmax": 0.036,
+   "jp95": 1.3,
+   "jpmax": 25.644,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 1.3,
+   "sharp_mean": 0.15,
+   "episodes": 229,
+   "lz0": 4.48,
+   "lz1": 4.48,
+   "cruise": 0.05,
+   "phases": {
+    "": 3599
+   },
+   "name": "phoenix",
+   "plan": {
+    "kind": "cpu",
+    "mode": "direct"
+   },
+   "errors": []
+  },
+  {
+   "n": 3601,
+   "secs": 60.0,
+   "coarse": 0.9483,
+   "still": 0.9408,
+   "jz95": 0.0,
+   "jzmax": 0.019,
+   "jp95": 0.0,
+   "jpmax": 5.408,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 56.82,
+   "sharp_mean": 28.45,
+   "episodes": 2,
+   "lz0": 4.48,
+   "lz1": 4.48,
+   "cruise": 0.05,
+   "phases": {
+    "": 3601
+   },
+   "name": "phoenix",
+   "plan": {
+    "kind": "cpu",
+    "mode": "direct"
+   },
+   "errors": []
+  }
+ ]
+}

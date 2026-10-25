@@ -112,7 +112,9 @@ def main():
         pg.click('#btn-3d'); time.sleep(1.5)
         s3 = fly_state(pg); time.sleep(2.0); s4 = fly_state(pg)
         res['to2d'] = [s3, s4]
-        need(s3['on'] and not s3['d3'] and not s3['v3'] and s4['zoom'] > s3['zoom'] * 1.1, f'⛰ aus im 3D-Flug: Flug läuft in 2D weiter ({s3["zoom"]:.2e} → {s4["zoom"]:.2e})')
+        # (7.2.1 Lavalampen-Flug: das 3D-Bild ist für die 2D-Ansicht gröber – der Flug zieht dort erst weich an; geprüft wird,
+        # dass er weiterfliegt, nicht das Tempo)
+        need(s3['on'] and not s3['d3'] and not s3['v3'] and s4['zoom'] > s3['zoom'] * 1.03, f'⛰ aus im 3D-Flug: Flug läuft in 2D weiter ({s3["zoom"]:.2e} → {s4["zoom"]:.2e})')
         need(box(pg, '#bar3d') is not None and box(pg, '#btn-north') is None, 'nach dem Wechsel: Flug-Leiste wie in 2D')
         pg.click('#btn-fly'); time.sleep(1.4)          # 7.1.6: Anhalten rollt ~1 s aus
         need(not fly_state(pg)['on'] and box(pg, '#bar3d') is None and box(pg, '#btn-fly2d') is not None, 'Stopp: Leiste weg, ✈-Knopf wieder da')
