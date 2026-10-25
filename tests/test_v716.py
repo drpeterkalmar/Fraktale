@@ -44,7 +44,7 @@ def case_A(p):
     print('A  Standards bei leerem Speicher')
     a = App(p).open(); pg = a.page
     s = pg.evaluate(STD)
-    check(all(s[k] == v for k, v in NEW.items()) and s['fsStart'] is True and s['startWorld'] == 'random', f'Standards {s}')
+    check(all(s[k] == v for k, v in NEW.items()) and s['fsStart'] is True and s['startWorld'] == 'flug', f'Standards {s}')
     raw = pg.evaluate("() => +document.getElementById('s-edgew').value")
     pg.evaluate("() => { const r = document.getElementById('s-edgew'); r.value = 1; r.dispatchEvent(new Event('input')); }")
     mx = pg.evaluate("() => window.__fraktal.S.edgeW")

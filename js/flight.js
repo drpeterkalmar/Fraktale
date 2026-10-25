@@ -53,11 +53,12 @@ root.FKFlight = { create(ctx) {
     // Anhalten per Knopf/Taste rollt in STOP_MS aus; Gesten und Abbrüche halten sofort. ?anfahrt=0 = sofort wie bis 7.1.5.
     const ANFAHRT = ctx.Q.get('anfahrt') !== '0';
     const START_MS = 2000, STOP_MS = 1000;
-    function rampStart() {
+    // 7.2.0: ms = Dauer der Anfahrt (Zufallsflug beim Start: 4 s, sonst START_MS)
+    function rampStart(ms) {
         const now = performance.now();
         FLY.kPrev = null;
-        FLY.t0 = now; FLY.stopping = false;
-        if (ANFAHRT) { FLY.sp = 0; FLY.ramp = { from: 0, to: S.flySpeed, t0: now, ms: START_MS }; FLY.ease = 0; }
+        FLY.t0 = now; FLY.stopping = false; FLY.rampMs = ms || START_MS;
+        if (ANFAHRT) { FLY.sp = 0; FLY.ramp = { from: 0, to: S.flySpeed, t0: now, ms: FLY.rampMs, start: true }; FLY.ease = 0; }
         else { FLY.sp = S.flySpeed; FLY.ramp = null; FLY.ease = 1; }
     }
     const REV_MS = 600;           // Richtungswechsel: Dauer der S-Kurve
@@ -79,7 +80,7 @@ root.FKFlight = { create(ctx) {
             if (S.formula !== fm) setMode(fm, true);
             if (!ctx.BULB.startFly(place)) return;
             if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && S.cam.zoom < 1.5)) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.3);
-            rampStart(); FLY.rev = S.flySpeed < 0; FLY.out = false; FLY.lastDir = Math.sign(S.flySpeed) || 1;
+            rampStart(opts && opts.rampMs); FLY.rev = S.flySpeed < 0; FLY.out = false; FLY.lastDir = Math.sign(S.flySpeed) || 1;
             FLY.on = true; FLY.paused = false; FLY.d3 = false; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0;
             emit('fly');
             return;
@@ -107,7 +108,7 @@ root.FKFlight = { create(ctx) {
         if (d3) set3d(true); else if (in3d()) set3d(false);     // 2D-Flug aus 3D heraus: 3D aus, der Flug läuft flach
         // 6.8: Start mit dem eingestellten Tempo; steht der Regler auf 0 (oder rückwärts in der Übersicht), vorwärts
         if (!RUECK || Math.abs(S.flySpeed) < 0.05 || (S.flySpeed < 0 && (place || S.cam.zoom < 1.5))) S.flySpeed = Math.max(0.1, Math.abs(S.flySpeed) >= 0.05 ? Math.abs(S.flySpeed) : 0.3);
-        rampStart(); FLY.rev = S.flySpeed < 0; FLY.out = false; FLY.lastDir = Math.sign(S.flySpeed) || 1;
+        rampStart(opts && opts.rampMs); FLY.rev = S.flySpeed < 0; FLY.out = false; FLY.lastDir = Math.sign(S.flySpeed) || 1;
         // Kursverlauf: weiter benutzen, wenn der Flug genau dort weitergeht, wo der letzte endete (sonst neu)
         const te = FLY.trailEnd, c0 = S.cam;
         if (place || !te || te.cx !== c0.cx || te.cy !== c0.cy || te.zoom !== c0.zoom) FLY.trail = [];
@@ -163,11 +164,11 @@ root.FKFlight = { create(ctx) {
     function turnFly() { if (!RUECK || !FLY.on || !FLY.d3) return; V3.turnFrom = V3.turnA || 0; V3.turnT0 = performance.now(); V3.turnT = V3.turnT ? 0 : Math.PI; emit('fly'); }
     function flySpeedStep(now, dt) {
         const tgt = RUECK ? S.flySpeed : Math.max(0.1, S.flySpeed);
-        FLY.ease = ANFAHRT ? smooth01((now - (FLY.t0 || 0)) / START_MS) : 1;
+        FLY.ease = ANFAHRT ? smooth01((now - (FLY.t0 || 0)) / (FLY.rampMs || START_MS)) : 1;
         if (FLY.ramp) {
             const u = (now - FLY.ramp.t0) / (FLY.ramp.ms || REV_MS);
             // Start: Ziel folgt dem Regler (wird er während der Anfahrt verstellt, fährt die Kurve dorthin)
-            if (FLY.ramp.ms === START_MS && !FLY.ramp.stop) FLY.ramp.to = tgt;
+            if (FLY.ramp.start && !FLY.ramp.stop) FLY.ramp.to = tgt;
             if (u >= 1) { FLY.sp = FLY.ramp.to; const st = FLY.ramp.stop; FLY.ramp = null; if (st) { stopFly(); return; } }
             else FLY.sp = FLY.ramp.from + (FLY.ramp.to - FLY.ramp.from) * smooth01(u);
         } else FLY.sp += (tgt - FLY.sp) * (1 - Math.exp(-dt / 0.18));

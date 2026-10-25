@@ -236,9 +236,9 @@
                     <p class="hint" data-i18n="hud_fs_hint">Im Vollbild (bzw. Kino-Modus) bleibt nur das Bild. Kurz tippen oder die Maus bewegen zeigt die Bedienung für 3 s.</p>
                     <label class="toggle"><span data-i18n="fs_start">Beim Start Vollbild</span><input type="checkbox" id="t-fsstart" checked><i></i></label>
                     <p class="hint" data-i18n="fs_start_hint">Der erste Tipp ins Bild schaltet auf Vollbild (Browser erlauben es erst nach einer Berührung); auf dem iPhone startet der Kino-Modus.</p>
-                    <h3 data-i18n="start_world">Startwelt</h3>
-                    <div class="seg" id="seg-startw"><button data-v="random" data-i18n="start_random">Zufall</button><button data-v="last" data-i18n="start_last">Wie zuletzt</button></div>
-                    <p class="hint" data-i18n="start_world_hint">Zufall: jeder Start und jedes Neuladen zeigt eine andere Welt (geteilte Links zeigen ihre Ansicht). Wie zuletzt: Neuladen stellt die letzte Ansicht wieder her.</p>
+                    <h3 data-i18n="start_world">Start</h3>
+                    <div class="seg" id="seg-startw"><button data-v="flug" data-i18n="start_flug">Zufallsflug</button><button data-v="still" data-i18n="start_still">Zufall still</button><button data-v="last" data-i18n="start_last">Wie zuletzt</button></div>
+                    <p class="hint" data-i18n="start_world_hint">Zufallsflug: jeder Start zeigt eine zufällige Welt mit zufälligen Farben und fliegt langsam los – ohne Bedienung (kurz tippen bzw. Taste H zeigt sie). Zufallswelt still: zufällige Welt, sonst die eigenen Einstellungen. Wie zuletzt: Neuladen stellt die letzte Ansicht wieder her. Geteilte Links zeigen immer ihre Ansicht.</p>
                     <label class="select"><span data-i18n="language">Sprache</span><select id="sel-lang"></select></label>
                 </div>
                 <div class="btn-grid">
@@ -279,6 +279,7 @@
     </div>
 
     <div id="toast" role="status" aria-live="polite"></div>
+    <div id="start-hint" aria-hidden="true" hidden></div>
     <!-- 7.1.10 ⓘ-Faktenkarte je Welt -->
     <div id="facts-backdrop" hidden></div>
     <div id="facts" class="glass" role="dialog" aria-modal="true" aria-labelledby="facts-title" hidden>
@@ -308,6 +309,7 @@
     <script src="js/weltfakten.js?v=7.1.14"></script>
     <script src="js/flames.js?v=7.1.14"></script>
     <script src="js/density.js?v=7.1.14"></script>
+    <script src="js/zufall.js?v=7.1.14"></script>
     <script src="js/app.js?v=7.1.14"></script>
     <script src="js/ui.js?v=7.1.14"></script>
 </body>

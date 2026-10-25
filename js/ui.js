@@ -888,8 +888,10 @@ if (!FS_API) {
 // beim Zoomen mit dem Rad bewegt sich die Maus fast immer mit). Nur die Taste H zeigt/versteckt sie (bleibt, bis H wieder
 // gedrückt wird), Esc bzw. F verlassen das Vollbild. Der Mauszeiger ist ausgeblendet. Touch (Handy, Tablet) unverändert:
 // kurzer Tipp zeigt die Bedienung 3 s – ohne Tastatur gäbe es sonst keinen Weg zurück.
-const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, overT: 0, hinted: false, ptr: '', pinned: false };
-const hudless = () => (HUD.fs && S.hudFs) || HUD.cine;
+const HUD = { fs: false, cine: false, peekT: 0, mx: -1, my: -1, over: false, overT: 0, hinted: false, ptr: '', pinned: false, start: false };
+// 7.2.0 Start-Kino (Zufallsflug, js/zufall.js): wie der Kino-Modus, ohne Hinweis-Einblendung. Endet mit Esc, mit jedem Wechsel
+// ins/aus dem Vollbild (danach gelten die Regeln des Vollbilds) und – ohne Vollbild beim ersten Tipp – mit einem Mausklick
+const hudless = () => (HUD.fs && S.hudFs) || HUD.cine || HUD.start;
 const peeking = () => document.body.classList.contains('hud-peek');
 function hudApply() {
     const on = hudless(), b = document.body, was = b.classList.contains('hudless');
@@ -925,10 +927,14 @@ function hudHide(force) {
     if (!force && busy) { HUD.peekT = setTimeout(hudHide, 1000); return; }
     document.body.classList.remove('hud-peek');
 }
-function setCinema(on) { A.noteResize(); HUD.cine = !!on; hudApply(); }
+function setCinema(on) { A.noteResize(); HUD.cine = !!on; if (!on) HUD.start = false; hudApply(); }
+function endStartKino() { if (!HUD.start) return; HUD.start = false; hudApply(); }
 // Tipp auf das Bild: ausgeblendet -> nur zeigen (true = erledigt); sichtbar im Flug -> pausieren wie immer, Zeit neu
 A.tapHook = () => {
     if (!hudless()) return false;
+    // 7.2.0 Start-Kino ohne Vollbild: ein Mausklick ins Bild beendet es (mit „Beim Start Vollbild“ schaltet derselbe Klick ins
+    // Vollbild – dort gilt dann 7.1.12)
+    if (HUD.start && !HUD.fs && !HUD.cine && HUD.ptr === 'mouse') { if (!FS1.armed) endStartKino(); return true; }
     if (HUD.ptr === 'mouse' && !HUD.pinned && !peeking()) return true;     // 7.1.12: Mausklick ins Bild holt die Bedienung nicht zurück (nur H)
     if (!peeking()) { hudPeek(); return true; }
     if (A.FLY.on) hudPeek();
@@ -959,7 +965,7 @@ const FS1 = { armed: false, down: null, asked: 0 };
     });
 })();
 A.FS1 = FS1;
-const onFsChange = () => { A.noteResize(); HUD.fs = !!(document.fullscreenElement || document.webkitFullscreenElement); hudApply(); };
+const onFsChange = () => { A.noteResize(); HUD.fs = !!(document.fullscreenElement || document.webkitFullscreenElement); HUD.start = false; hudApply(); };
 document.addEventListener('fullscreenchange', onFsChange);
 document.addEventListener('webkitfullscreenchange', onFsChange);
 addEventListener('pointermove', (e) => {
@@ -1053,7 +1059,7 @@ window.addEventListener('keydown', (e) => {
                 case 'h': if (hudless()) hudToggleKey(); else openModal('help'); break;      // 7.1.12: im Vollbild = Bedienung zeigen/verstecken
                 case '?': openModal('help'); break;
                 case 'l': { const ks = Object.keys(TRANSLATIONS); S.lang = ks[(ks.indexOf(S.lang) + 1) % ks.length]; $('sel-lang').value = S.lang; A.saveSettings(); applyI18n(); break; }
-                case 'escape': closeSheet(); closeModal(); if (HUD.cine) setCinema(false); break;
+                case 'escape': closeSheet(); closeModal(); if (HUD.cine) setCinema(false); endStartKino(); break;
                 case 'd': toggle3d(); break;
                 case 'v': A.toggleFly(); break;      // 6.6: fliegt im aktuellen Modus
             }
@@ -1139,6 +1145,29 @@ function sync3d() {
     $('btn-fly').title = t(fly ? 'fly_stop' : 'fly');
     $('btn-turn').setAttribute('aria-pressed', String(!!A.V3.turnT));
 }
+
+// ------------------------------------------------------------------ 7.2.0 Zufallsflug beim Start: ohne jede Einblendung
+// (Hinweise zum Vollbild/Flug entfallen); einmal überhaupt (localStorage) nach dem Einblenden ≤ 2 s ein dezenter Hinweis,
+// wie die Bedienung zurückkommt. Tests (navigator.webdriver) nur mit ?starthint=1.
+if (A.START.kino) {
+    HUD.start = true; HUD.hinted = true; hintFly2d = true;
+    hudApply();
+    let shown = false; try { shown = !!localStorage.getItem('fk_starthint'); } catch (e) {}
+    const q = new URLSearchParams(location.search).get('starthint');
+    if (q === '1' || (!shown && !navigator.webdriver && q !== '0')) {
+        A.on((w) => {
+            if (w !== 'start') return;
+            const h = $('start-hint');
+            h.textContent = t(mouseUser() ? 'start_hint_key' : 'start_hint');
+            h.hidden = false;
+            setTimeout(() => h.classList.add('show'), 1300);
+            setTimeout(() => h.classList.remove('show'), 3100);
+            setTimeout(() => { h.hidden = true; }, 3800);
+            try { localStorage.setItem('fk_starthint', '1'); } catch (e) {}
+        });
+    }
+}
+A.HUD = HUD;
 
 // ------------------------------------------------------------------ Start
 buildPalettes();

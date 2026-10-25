@@ -46,9 +46,16 @@ body.immersive #dock { transform: translateY(24px); }
 body:not(.ready) .chrome { opacity: 0; }
 /* 6.8 HUD im Vollbild / Kino-Modus: nur das Bild bleibt (alles außer Canvas, Überblendung und Grafik-Meldung); Tipp bzw.
    Mausbewegung zeigt die Bedienung 3 s (body.hud-peek) */
-body.hudless > :not(#gl):not(#xfade):not(#gpu-note):not(#shot-panel):not(#shot-block) { transition: opacity .3s var(--ease), transform .45s var(--ease); }
-body.hudless:not(.hud-peek) > :not(#gl):not(#xfade):not(#gpu-note):not(#shot-panel):not(#shot-block) { opacity: 0 !important; pointer-events: none !important; }
+body.hudless > :not(#gl):not(#xfade):not(#gpu-note):not(#shot-panel):not(#shot-block):not(#start-hint) { transition: opacity .3s var(--ease), transform .45s var(--ease); }
+body.hudless:not(.hud-peek) > :not(#gl):not(#xfade):not(#gpu-note):not(#shot-panel):not(#shot-block):not(#start-hint) { opacity: 0 !important; pointer-events: none !important; }
 body.hudless:not(.hud-peek) #gl { cursor: none; }
+/* 7.2.0 Zufallsstart: bis das erste Bild geprüft ist, bleibt der dunkle Hintergrund; dann blendet das Bild in 1,4 s ein
+   (!important schlägt auch die Start-Animation glIn). Der einmalige Hinweis „Tippen für Menü“ steht über dem Kino-Modus. */
+html.fk-intro #gl { opacity: 0 !important; animation: none !important; }
+html.fk-intro-fade #gl { transition: opacity 1.4s ease-in-out; }
+#start-hint { position: fixed; z-index: 40; left: 50%; bottom: calc(26px + var(--sa-b, 0px)); transform: translateX(-50%); padding: 7px 14px; border-radius: 999px;
+    background: rgba(10, 12, 24, 0.42); color: rgba(255, 255, 255, 0.78); font-size: 13px; letter-spacing: .02em; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
+#start-hint.show { opacity: 1; }
 #btn-fullscreen.on { background: rgba(167, 139, 250, 0.35); border-color: rgba(167, 139, 250, 0.8); }
 
 /* ---------- HUD ---------- */

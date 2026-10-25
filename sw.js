@@ -18,6 +18,7 @@ const ASSETS = [
     'js/density.js',
     'js/flames.js',
     'js/weltfakten.js',
+    'js/zufall.js',
     'js/flight.js',
     'js/fractal-core.js',
     'js/gestures.js',

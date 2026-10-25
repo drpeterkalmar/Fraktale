@@ -193,7 +193,7 @@ const S = {
     wp: {}, wpal: {},                                                       // 7.1: Welt-Parameter, Palette je Welt
     bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false, bulbFly: {}, bulbSway: true,   // 7.1.9 Flug-Art je 3D-Welt ('durch'/'tauch', leer = Standard der Welt), Schwanken             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
-    fsStart: true, startWorld: 'random',                                    // 7.1.6: Vollbild beim ersten Tipp; Startwelt Zufall/'last'
+    fsStart: true, startWorld: 'flug',                                      // 7.1.6: Vollbild beim ersten Tipp; 7.2.0 Start: 'flug' (Zufallsflug) | 'still' (Zufallswelt wie 7.1.6) | 'last'
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
     chrome: true,
 };
@@ -275,6 +275,7 @@ function loadSettings() {
             if (s[k] !== undefined) S[k] = s[k];
         for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f], S.wp[f] || {});
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
+        if (S.startWorld === 'random' || !['flug', 'still', 'last'].includes(S.startWorld)) S.startWorld = 'flug';   // 7.2.0: „Zufall“ (Standard bis 7.1.14) -> Zufallsflug
         // 7.1.6: neue Standards einmalig übernehmen (nur diese Felder; danach gelten wieder die eigenen Änderungen)
         if (Object.keys(s).length && (s.sv | 0) < 2) {
             S.palette = Math.max(0, PAL.indexOf('ice')); S.wpal = Object.assign({}, S.wpal, { c: 'ice' });
@@ -296,6 +297,9 @@ function saveSettings() {
     o.wpal = S.wpal;
     o.paletteId = S.wpal.c || PAL.list[S.palette].id;
     o.sv = SETTINGS_V;
+    // 7.2.0 Zufallsstart: gewürfelte, seither unveränderte Werte gelten nur für die Sitzung (gespeichert bleibt der eigene Wert);
+    // während des Würfelns wird gar nicht gespeichert
+    if (M_Zufall && !M_Zufall.patchSave(o)) return;
     if (SIMPLE) { if (o.renderer === 'cpu') o.renderer = SIMPLE.renderer; if (o.quality === 'eco') o.quality = SIMPLE.quality; }   // nur für die Sitzung
     try { localStorage.setItem('fraktal_v5_settings', JSON.stringify(o)); } catch (e) {}
 }
@@ -1327,6 +1331,7 @@ function frame(now) {
     const tP = performance.now();
     try { present(now, camChanged); } catch (e) { reportOnce(e); }
     if (!GW.firstPic && (RC.layers.length || !is2dW(S.formula))) gwFirstPicture();
+    M_Zufall.tick(now);                     // 7.2.0 Zufallsstart: erstes Bild prüfen, einblenden, losfliegen
     if (PROF) { const tE = performance.now(); if (tE - js0 > 25) PROF.push({ t: Math.round(now), pre: +(tS - js0).toFixed(1), sched: +(tP - tS).toFixed(1), present: +(tE - tP).toFixed(1), job: RC.job ? RC.job.key.slice(-12) : '', n: RC.layers.length }); }
     stats.frames++;
     if (now - stats.fpsT > 1000) { stats.fps = Math.round(stats.frames * 1000 / (now - stats.fpsT)); stats.frames = 0; stats.fpsT = now; }
@@ -1467,7 +1472,7 @@ function fileName(W, H) { return `Fraktal_${MODE_KEYS[S.formula]}_${S.cam.zoom.t
 // letzten Start) mit ihrer Startansicht oder einem zufälligen Tour-Ort. Schwere Welten (3D, Lichtbilder, Buddhabrot) nur,
 // wenn das Gerät sie flüssig schafft: nicht im einfachen Modus/Sparmodus und nicht auf schwachen Handys (≤ 4 Kerne bzw.
 // ≤ 3 GB Speicher). Die Wahl steht in START (Test, Bericht).
-const START = { how: '', world: -1, sight: null };
+const START = { how: '', world: -1, sight: null };      // 7.2.0: + mode, seed, info, plan, image, motion … (js/zufall.js)
 function heavyOK() {
     if (SIMPLE || S.quality === 'eco' || S.renderer === 'cpu') return false;
     const mob = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
@@ -1503,12 +1508,15 @@ function init() {
         for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f]);       // Welt-Parameter der Sitzung verwerfen
     }
     let fromURL = !RELOAD_RESET && readURL();
-    if (!fromURL && S.startWorld === 'last' && !navigator.webdriver) { let h = ''; try { h = localStorage.getItem('fraktal_last') || ''; } catch (e) {} if (h) fromURL = readURL(h); }
+    if (!fromURL && (Q.get('start') || S.startWorld) === 'last' && (!navigator.webdriver || Q.get('start') === 'last')) { let h = ''; try { h = localStorage.getItem('fraktal_last') || ''; } catch (e) {} if (h) fromURL = readURL(h); }
     START.how = fromURL ? 'url' : RELOAD_RESET ? 'reset' : 'new';
     if (!fromURL) {
-        // Tests (Playwright: navigator.webdriver) starten wie bisher im Mandelbrot – außer mit ?startworld=random
-        let tr = false; try { tr = localStorage.getItem('fk_test_startworld') === 'random'; } catch (e) {}
-        if (S.startWorld === 'random' && (!navigator.webdriver || Q.get('startworld') === 'random' || tr)) randomStart();
+        // 7.2.0 Start: Zufallsflug (js/zufall.js) | Zufallswelt still (7.1.6) | Wie zuletzt (ohne gemerkte Ansicht: Zufallsflug).
+        // Tests (Playwright: navigator.webdriver) starten wie bisher im Mandelbrot – außer mit ?start=, ?seed= oder ?startworld=random
+        const sm = M_Zufall.startMode();
+        START.mode = sm;
+        if (sm === 'flug' || sm === 'last') M_Zufall.begin(sm);
+        else if (sm === 'still') randomStart();
         else setCam(HP.fromString('-0.5'), 0n, 1);
     }
     if (Q.get('renderer')) S.renderer = Q.get('renderer');
@@ -1636,6 +1644,21 @@ const CTX = {
     get stopFly() { return stopFly; },
     get setFlySpeed() { return setFlySpeed; },
     get RM() { return RM; },
+    // 7.2.0 Zufallsstart (js/zufall.js)
+    get RAY() { return RAY; },
+    get DENS_W() { return DENS_W; },
+    get heavyOK() { return heavyOK; },
+    get SIGHTS() { return SIGHTS; },
+    get hasSetW() { return hasSetW; },
+    get styleOK() { return styleOK; },
+    get is2dW() { return is2dW; },
+    get flameRandom() { return flameRandom; },
+    get freshFrame() { return freshFrame; },
+    get canFly2d() { return canFly2d; },
+    get startFly() { return startFly; },
+    get stateURL() { return stateURL; },
+    get palKey() { return palKey; },
+    get START() { return START; },
 };
 const M_UrlState = self.FKUrlState.create(CTX);
 const { readURL, setColParam, outParam, styleParam, wpParam, applyWpParam, stateURL, syncURL } = M_UrlState;
@@ -1652,6 +1675,7 @@ const { governorUpdate, schedule } = M_Scheduler;
 const M_Capture = self.FKCapture.create(CTX);
 const shotStep = (now) => M_Capture.step(now);
 const BULB = self.FKBulb.create(CTX);          // 7.0 Mandelbulb (js/bulb.js)
+const M_Zufall = self.FKZufall.create(CTX);    // 7.2.0 Zufallsstart mit Sofortflug (js/zufall.js)
 const DENS = self.FKDensity.create(CTX);       // 7.1 Lichtbilder (js/density.js)
 const isBulb = () => isRay();
 // MODULE_LINK
@@ -1665,6 +1689,7 @@ M_UrlState.link();
 M_Capture.link();
 BULB.link();
 DENS.link();
+M_Zufall.link();
 
 // fertiges Bild der aktuellen Ansicht (exakt, nichts rechnet, nichts blendet ein) – wie status().done
 function isDone() { const f = RC.front, now = performance.now(); return !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(now); }
@@ -1679,7 +1704,7 @@ const API = {
     shot: { plan: (o) => M_Capture.plan(o), size: (o) => M_Capture.shotSize(o), cancel: () => M_Capture.cancel(), busy: () => M_Capture.busy(), supports: (r) => M_Capture.supports(r), kind: () => M_Capture.kindNow(), devSize: () => M_Capture.devSize() },
     V3, FLY, GOV, set3d, can3d, startFly, stopFly, stopFlySoft, toggleFly, pauseFly, north3d, MAX_TILT, look, T3, FLY2D, canFly, canFly2d, TECH,
     RUECK, reverseFly, setFlySpeed, turnFly, trailAt, tapHook: null, dblTapHook: null, clearance,
-    BULB, isRay,
+    BULB, isRay, ZUFALL: M_Zufall,
     // Test (6.8): Schärfe an Bodenpunkten (lokal, Bildhälften um die Bildmitte/den Fokus): bestes Pufferpixel je Bildschirmpixel
     // einer gültigen Ebene, 0 = Lücke (kein Bild) – für „Nachladen hinter der Kamera“
     coverAt(pts) {
