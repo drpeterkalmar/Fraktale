@@ -162,6 +162,7 @@ function create(canvas) {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
         R.refTex = null;
         R.ref = null;
+        if (typeof blaUsers !== 'undefined') { blaUsers.clear(); blaOld.length = 0; }   // (7.3.x: Texturen des alten Kontexts)
         pool.length = 0;
         // nach einem Kontextverlust gehören alle Handles dem alten Kontext (P1-3)
         _dummy = _dummyD = null;
@@ -238,17 +239,34 @@ function create(canvas) {
     }
     // msg: Antwort des Orbit-Workers (Float32-Daten)
     R.setReference = function (msg) {
-        if (R.refTex) { gl.deleteTexture(R.refTex.orbit); if (R.refTex.ab) { gl.deleteTexture(R.refTex.ab); gl.deleteTexture(R.refTex.r); } }
+        if (R.refTex) { gl.deleteTexture(R.refTex.orbit); if (R.refTex.ab) blaOld.push({ ab: R.refTex.ab, r: R.refTex.r }); }
+        blaUsers.clear(); blaDrop();       // (refs.js bricht vor einer neuen Referenz alle Perturbations-Jobs ab)
         R.refTex = { orbit: tex2D(gl.RG32F, gl.RG, gl.FLOAT, msg.orbit32, 2), ab: null, r: null };
         R.ref = msg;
         if (msg.bla32) R.setBLA(msg.bla32);
     };
+    // 7.3.x: Eine neue BLA-Tabelle (größerer Umkreis beim Herauszoomen/Schwenken) ersetzt die alte, ohne laufende Jobs abzubrechen:
+    // jeder Perturbations-Job behält die Tabelle, mit der er begonnen hat (job.blaT), die alte wird gelöscht, sobald kein Job sie
+    // mehr nutzt. Bis 7.3.0 brach jede neue Tabelle den laufenden Job ab – beim Herauszoomen der Lavalampe im Deep Zoom (Tabelle
+    // je Schritt neu) wurde so kaum ein Bild fertig (gemessen ab 10¹⁷: 45–60 % grob beim Herauszoomen, 4–5 neue Tabellen je Flug)
+    const blaUsers = new Set(), blaOld = [];
+    function blaDrop() {
+        for (let i = blaOld.length - 1; i >= 0; i--) {
+            const t = blaOld[i];
+            let used = false;
+            for (const j of blaUsers) if (j.blaT === t) { used = true; break; }
+            if (!used) { gl.deleteTexture(t.ab); gl.deleteTexture(t.r); blaOld.splice(i, 1); }
+        }
+    }
+    function blaRelease(job) { if (job.blaT && blaUsers.delete(job)) blaDrop(); }
     R.setBLA = function (bla) {
         if (!R.refTex) return;
-        if (R.refTex.ab) { gl.deleteTexture(R.refTex.ab); gl.deleteTexture(R.refTex.r); }
+        if (R.refTex.ab) { blaOld.push({ ab: R.refTex.ab, r: R.refTex.r, bla: R.ref.bla32 }); }
         R.refTex.ab = tex2D(gl.RGBA32F, gl.RGBA, gl.FLOAT, bla.A, 4);
         R.refTex.r = tex2D(gl.R32F, gl.RED, gl.FLOAT, bla.R, 1);
         R.ref.bla32 = bla;
+        R.refTex.blaT = { ab: R.refTex.ab, r: R.refTex.r, bla };
+        blaDrop();
     };
 
     // ------------------------------------------------ Compute-Jobs
@@ -264,6 +282,7 @@ function create(canvas) {
             job.refId = ref.id;
             job.offset = [HP.toNumber(job.view.cx - ref.refXb), HP.toNumber(job.view.cy - ref.refYb)];
             job.useBLA = !!(ref.bla32 && ref.blaCmax >= Math.hypot(job.offset[0], job.offset[1]) + job.scale * Math.hypot(job.w, job.h) / 2);
+            if (job.useBLA && R.refTex && R.refTex.blaT) { job.blaT = R.refTex.blaT; blaUsers.add(job); }
         }
         return job;
     };
@@ -309,7 +328,7 @@ function create(canvas) {
                 else if (polls <= 0) dfBudget = Math.min(1.5e8, dfBudget * 1.15);
             }
         }
-        if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
+        if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; blaRelease(job); return true; }
         // Vorausrechnen: kleinere Häppchen (halbes Stillstands-Häppchen), damit eine neue Geste nicht wartet
         let px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
         // 6.4 Flug: Mindestanteil, damit der Job in ctl.minS Sekunden fertig wird (Bildzeit dt ms pro Häppchen-Runde)
@@ -392,12 +411,13 @@ function create(canvas) {
             gl.uniform1i(L.u_baseA, ref.baseA); gl.uniform1i(L.u_lenA, ref.lenA);
             gl.uniform1i(L.u_baseB, ref.baseB); gl.uniform1i(L.u_lenB, ref.lenB);
             if (L.u_blaOn !== undefined) {
-                const on = job.useBLA && R.refTex.ab && !R.noBLA;
+                const T = job.blaT || (R.refTex.ab ? { ab: R.refTex.ab, r: R.refTex.r, bla: ref.bla32 } : null);
+                const on = job.useBLA && T && !R.noBLA;
                 gl.uniform1i(L.u_blaOn, on ? 1 : 0);
                 if (on) {
-                    const b = ref.bla32;
-                    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, R.refTex.ab); gl.uniform1i(L.u_blaAB, 1);
-                    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, R.refTex.r); gl.uniform1i(L.u_blaR, 2);
+                    const b = T.bla;
+                    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, T.ab); gl.uniform1i(L.u_blaAB, 1);
+                    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.r); gl.uniform1i(L.u_blaR, 2);
                     gl.uniform1iv(L.u_blaL, new Int32Array(b.L));
                     gl.uniform1iv(L.u_blaOff, b.off);
                 } else {
@@ -512,6 +532,7 @@ function create(canvas) {
         if (!job) return;
         if (job.q) { job.q.forEach(c => gl.deleteSync(c.sync)); job.q = []; }
         if (!job.kept) release(job.buf);
+        blaRelease(job);
         job.done = true;
         job.cancelled = true;
     };

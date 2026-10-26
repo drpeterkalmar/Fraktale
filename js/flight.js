@@ -79,6 +79,7 @@ root.FKFlight = { create(ctx) {
     // Regler: Einstellung „Lavalampen-Flug“ (S.lava), ?lava=0 = Verhalten 7.2.0, ?lavarueck= (Rückwärtstempo, Anteil),
     // ?lavaseit= (Seitendrift, Bildhälften/s), ?lavatau= (Zeitkonstante, s).
     const LAVA_Q = ctx.Q.get('lava') !== '0';
+    const LAVA_REVQ = ctx.Q.get('lavarevq') !== '0';       // 7.3.x: Herauszoomen an die Schärfe gekoppelt (?lavarevq=0: wie 7.3.0)
     const qn = (k, d) => { const v = parseFloat(ctx.Q.get(k)); return isFinite(v) && v >= 0 ? v : d; };
     const LV = { rueck: qn('lavarueck', 0.3), seit: qn('lavaseit', 0.04), tau: Math.max(0.5, qn('lavatau', 5)) };
     FLY.lavaCfg = LV;             // (Test, Bericht)
@@ -325,9 +326,13 @@ root.FKFlight = { create(ctx) {
     function lavaKs() { const L = FLY.lava; return Math.max(0, Math.min(1, 1 - L.dw)) * Math.min(1, (FLY.sp || 0) / 0.1) * (FLY.ease === undefined ? 1 : FLY.ease); }
     // Tempo folgt dem Ziel als S-Kurve: Beschleunigung ≤ A, Ruck ≤ J (Beschleunigung, aus der das Ziel ohne Überschwingen
     // erreicht wird: √(2·J·|Fehler|))
-    function lavaFollow(L, tgt, A, J, dt) {
+    function lavaFollow(L, tgt, A, J, dt, bound) {
         const e = tgt - L.r, ad = Math.sign(e) * Math.min(A, Math.sqrt(2 * J * Math.abs(e)));
         L.a += Math.max(-J * dt, Math.min(J * dt, ad - L.a));
+        // 7.3.x: beschleunigt das Tempo vom Ziel weg (Anfahrt mit τ = 1 s endet, gleich darauf „bremsen“ mit kleinerem A), höchstens
+        // mit der Grenze der jetzigen Phase – sonst schoss es weiter (gemessen ab 10²⁰: bis 1,3 Zehnerpotenzen/s, 9 Zehnerpotenzen
+        // zu tief, 50 % grob)
+        if (bound && L.a * e < 0) L.a = Math.max(-A, Math.min(A, L.a));     // (3D-Körper unverändert: Ruck-Gate test_v721 C)
         L.r += L.a * dt;
     }
     // tiefster Herauszoom-Punkt: Startansicht der Welt (Ziel-Flug: sein Start-Zoom)
@@ -408,14 +413,19 @@ root.FKFlight = { create(ctx) {
         // Zieltempo + S-Kurve
         let tgt;
         if (L.phase === 'cruise') tgt = Math.min(base * smooth((xF - T.lo) / (T.ok - T.lo)), L.rmax);
-        else if (L.phase === 'rev') tgt = -LV.rueck * Math.max(cruise, 0.05) * (bulb ? 1 : smooth(Math.log10(S.cam.zoom / lavaFloor()) / 0.5));   // (vor der Startansicht weich auslaufen)
+        else if (L.phase === 'rev') tgt = -LV.rueck * Math.max(cruise, 0.05) * (bulb ? 1 : smooth(Math.log10(S.cam.zoom / lavaFloor()) / 0.5)   // (vor der Startansicht weich auslaufen)
+            // 7.3.x: auch heraus nur so schnell, wie die neuen Ränder scharf werden (im Deep Zoom kosten sie bei 14 000+ Iterationen
+            // Zeit: ab 10¹⁷ war das Herauszoomen zu 45–60 % grob) – Schärfe-Prognose wie auf der Reise, bei grobem Bild ruht es
+            * (LAVA_REVQ && !bulb ? Math.max(0.1, smooth((xF - T.lo) / (T.ok - T.lo))) : 1));
         else tgt = 0;
         L.tgt = tgt;
-        if (FLY.stopping || (FLY.ramp && (FLY.ramp.stop || FLY.ramp.start))) { L.a = (tgt - L.r) / Math.max(1e-3, dt); L.r = tgt; }   // Ausrollen per Knopf: wie gehabt
-        else {
-            const tau = now - (L.fastT || -1e9) < 2000 ? 1 : L.phase === 'brake' ? LV.tau * 0.6 : LV.tau, A = cref / (0.6 * tau), J = A / (0.4 * tau);
-            lavaFollow(L, tgt, A, J, dt);
-        }
+        const tau = now - (L.fastT || -1e9) < 2000 ? 1 : L.phase === 'brake' ? LV.tau * 0.6 : LV.tau, A = cref / (0.6 * tau), J = A / (0.4 * tau);
+        // Ausrollen per Knopf und Anfahrt: Tempo direkt. 7.3.0: die Beschleunigung dabei auf ±A begrenzen – sie war (Sprung/Bildzeit)
+        // und lief nach der Anfahrt weiter: Ein kurzer Schärfe-Einbruch in der Anfahrt ergab 8,9 statt höchstens 0,1 Zehnerpotenzen/s²,
+        // die Bremse (Ruck 0,05/s³) holte das nie ein – das Zoomtempo stieg auf 66/s, der Flug raste bis 10²⁹⁰ (gemessen ab 10¹⁸
+        // in ~1 von 5 Flügen; tests/measure_deep_fly.py, tests/test_v731.py)
+        if (FLY.stopping || (FLY.ramp && (FLY.ramp.stop || FLY.ramp.start))) { const a = (tgt - L.r) / Math.max(1e-3, dt); L.a = bulb ? a : Math.max(-A, Math.min(A, a)); L.r = tgt; }   // (3D-Körper wie 7.3.0)
+        else lavaFollow(L, tgt, A, J, dt, !bulb);
         // Seitendrift (nur 2D): Ein-/Ausblenden über eine kritisch gedämpfte Feder (ω = 1,2/s), Richtung dreht gemächlich
         const dwT = bulb || L.phase === 'cruise' ? 0 : 1, w = 1.2;
         L.dwv += (w * w * (dwT - L.dw) - 2 * w * L.dwv) * dt; L.dw += L.dwv * dt;

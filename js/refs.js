@@ -40,8 +40,7 @@ root.FKRefs = { create(ctx) {
             // P2-2: der Worker kennt die Referenz nicht mehr (dazwischen kam eine verworfene Vorausrechen-Referenz) ->
             // die vorhandene Tabelle behalten und nicht mehr auf eine neue warten
             if (m.ignored) { REF.cur.blaFixed = true; return; }
-            if (RC.job && RC.job.mode === 'perturb' && RC.job.kind === 'gpu') cancelJob();
-            if (RC.pjob && RC.pjob.mode === 'perturb' && RC.pjob.kind === 'gpu') cancelPrefetch();
+            // (7.3.x: laufende GPU-Jobs rechnen mit ihrer Tabelle zu Ende – renderer.js setBLA, job.blaT)
             R.setBLA(m.bla32);
             REF.cur.blaCmax = m.blaCmax;
             if (m.bla64) { REF.cur.bla64 = m.bla64; cpuBroadcast({ type: 'bla', refId: m.refId, bla: m.bla64 }); }

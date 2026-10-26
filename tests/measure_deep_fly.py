@@ -31,7 +31,8 @@ REC = """(ms) => new Promise(res => { const A = window.__fraktal, t0 = performan
     if (t - lastS >= 250) { lastS = t; const r = A.REF.cur, j = A.RC.job, L = A.FLY.lava;
       smp.push({ t: Math.round(t - t0), lz: +Math.log10(A.S.cam.zoom).toFixed(3), plan: A.plan().kind + '/' + A.plan().mode, ref: r ? r.id : null, refMs: r ? r.ms : null, len: r ? r.lenA : null,
                  method: r ? r.method : null, period: r ? r.period : null, refZ: r ? +Math.log10(r.zoom).toFixed(2) : null, pend: !!A.REF.pending, cmax: r && r.blaCmax ? +r.blaCmax.toExponential(2) : null,
-                 bla: !!(r && r.bla32), mi: A.currentMaxIter(), job: j ? j.mode + ':' + j.stage : '', ph: L ? L.phase : '', g: +A.GOV.g.toFixed(2), px: A.R.chunkInfo().pxMove }); }
+                 bla: !!(r && r.bla32), mi: A.currentMaxIter(), job: j ? j.mode + ':' + j.stage : '', ph: L ? L.phase : '', g: +A.GOV.g.toFixed(2), px: A.R.chunkInfo().pxMove,
+                 lr: L ? +(+L.r).toFixed(3) : null, la: L ? +(+L.a).toFixed(3) : null, sp: +(A.FLY.sp || 0).toFixed(3), mode: A.FLY.mode, on: A.FLY.on, zf: A.FLY.zf, lost: A.FLY.lostS }); }
     if (t - t0 < ms) requestAnimationFrame(f); else res({ smp, nf, fs: A.frameStats() }); }; requestAnimationFrame(f); })"""
 
 
@@ -68,7 +69,7 @@ def run(p, cx, cy, z):
         b = math.floor(math.log10(f['z']) * 2) / 2
         n, c = bins.get(b, (0, 0)); bins[b] = (n + 1, c + (1 if f['coarse'] > 0.1 else 0))
     out['coarseByZoom'] = {str(k): round(c / n, 3) for k, (n, c) in sorted(bins.items())}
-    out['samples'] = smp[::4]
+    out['samples'] = smp[::4] if out['lz1'] is None or out['lz0'] is None or out['lz1'] - out['lz0'] < 5 else smp
     if 'mini' not in out:
         out['refPoint'] = pg.evaluate("() => { const A = window.__fraktal, r = A.REF.cur; return r ? [A.HP.toString(r.refXb, 60), A.HP.toString(r.refYb, 60), r.method, r.period] : null; }")
     a.close()
@@ -80,8 +81,8 @@ def main():
     with sync_playwright() as p:
         locs = {'see': WALK}
         if 'mini' in LOCS:
-            # Minibrot: Kern, den der Orbit-Worker bei 10¹⁵ am Wanderpunkt als Referenz wählt
-            a = App(p).open(f'm=0&x={WALK[0]}&y={WALK[1]}&z=1e15')
+            # Minibrot: Kern, den der Orbit-Worker bei 10²⁹ (--minizoom) am Wanderpunkt als Referenz wählt (Periode 1941)
+            a = App(p).open(f'm=0&x={WALK[0]}&y={WALK[1]}&z=' + ARGS.get('minizoom', '1e29'))
             a.wait_done(200)
             rp = a.page.evaluate("() => { const A = window.__fraktal, r = A.REF.cur; return r ? [A.HP.toString(r.refXb, 60), A.HP.toString(r.refYb, 60), r.method, r.period] : null; }")
             a.close()
