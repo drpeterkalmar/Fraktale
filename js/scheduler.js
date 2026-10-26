@@ -6,7 +6,7 @@
 'use strict';
 
 root.FKScheduler = { create(ctx) {
-    let FADE_MOVE_MS, FLY, GOV, HP, INERTIA_TAU, Q, R, RC, REF, S, V3, addLayer, anchoredCam, animating, cancelFix, cancelJob, cancelPrefetch, canvas, checkInside, clampZoom, contentSig, coverage, cpuFeed, cpuPool, deActive, ensureRef, flightCamAt, fullDone, innActive, isMoving, jobFailed, jobProgress, layerK, layerRect, makeFrame, maxIterFor, orderLayers, plan, predictCam, refUsable, requestRefFor, startFix, stats, t, viewKey, worldPerCss;   // aus app.js, gesetzt in link()
+    let FADE_MOVE_MS, FLY, GOV, HP, INERTIA_TAU, Q, R, RC, REF, S, V3, addLayer, anchoredCam, animating, cancelFix, cancelJob, cancelPrefetch, canvas, checkInside, clampZoom, contentSig, coverage, cpuFeed, cpuPool, deActive, ensureRef, flightCamAt, fullDone, inRect, innActive, isMoving, jobFailed, jobProgress, layerK, layerRect, makeFrame, maxIterFor, orderLayers, plan, predictCam, refUsable, requestRefFor, startFix, stats, t, viewKey, worldPerCss;   // aus app.js, gesetzt in link()
 
     // 5.1 „nahtloser Bildaufbau": Jedes fertige Bild (Vorschau, Verfeinerung, exakt, vorausberechnet)
     // bleibt als EBENE erhalten, solange es irgendwo das schärfste gültige Bild liefert. Der Display-Pass
@@ -38,7 +38,7 @@ root.FKScheduler = { create(ctx) {
         const scale = opts.scale || 3 / (view.zoom * h0) * div * f3;   // Welt pro Pufferpixel
         const cf = ctx.cformula();                 // 7.1: Rechen-Formel (Welt + Parameter)
         const job = { id: ++RC.jobSeq, key, stage: div, kind: p.kind, mode: p.mode, formula: cf, maxIter: maxIterFor(view.zoom), X: ctx.xparams(cf),
-                      view: { cx: view.cx, cy: view.cy, zoom: view.zoom }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
+                      view: { cx: view.cx, cy: view.cy, zoom: view.zoom, rot: view.rot !== undefined ? view.rot : ctx.viewRot() }, w, h, scale, sig: contentSig(), prefetch: !!opts.prefetch, baseKey: opts.baseKey, preview: !!opts.preview,
                       julia: [HP.toNumber(S.julia.x), HP.toNumber(S.julia.y)], t0: performance.now(), de: deActive(), inn: innActive() };
         ctx.styleJob(job);                         // 7.1 Färbe-Stil (Rechen-Variante, Puffer mit Stil-Kanal)
         if (opts.prefetch) RC.pjob = job; else RC.job = job;
@@ -130,6 +130,16 @@ root.FKScheduler = { create(ctx) {
     function visibleFrac(job, c) {
         const r = layerRect({ view: job.view, scale: job.scale, buf: { w: job.w, h: job.h } }, c);
         const W = canvas.width, H = canvas.height, m = 0.1;
+        if (r.xf) {
+            // 7.4 gedreht: Stichproben im Puffer (6×6) -> Zielpixel, Anteil in der vergrößerten Ansicht
+            const [a, b, ox, oy] = r.xf, n = a * a + b * b;
+            let k = 0;
+            for (let j = 0; j < 6; j++) for (let i = 0; i < 6; i++) {
+                const u = (i + 0.5) / 6 * job.w - ox, v = (j + 0.5) / 6 * job.h - oy, x = (a * u + b * v) / n, y = (-b * u + a * v) / n;
+                if (x >= -W * m && x <= W * (1 + m) && y >= -H * m && y <= H * (1 + m)) k++;
+            }
+            return k / 36;
+        }
         const ix = Math.max(0, Math.min(r.x1, W * (1 + m)) - Math.max(r.x0, -W * m)), iy = Math.max(0, Math.min(r.y1, H * (1 + m)) - Math.max(r.y0, -H * m));
         return ix * iy / Math.max(1, (r.x1 - r.x0) * (r.y1 - r.y0));
     }
@@ -347,7 +357,7 @@ root.FKScheduler = { create(ctx) {
             for (let sy = 0; sy < 2; sy++) for (let sx = 0; sx < 2; sx++) {
                 const x = X0 + (tx + 0.25 + 0.5 * sx) * tw, y = Y0 + (ty + 0.25 + 0.5 * sy) * th;
                 let kk = 0;
-                for (const e of L) if (x >= e.r.x0 && x <= e.r.x1 && y >= e.r.y0 && y <= e.r.y1) { kk = e.k; break; }
+                for (const e of L) if (inRect(e.r, x, y)) { kk = e.k; break; }
                 m = Math.min(m, kk);
             }
             tk[ty * TGX + tx] = m;
@@ -427,9 +437,12 @@ root.FKScheduler = { create(ctx) {
         if (area >= 0.75 * TGX * TGY) return { div: d };
         const x0 = X0 + r.x0 * tw, x1 = X0 + (r.x1 + 1) * tw, y0 = Y0 + r.y0 * th, y1 = Y0 + (r.y1 + 1) * th;
         const w = Math.max(8, Math.ceil((x1 - x0) / d)), h = Math.max(8, Math.ceil((y1 - y0) / d));
-        const cx = (x0 + x1) / 2 - W / 2, cy = (y0 + y1) / 2 - H / 2;
+        let cx = (x0 + x1) / 2 - W / 2, cy = (y0 + y1) / 2 - H / 2;
+        // 7.4 Bilddrehung: das Teilstück liegt in Bildachsen – seine Mitte in Weltachsen drehen, der Puffer rechnet gedreht
+        const vr = view.rot !== undefined ? view.rot : ctx.viewRot();
+        if (vr) [cx, cy] = [Math.cos(vr) * cx - Math.sin(vr) * cy, Math.sin(vr) * cx + Math.cos(vr) * cy];
         return { div: d, rect: true, w, h, scale: sCam * d,
-                 view: { cx: view.cx + HP.fromNumber(cx * sCam), cy: view.cy + HP.fromNumber(cy * sCam), zoom: view.zoom } };
+                 view: { cx: view.cx + HP.fromNumber(cx * sCam), cy: view.cy + HP.fromNumber(cy * sCam), zoom: view.zoom, rot: vr } };
     }
     // Nur animierte Bewegungen (Flug/Tour/Doppeltipp/Rechteck, Rad, Schwung). Gemessen wird die Schärfe,
     // die das Bild in ~150 ms hätte (Vorhersage + vorhandene Ebenen): fiele das 10-%-Quantil unter
@@ -510,7 +523,7 @@ root.FKScheduler = { create(ctx) {
         return true;
     }
 
-    return { link() { ({ FADE_MOVE_MS, FLY, GOV, HP, INERTIA_TAU, Q, R, RC, REF, S, V3, addLayer, anchoredCam, animating, cancelFix, cancelJob, cancelPrefetch, canvas, checkInside, clampZoom, contentSig, coverage, cpuFeed, cpuPool, deActive, ensureRef, flightCamAt, fullDone, innActive, isMoving, jobFailed, jobProgress, layerK, layerRect, makeFrame, maxIterFor, orderLayers, plan, predictCam, refUsable, requestRefFor, startFix, stats, t, viewKey, worldPerCss } = ctx); },
+    return { link() { ({ FADE_MOVE_MS, FLY, GOV, HP, INERTIA_TAU, Q, R, RC, REF, S, V3, addLayer, anchoredCam, animating, cancelFix, cancelJob, cancelPrefetch, canvas, checkInside, clampZoom, contentSig, coverage, cpuFeed, cpuPool, deActive, ensureRef, flightCamAt, fullDone, inRect, innActive, isMoving, jobFailed, jobProgress, layerK, layerRect, makeFrame, maxIterFor, orderLayers, plan, predictCam, refUsable, requestRefFor, startFix, stats, t, viewKey, worldPerCss } = ctx); },
              governorUpdate, schedule };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

@@ -64,8 +64,8 @@ def main():
         pg.evaluate("() => { const F = window.__fraktal.FLY; F.rec = []; F.recM = []; }")
         s = fly_state(pg)
         need(s['on'] and not s['d3'] and not s['v3'] and not s['prep'], f'2D-Flug läuft ohne 3D: {s}')
-        need(box(pg, '#btn-fly2d') is None and box(pg, '#bar3d') is not None and box(pg, '#btn-north') is None and box(pg, '#lbl-speed') is not None,
-             'im 2D-Flug: Flug-Leiste mit Stopp + Tempo, ohne Ausrichten; ✈-Knopf weg')
+        need(box(pg, '#btn-fly2d') is None and box(pg, '#bar3d') is not None and box(pg, '#btn-north') is not None and box(pg, '#lbl-speed') is not None,
+             'im 2D-Flug: Flug-Leiste mit Stopp + Tempo + Ausrichten (7.4: Roll im Flug richtet die Ansicht aus); ✈-Knopf weg')
         time.sleep(20)
         pg.screenshot(path=os.path.join(SHOTS, 'leiste_hoch.jpg'), type='jpeg', quality=85)
         r = pg.evaluate("""() => { const A = window.__fraktal, F = A.FLY; const o = { rec: F.rec, recM: F.recM, zoom: A.S.cam.zoom, v3: A.V3.on,
@@ -115,7 +115,7 @@ def main():
         # (7.2.1 Lavalampen-Flug: das 3D-Bild ist für die 2D-Ansicht gröber – der Flug zieht dort erst weich an; geprüft wird,
         # dass er weiterfliegt, nicht das Tempo)
         need(s3['on'] and not s3['d3'] and not s3['v3'] and s4['zoom'] > s3['zoom'] * 1.03, f'⛰ aus im 3D-Flug: Flug läuft in 2D weiter ({s3["zoom"]:.2e} → {s4["zoom"]:.2e})')
-        need(box(pg, '#bar3d') is not None and box(pg, '#btn-north') is None, 'nach dem Wechsel: Flug-Leiste wie in 2D')
+        need(box(pg, '#bar3d') is not None and box(pg, '#btn-north') is not None, 'nach dem Wechsel: Flug-Leiste wie in 2D (7.4: mit Ausrichten)')
         pg.click('#btn-fly'); time.sleep(1.4)          # 7.1.6: Anhalten rollt ~1 s aus
         need(not fly_state(pg)['on'] and box(pg, '#bar3d') is None and box(pg, '#btn-fly2d') is not None, 'Stopp: Leiste weg, ✈-Knopf wieder da')
         # --- Taste V

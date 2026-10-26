@@ -63,12 +63,14 @@ root.FKRefs = { create(ctx) {
     // nonce (nur Test-Hook testNewRef): erzwingt eine neue Signatur, also eine neue Referenz für dieselbe Ansicht
     function requestRefFor(tg, pfKey, want64 = true, nonce) {
         const s = 3 / (tg.zoom * ctx.cssH);
+        // (7.4: gedrehte Ansicht -> Suchbereich des Referenzpunkts = umschließendes Rechteck)
+        const vr = ctx.viewRot(), rc = Math.abs(Math.cos(vr)), rs = Math.abs(Math.sin(vr)), hw0 = s * ctx.cssW / 2, hh0 = s * ctx.cssH / 2;
         const q = {
             type: 'ref', id: 0, formula: ctx.cformula(),
             cx: tg.cx.toString(), cy: tg.cy.toString(),
             jx: S.julia.x.toString(), jy: S.julia.y.toString(),
             zoom: tg.zoom, maxIter: S.iterManual ? S.iterValue : autoIter(tg.zoom * 16),
-            halfW: s * ctx.cssW / 2 * 1.3, halfH: s * ctx.cssH / 2 * 1.3, pixel: s / ctx.dpr,
+            halfW: (rc * hw0 + rs * hh0) * 1.3, halfH: (rs * hw0 + rc * hh0) * 1.3, pixel: s / ctx.dpr,
             cmax: 0, want64
         };
         q.extra = refExtra(q.maxIter);

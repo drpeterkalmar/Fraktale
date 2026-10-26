@@ -453,3 +453,5 @@ html.deko .mode-card.on::before { right: auto; left: 14px; }
 #facts .fx-fun { border-left: 2px solid rgba(167, 139, 250, 0.7); padding-left: 8px; }
 #facts .fx-src { font-size: 11px; color: var(--dim); margin-top: 8px; }
 @media (orientation: landscape) and (max-height: 540px) { #facts { width: min(620px, calc(100vw - 28px)); font-size: 13px; padding: 12px 16px 10px; } #facts h3 { font-size: 16px; } }
+/* 7.4: gedrehte 2D-Ansicht ohne Flug – die Leiste trägt nur den Kompass-Knopf (Ausrichten) */
+#bar3d.rotonly { width: auto; gap: 0; }

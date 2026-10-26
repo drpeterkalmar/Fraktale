@@ -502,7 +502,8 @@ function drawMinimap() {
     const px = (cx - box.x0) / (box.x1 - box.x0) * w, py = (box.y1 - cy) / (box.y1 - box.y0) * h;
     const rw = vw / (box.x1 - box.x0) * w, rh = vh / (box.y1 - box.y0) * h;
     ctx.strokeStyle = '#c4b5fd'; ctx.lineWidth = 1.5;
-    if (rw > 4) { ctx.fillStyle = 'rgba(167,139,250,0.18)'; ctx.fillRect(px - rw / 2, py - rh / 2, rw, rh); ctx.strokeRect(px - rw / 2, py - rh / 2, rw, rh); }
+    // 7.4: gedrehte Ansicht als gedrehtes Rechteck (Karte: y nach unten -> Winkel mit umgekehrtem Vorzeichen)
+    if (rw > 4) { ctx.save(); ctx.translate(px, py); ctx.rotate(-A.viewRot()); ctx.fillStyle = 'rgba(167,139,250,0.18)'; ctx.fillRect(-rw / 2, -rh / 2, rw, rh); ctx.strokeRect(-rw / 2, -rh / 2, rw, rh); ctx.restore(); }
     else { ctx.beginPath(); ctx.moveTo(px - 8, py); ctx.lineTo(px - 3, py); ctx.moveTo(px + 3, py); ctx.lineTo(px + 8, py); ctx.moveTo(px, py - 8); ctx.lineTo(px, py - 3); ctx.moveTo(px, py + 3); ctx.lineTo(px, py + 8); ctx.stroke(); }
 }
 mm.addEventListener('click', (e) => {
@@ -651,6 +652,7 @@ const toggles = [
     bindToggle('t-precise', () => S.precise, (v) => { S.precise = v; }),
     bindToggle('t-governor', () => S.governor, (v) => { S.governor = v; }),
     bindToggle('t-lava', () => S.lava !== false, (v) => { S.lava = v; }),        // 7.2.1
+    bindToggle('t-flyroll', () => S.flyRoll !== false, (v) => { S.flyRoll = v; sync3d(); }),        // 7.4
     bindToggle('t-deon', () => S.deOn, (v) => { S.deOn = v; }),
     bindToggle('t-aa', () => S.aa, (v) => { S.aa = v; }),
     bindToggle('t-hudfs', () => S.hudFs, (v) => { S.hudFs = v; hudApply(); }),
@@ -1039,7 +1041,7 @@ window.addEventListener('keydown', (e) => {
         A.toggleFly();
         return;
     }
-    const pan = (dx, dy) => { A.stopFly(); if (A.isRay()) { A.BULB.keyOrbit(-dx, dy); return; } const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15; A.flyTo(S.cam.cx + HP.fromNumber(dx * s), S.cam.cy + HP.fromNumber(dy * s), S.cam.zoom, { duration: 0.25 }); };
+    const pan = (dx, dy) => { A.stopFly(); if (A.isRay()) { A.BULB.keyOrbit(-dx, dy); return; } const s = 3 / (S.cam.zoom * innerHeight) * innerHeight * 0.15, r = A.viewRot(), ex = Math.cos(r) * dx - Math.sin(r) * dy, ey = Math.sin(r) * dx + Math.cos(r) * dy; A.flyTo(S.cam.cx + HP.fromNumber(ex * s), S.cam.cy + HP.fromNumber(ey * s), S.cam.zoom, { duration: 0.25 }); };   // (7.4: in Bildrichtung)
     switch (k) {
         case 'ArrowLeft': pan(-1, 0); break; case 'ArrowRight': pan(1, 0); break;
         case 'ArrowUp': pan(0, 1); break; case 'ArrowDown': pan(0, -1); break;
@@ -1125,12 +1127,16 @@ function sync3d() {
     if (on && want3dHint) { want3dHint = false; hint3d = true; toast(t('d3_hint'), 3800); }
     $('btn-3d').classList.toggle('on', on);
     $('btn-3d').setAttribute('aria-pressed', String(on));
-    $('bar3d').hidden = !on && !fly;
-    $('btn-north').hidden = !on;
+    // 7.4 Roll im Flug: gedrehte 2D-Ansicht (auch nach dem Flug) -> Leiste nur mit dem Kompass-Knopf (Ausrichten)
+    const rot2d = A.is2dW(S.formula) && !A.V3.on, rotOnly = !on && !fly && rot2d && Math.abs(A.VR.rot) > 0.003;
+    $('bar3d').hidden = !on && !fly && !rotOnly;
+    $('bar3d').classList.toggle('rotonly', rotOnly);
+    $('btn-north').hidden = !on && !rotOnly && !(fly && rot2d && S.flyRoll !== false && !(A.FLY.rollCfg && A.FLY.rollCfg.off));
+    $('btn-fly').hidden = rotOnly;
     $('btn-fly').classList.toggle('on', fly);
     $('fly-icon').textContent = fly ? '■' : '✈';
     $('fly-label').textContent = t(fly ? 'fly_stop' : 'fly');
-    $('lbl-height').hidden = fly;
+    $('lbl-height').hidden = fly || rotOnly;
     $('lbl-speed').hidden = !fly;
     $('r-height').value = S.h3d;
     $('r-speed').value = S.flySpeed;

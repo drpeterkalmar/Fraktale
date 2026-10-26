@@ -83,6 +83,53 @@ root.FKFlight = { create(ctx) {
     const qn = (k, d) => { const v = parseFloat(ctx.Q.get(k)); return isFinite(v) && v >= 0 ? v : d; };
     const LV = { rueck: qn('lavarueck', 0.3), seit: qn('lavaseit', 0.04), tau: Math.max(0.5, qn('lavatau', 5)) };
     FLY.lavaCfg = LV;             // (Test, Bericht)
+    // 7.4 Roll im Flug (Peter 26.10.2026: „Kannst du beim Fraktal-Autopiloten ganz langsame Rotationen (Roll) hinzufügen?“):
+    // Der Autopilot (2D-Flug und 3D-Landschaft, Zufalls- und Ziel-Flug, mit Lavalampe) dreht das Bild ganz langsam um die
+    // Blickachse. Drehtempo FLY.rw (rad/s) folgt seinem Ziel über eine kritisch gedämpfte Feder (ω = 0,8/s, nie ein Ruck);
+    // das Ziel ist ROLL.rate × Richtung, die Richtung ein geglättetes Rauschen aus zwei langsamen Sinus (Perioden 83 s und 47 s,
+    // über tanh weich auf ±1 gedrückt): meist das volle Tempo, alle ~30–60 s ein gemächlicher Wechsel über 0. Anfahrt und
+    // Ausrollen gehen mit dem Flug (FLY.ease, Ausroll-Kurve). 2D: die Ansicht dreht frei (VR.rot, app.js – Gesten bleiben
+    // richtig orientiert); 3D-Landschaft: ein Schaukeln um höchstens ROLL.max3 (Horizont bleibt ruhig), dazu wie bisher die
+    // Schräglage in Kurven. Einstellung „Roll im Flug“ (S.flyRoll), ?roll=0 aus, ?roll=<°/s> Tempo (Standard 1,5°/s).
+    const ROLL_Q = ctx.Q.get('roll');
+    const ROLL = { off: ROLL_Q === '0', rate: (parseFloat(ROLL_Q) > 0 ? Math.min(30, parseFloat(ROLL_Q)) : 1.5) * Math.PI / 180, max3: 12 * Math.PI / 180, w: 0.8 };
+    FLY.rollCfg = ROLL;
+    FLY.rw = 0; FLY.rv = 0; FLY.rt = 0; FLY.r3 = 0; FLY.rollS = 0;
+    const rollOn = () => !ROLL.off && (S.flyRoll !== false || parseFloat(ROLL_Q) > 0);
+    // Richtung (−1 … 1) zur Flugzeit t (s): zwei langsame Sinus, Phasen je Flug gewürfelt
+    function rollDir(t) {
+        const n = 0.62 * Math.sin(2 * Math.PI * t / 83 + FLY.rph[0]) + 0.38 * Math.sin(2 * Math.PI * t / 47 + FLY.rph[1]);
+        return Math.tanh(2.5 * n) / Math.tanh(2.5);
+    }
+    // nach dem Flug, in der Pause: Drehtempo klingt über dieselbe Feder aus (kein Abriss; Gesten halten sie sofort an, app.js rollHalt)
+    function rollIdle(dt) {
+        if (!FLY.rw && !FLY.rv) return;
+        if (V3.on || ctx.VR.north) { FLY.rw = FLY.rv = 0; return; }
+        const w = ROLL.w;
+        FLY.rv += (-w * w * FLY.rw - 2 * w * FLY.rv) * dt; FLY.rw += FLY.rv * dt;
+        if (Math.abs(FLY.rw) < 3e-4 && Math.abs(FLY.rv) < 3e-4) FLY.rw = FLY.rv = 0;      // (< 0,02°/s: unsichtbar)
+        ctx.setViewRot(ctx.VR.rot + FLY.rw * dt);
+    }
+    function rollStep(dt) {
+        if (!FLY.rph) FLY.rph = [Math.random() * 6.283, Math.random() * 6.283];
+        FLY.rt += dt;
+        const ease = FLY.ease === undefined ? 1 : FLY.ease;
+        const stop = FLY.stopping && FLY.ramp && FLY.ramp.stop ? Math.min(1, Math.abs(FLY.sp || 0) / Math.max(0.05, Math.abs(FLY.ramp.from || 0))) : 1;
+        // (Tempo-Regler auf 0 = Schweben: das Bild steht – auch die Drehung, wie das Seitengleiten mit dem Tempo bis 0,1)
+        const spk = Math.min(1, Math.abs(FLY.sp || 0) / 0.1);
+        const wT = rollOn() && FLY.mode !== 'bulb' && FLY.mode !== 'bulbtour' ? ROLL.rate * rollDir(FLY.rt) * ease * stop * spk : 0;
+        const w = ROLL.w;
+        FLY.rv += (w * w * (wT - FLY.rw) - 2 * w * FLY.rv) * dt; FLY.rw += FLY.rv * dt;
+        if (!wT && Math.abs(FLY.rw) < 1e-5 && Math.abs(FLY.rv) < 1e-5) { FLY.rw = FLY.rv = 0; }
+        if (FLY.d3) {
+            // 3D-Landschaft: Schaukeln (Winkel ROLL.max3 · sin r3, Drehtempo am Nulldurchgang = FLY.rw)
+            FLY.r3 += FLY.rw / ROLL.max3 * dt;
+            FLY.rollS = ROLL.max3 * Math.sin(FLY.r3);
+        } else {
+            if (FLY.rollS) { FLY.rollS *= Math.exp(-dt * 1.5); if (Math.abs(FLY.rollS) < 1e-5) FLY.rollS = 0; FLY.r3 = Math.asin(Math.max(-1, Math.min(1, FLY.rollS / ROLL.max3))); }
+            if (FLY.rw) ctx.setViewRot(ctx.VR.rot + FLY.rw * dt);
+        }
+    }
     // Schwellen: 2D Schärfe (Pufferpx je Bildpx) – grob ab 0,5; 3D-Körper Abstand zur Genauigkeitsgrenze (× minDist)
     // (2D: Bewegungs-Vorschauen sind meist halb aufgelöst – 0,5 ist „in Bewegung normal“, darunter wird es grob)
     const LQ = { d2: { lo: Math.log10(0.5), ok: Math.log10(0.62), sharp: Math.log10(0.72) }, bulb: { lo: Math.log10(3), ok: Math.log10(5), sharp: Math.log10(7) } };
@@ -137,6 +184,7 @@ root.FKFlight = { create(ctx) {
         // Kursverlauf: weiter benutzen, wenn der Flug genau dort weitergeht, wo der letzte endete (sonst neu)
         const te = FLY.trailEnd, c0 = S.cam;
         if (place || !te || te.cx !== c0.cx || te.cy !== c0.cy || te.zoom !== c0.zoom) FLY.trail = [];
+        FLY.rph = null; FLY.rt = 0;     // 7.4 Roll: Richtungsverlauf je Flug neu gewürfelt
         FLY.on = true; FLY.paused = false; FLY.hdgT = V3.heading; FLY.user = 0; FLY.userBase = 0; FLY.lost = 0; FLY.d3 = d3;
         // 6.2: Zoompunkt startet geradeaus, Kurs ruhend (2D: in der Bildmitte)
         const f = [Math.sin(V3.heading), Math.cos(V3.heading)];
@@ -146,11 +194,13 @@ root.FKFlight = { create(ctx) {
         emit('fly');
     }
     // Ausrichten: Drehung weich auf Norden, Neigung auf den Standard
-    function north3d() { V3.northT = performance.now(); V3.northFrom = [V3.heading, V3.tilt]; stopFly(); }
+    // (7.4: in 2D richtet der Knopf die gedrehte Ansicht weich aus – ein laufender Flug fliegt und rollt weiter)
+    function north3d() { if (!V3.on) { ctx.northRot(); return; } V3.northT = performance.now(); V3.northFrom = [V3.heading, V3.tilt]; stopFly(); }
     function stopFly() {
         if (!FLY.on) return;
         if (FLY.mode === 'bulb' || FLY.mode === 'bulbtour') { ctx.BULB.flyStopped(); FLY.mode = 'random'; }
         FLY.on = false; FLY.paused = false; FLY.ramp = null; FLY.stopping = false; ctx.camDirty = true;
+        // (7.4 Roll: das Drehtempo klingt danach weich aus – rollIdle)
         FLY.trailEnd = { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom };
         // 6.8 Umdrehen: der Blick wird zum Kurs (nach dem Flug zeigt die Ansicht weiter dorthin, wohin sie schaute)
         if (V3.turnA || V3.turnT) { V3.heading += V3.turnA || 0; V3.turnA = V3.turnT = 0; }
@@ -493,6 +543,7 @@ root.FKFlight = { create(ctx) {
         flyMode();
         flySpeedStep(now, dt);
         lavaStep(now, dt);
+        rollStep(dt);
         FLY.zr = FLY.lava.r;                        // tatsächliches Zoomtempo (Planer: Rückflug-Ebenen, Messung)
         const rev = FLY.lava.on ? FLY.lava.rev : FLY.sp < 0;
         if (rev !== !!FLY.rev) flyDir(rev, now);
@@ -622,6 +673,7 @@ root.FKFlight = { create(ctx) {
         const W = pb.w, H = pb.h, M = probeMap(pb);
         // 6.6: Geometrie des Modus (3D: Vorwärtsbereich vor dem Fokus; 2D: nahe der Bildmitte, sichtbarer Bereich)
         const G = FLY.d3 ? G3 : G2, asp = ctx.cssW / ctx.cssH;
+        const vr = FLY.d3 ? 0 : ctx.viewRot(), vc = Math.cos(vr), vs = Math.sin(vr);    // 7.4: sichtbares Bild liegt gedreht
         const angTo = (x, y) => G.ang ? Math.abs(angDiff(Math.atan2(x, y), V3.heading)) : 0;
         const cellIdx = (px, py) => { const i = Math.floor((px / pb.win * 0.5 + 0.5) * W), j = Math.floor((py / pb.win * 0.5 + 0.5) * H); return i < 3 || j < 3 || i >= W - 3 || j >= H - 3 ? -1 : j * W + i; };
         const idx = (x, y) => { const q = M.toP(x, y); return cellIdx(q[0], q[1]); };
@@ -661,7 +713,7 @@ root.FKFlight = { create(ctx) {
             const [x, y] = M.fromP(((i + 0.5) / W * 2 - 1) * pb.win, ((j + 0.5) / H * 2 - 1) * pb.win), r = Math.hypot(x, y);
             const db = angTo(x, y);
             // Datenlücke prüfen: 3D im Vorwärtsbereich, 2D im sichtbaren Bild nahe der Mitte
-            if (r >= G.rmin && r <= G.chk && db < Math.PI / 2 && (G.ang || (Math.abs(x) <= asp && Math.abs(y) <= 1))) { nFwd++; if (!Number.isNaN(d0)) nFwdOk++; }
+            if (r >= G.rmin && r <= G.chk && db < Math.PI / 2 && (G.ang || (Math.abs(vc * x + vs * y) <= asp && Math.abs(vc * y - vs * x) <= 1))) { nFwd++; if (!Number.isNaN(d0)) nFwdOk++; }
             if (Number.isNaN(d0)) continue;
             if (r < G.rmin) continue;
             if (d0 > 0 && r > G.hiR && (!hiIt || pb.data[k] > hiIt.v)) hiIt = { v: pb.data[k], x, y };   // höchste Iteration = Richtung zur Menge
@@ -721,10 +773,10 @@ root.FKFlight = { create(ctx) {
     // Bildhälften), Anteil innen bzw. leer (Distanz > 1) am sichtbaren Boden im Sondenfenster
     // (2D: Bildschirmanteile direkt in lokale Einheiten, x mal Seitenverhältnis)
     function flyMetrics(pb, now) {
-        const c = T3.lastCam, M = probeMap(pb), asp = ctx.cssW / ctx.cssH;
+        const c = T3.lastCam, M = probeMap(pb), asp = ctx.cssW / ctx.cssH, vr = FLY.d3 ? 0 : ctx.viewRot(), vc = Math.cos(vr), vs = Math.sin(vr);
         const at = (P) => { const q = M.toP(P[0], P[1]); const i = Math.floor((q[0] / pb.win * 0.5 + 0.5) * pb.w), j = Math.floor((q[1] / pb.win * 0.5 + 0.5) * pb.h); return i < 0 || j < 0 || i >= pb.w || j >= pb.h ? NaN : pb.de[j * pb.w + i] / M.k; };
         const look = (x, y) => {
-            const g = FLY.d3 ? T3.groundAt(c, x, y) : [x * asp, y];
+            const g = FLY.d3 ? T3.groundAt(c, x, y) : [vc * x * asp - vs * y, vs * x * asp + vc * y];     // (7.4: Bildachsen gedreht)
             if (!g) return -2;
             const d = at(g);
             return Number.isNaN(d) ? -2 : d;
@@ -765,6 +817,6 @@ root.FKFlight = { create(ctx) {
     }
 
     return { link() { ({ GOV, HP, MODE_HOME, Q, S, T3, V3, can3d, clampZoom, emit, look, ready3d, set3d, setCam, setJulia, setMode, smooth01, stopAnims, t, toast } = ctx); },
-             FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, stopFlySoft, toggleFly, trailAt, turnFly, clearance };
+             FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, stopFlySoft, toggleFly, trailAt, turnFly, clearance, rollStep, rollIdle };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

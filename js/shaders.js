@@ -181,6 +181,7 @@ ${IN ? '#define IN 1' : ''}
 ${COMMON}
 uniform vec2 u_res;        // Puffergröße
 uniform vec2 u_pxoff;      // 6.8.1 Kachel-Screenshot: Lage der Puffermitte zur Bildmitte (Pixel, ganz/halb – exakt in f32)
+uniform vec2 u_rcs;        // 7.4 Bilddrehung: (cos, sin) – Pufferpixel -> Weltachsen um die Bildmitte gedreht ((1, 0) = ohne)
 uniform float u_scale;     // Weltbreite pro Pufferpixel
 uniform int u_maxIter;
 layout(location = 0) out uint o_it;
@@ -261,6 +262,7 @@ float newton(vec2 z) {
 #endif
 void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;   // (u_pxoff = 0: wie bisher; Kachel: dieselben p wie im ganzen Bild)
+    p = vec2(u_rcs.x * p.x - u_rcs.y * p.y, u_rcs.y * p.x + u_rcs.x * p.y);
     vec2 pos = u_center + p * u_scale;
     float result = -1.0;
     o_de = vec4(0.0);
@@ -445,6 +447,7 @@ int ctz(int k) { return int(log2(float(k & -k)) + 0.5); }
 
 void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;   // (u_pxoff = 0: wie bisher; Kachel: dieselben p wie im ganzen Bild)
+    p = vec2(u_rcs.x * p.x - u_rcs.y * p.y, u_rcs.y * p.x + u_rcs.x * p.y);
     vec2 dc = u_offset + p * u_scale;
     int base = u_baseA, len = u_lenA, o = 0;
     vec2 Zc = orb(base);
@@ -738,6 +741,7 @@ function exoticFS(F, de, st) {
 ${COMMON}
 uniform vec2 u_res;
 uniform vec2 u_pxoff;
+uniform vec2 u_rcs;        // 7.4 Bilddrehung: (cos, sin) – Pufferpixel -> Weltachsen um die Bildmitte gedreht ((1, 0) = ohne)
 uniform float u_scale;
 uniform int u_maxIter;
 uniform vec2 u_center;
@@ -749,6 +753,7 @@ ${EXO_HELP}
 ${ST ? STYLE_CORE : ''}
 void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;
+    p = vec2(u_rcs.x * p.x - u_rcs.y * p.y, u_rcs.y * p.x + u_rcs.x * p.y);
     vec2 pos = u_center + p * u_scale;
     float result = -1.0;
     o_de = vec4(0.0);
@@ -1023,6 +1028,7 @@ function exoticDF(F, de, st) {
 ${COMMON}
 uniform vec2 u_res;
 uniform vec2 u_pxoff;
+uniform vec2 u_rcs;        // 7.4 Bilddrehung: (cos, sin) – Pufferpixel -> Weltachsen um die Bildmitte gedreht ((1, 0) = ohne)
 uniform float u_scale;
 uniform vec2 u_scaleD;       // Weltbreite je Pufferpixel als df64
 uniform vec4 u_centerD;      // Ansichtsmitte als df64 (x.hi, x.lo, y.hi, y.lo)
@@ -1041,6 +1047,7 @@ ${ST ? STYLE_CORE : ''}
 bool cyc(vec4 z, vec4 s) { vec2 d = (z.xz - s.xz) + (z.yw - s.yw); return dot(d, d) <= 1e-24 * max(dot(z.xz, z.xz), 1.0); }
 void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;
+    p = vec2(u_rcs.x * p.x - u_rcs.y * p.y, u_rcs.y * p.x + u_rcs.x * p.y);
     vec4 pos = vec4(dAdd(u_centerD.xy, dMulF(u_scaleD, p.x)), dAdd(u_centerD.zw, dMulF(u_scaleD, p.y)));
     float result = -1.0;
     o_de = vec4(0.0);
@@ -1529,17 +1536,22 @@ ${loop ? `    vec4 vv = vec4(v00, v10, v01, v11);
 
 // Abdeckung mit gefederten Rändern. Federbreite = Abstand der Kante vom Bildrand (max. u_feather):
 // stetig, auch wenn eine Kante gerade erst ins Bild wandert; Kanten außerhalb des Bildes federn nicht.
+// 7.4 (Bilddrehung): xf = (a, b, ox, oy), Texel = (a·x − b·y, b·x + a·y) + (ox, oy), k = |(a, b)| Texel je Zielpixel. Abstand
+// zu einer Kante in Zielpixeln = Texel-Abstand / k; Federbreite = wie tief die Kante ins Bild ragt (kleinster Wert an den
+// Bildecken) – ohne Drehung genau die Regel bis 7.3.
 float coverage(vec2 tc, vec2 size, vec4 xf) {
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > size.x || tc.y > size.y) return 0.0;
     if (u_feather <= 0.0) return 1.0;
-    vec2 e0 = -xf.zw / xf.xy, e1 = (size - xf.zw) / xf.xy;
-    vec2 f0 = clamp(e0, 0.0, u_feather), f1 = clamp(u_target - e1, 0.0, u_feather);
-    vec2 p = gl_FragCoord.xy;
+    float k = length(xf.xy);
+    vec2 ax = vec2(xf.x, xf.y) * u_target.x, ay = vec2(-xf.y, xf.x) * u_target.y;   // Änderung des Texels über Bildbreite/-höhe
+    vec2 tmin = xf.zw + min(ax, 0.0) + min(ay, 0.0), tmax = xf.zw + max(ax, 0.0) + max(ay, 0.0);
+    vec2 f0 = clamp(-tmin / k, 0.0, u_feather), f1 = clamp((tmax - size) / k, 0.0, u_feather);
+    vec2 e0 = tc / k, e1 = (size - tc) / k;
     float c = 1.0;
-    if (f0.x > 0.0) c = min(c, (p.x - e0.x) / f0.x);
-    if (f0.y > 0.0) c = min(c, (p.y - e0.y) / f0.y);
-    if (f1.x > 0.0) c = min(c, (e1.x - p.x) / f1.x);
-    if (f1.y > 0.0) c = min(c, (e1.y - p.y) / f1.y);
+    if (f0.x > 0.0) c = min(c, e0.x / f0.x);
+    if (f0.y > 0.0) c = min(c, e0.y / f0.y);
+    if (f1.x > 0.0) c = min(c, e1.x / f1.x);
+    if (f1.y > 0.0) c = min(c, e1.y / f1.y);
     return smoothstep(0.0, 1.0, clamp(c, 0.0, 1.0));
 }
 
@@ -1566,7 +1578,8 @@ vec4 cubicW(float t) {
 // Probe einer Ebene (neu): gefedert; vergrößerte Ebenen (Vorschau) auf dem Iterationswert rekonstruiert;
 // 6.1: Mengen-Saum aus der Distanzschätzung (dtex) pro Zielpixel
 vec3 sampleLayerN(${TX} tex, ${DX} dtex, vec2 size, vec4 xf, vec3 voidCol, float acc, out float w) {
-    vec2 tc = gl_FragCoord.xy * xf.xy + xf.zw;
+    vec2 tc = vec2(xf.x * gl_FragCoord.x - xf.y * gl_FragCoord.y, xf.y * gl_FragCoord.x + xf.x * gl_FragCoord.y) + xf.zw;   // 7.4: mit Drehung
+    float kx = length(xf.xy);      // Texel je Zielpixel (bis 7.3: xf.x)
     w = coverage(tc, size, xf);
     if (w <= 0.0) return vec3(0.0);
     vec2 q = tc - 0.5;
@@ -1609,17 +1622,17 @@ ${loop ? `        vec4 eq;
         }
 #endif`}
         if (u_deOn == 1) {
-            dm = deMask(e00, e10, e01, e11, f, 1.0 / xf.x, u_deLH);
-            rim = rimShade(e00, e10, e01, e11, f, 1.0 / xf.x);
+            dm = deMask(e00, e10, e01, e11, f, 1.0 / kx, u_deLH);
+            rim = rimShade(e00, e10, e01, e11, f, 1.0 / kx);
         }
         if (u_outM == 1) {
             // 6.9 Grenznah: Helligkeit fällt mit dem Abstand zur Menge (Zielpixel) weich ab – 1/2 bei W/2, 1/4 bei W;
             // die 8-bit-Distanz reicht bis ~245 Pufferpixel, davor blendet der Rest unmerklich aus (kein Ring)
             float dt = mix(mix(e00, e10, f.x), mix(e01, e11, f.x), f.y);
-            g_outK = exp2(-2.0 * dt / (xf.x * u_outW)) * (1.0 - smoothstep(400.0, 960.0, dt));
+            g_outK = exp2(-2.0 * dt / (kx * u_outW)) * (1.0 - smoothstep(400.0, 960.0, dt));
         }
     }
-    if (u_recon == 0 || xf.x >= 0.9) return mix(shade4(v00, v10, v01, v11, f, xf.x, voidCol) * rim, voidCol, dm);
+    if (u_recon == 0 || kx >= 0.9) return mix(shade4(v00, v10, v01, v11, f, kx, voidCol) * rim, voidCol, dm);
     // Innen/Außen getrennt: Außenwerte untereinander interpolieren, Innenanteil weich-scharf darüber
     vec4 v = vec4(v00, v10, v01, v11);
     vec4 wb = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
@@ -1656,7 +1669,7 @@ ${loop ? `        vec4 eq;
         for (int i = 0; i < ${loop ? 'N4' : '4'}; i++) if (v[i] >= 0.0) c += wb[i] * extC(v[i], g_relA[i]);
         col = c / wo * g_outK;
     }
-    if (u_relief > 0.0 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, xf.x);
+    if (u_relief > 0.0 && wo > 0.999) col = relief(col, v00, v10, v01, v11, f, kx);
     col = mix(col * rim, voidCol, max(dm, smoothstep(0.15, 0.85, inside)));
     return col;
 }

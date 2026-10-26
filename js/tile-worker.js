@@ -34,10 +34,12 @@ function tile(q) {
     C.stSetup(st, q.stp, q.cabs);
     C.xpSetup(q.X);                       // 7.1 Welt-Parameter (Exoten, Newton-Polynom)
     const deS = q.de ? scale : 0, de = q.de || st ? new Uint8Array(w * h * c4) : null;
+    const rc = q.rc === undefined ? 1 : q.rc, rs = q.rs || 0;
     for (let j = 0; j < h; j++) {
-        const py = -((y + j) + 0.5 - bufH / 2) * scale;
+        const py0 = -((y + j) + 0.5 - bufH / 2) * scale;
         for (let i = 0; i < w; i++) {
-            const px = ((x + i) + 0.5 - bufW / 2) * scale;
+            const px0 = ((x + i) + 0.5 - bufW / 2) * scale;
+            const px = rc * px0 - rs * py0, py = rs * px0 + rc * py0;      // 7.4 Bilddrehung (rc = 1, rs = 0: wie bisher)
             const k = (h - 1 - j) * w + i;          // GL-Zeilenfolge (unten zuerst)
             out[k] = perturb
                 ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, deS, q.inn)
@@ -60,8 +62,10 @@ function pixels(q) {
     const useBLA = perturb && q.useBLA && ref.bla;
     C.stSetup(0);
     C.xpSetup(q.X);
+    const rc = q.rc === undefined ? 1 : q.rc, rs = q.rs || 0;      // 7.4 Bilddrehung
     for (let k = 0; k < n; k++) {
-        const px = (list[2 * k] + 0.5 - bufW / 2) * scale, py = -(list[2 * k + 1] + 0.5 - bufH / 2) * scale;
+        const px0 = (list[2 * k] + 0.5 - bufW / 2) * scale, py0 = -(list[2 * k + 1] + 0.5 - bufH / 2) * scale;
+        const px = rc * px0 - rs * py0, py = rs * px0 + rc * py0;
         out[k] = perturb ? C.perturbPixel(q.offX + px, q.offY + py, ref, maxIter, useBLA, 0, q.inn)
                          : C.directPixel(q.offX + px, q.offY + py, formula, maxIter, q.jx, q.jy, 0, q.inn);
     }

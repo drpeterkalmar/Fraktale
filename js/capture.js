@@ -60,7 +60,7 @@ root.FKCapture = { create(ctx) {
         const W = opts.W || W0, H = opts.H || H0;
         const kind = kindNow();
         const lim = Math.min(glLimit(), MOBILE ? 1024 : 2048);
-        const P = { W, H, kind, cam: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom }, formula: S.formula, label: opts.label === undefined ? S.shotLabel : !!opts.label, time: opts.time, reuse: !!opts.reuse, test: !!(opts.tile || opts.reuse || opts.time !== undefined) };
+        const P = { W, H, kind, cam: { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom, rot: ctx.viewRot() }, formula: S.formula, label: opts.label === undefined ? S.shotLabel : !!opts.label, time: opts.time, reuse: !!opts.reuse, test: !!(opts.tile || opts.reuse || opts.time !== undefined) };
         let m = 0, al = 1;
         if (kind === '2d') {
             m = M2D;
@@ -465,12 +465,14 @@ root.FKCapture = { create(ctx) {
         if (T.st === 'present') {
             const job = T.job, ct = colorTarget(C, tile.w, tile.h);
             // Kachelmitte = Puffermitte (symmetrischer Rand): Abbildung 1:1, Texel = Pixel + Rand
-            const cx = P.cam.cx + HP.fromNumber(job.pxoff[0] * P.s), cy = P.cam.cy + HP.fromNumber(job.pxoff[1] * P.s);
-            const layer = { buf: job.buf, view: { cx, cy }, scale: P.s, alpha: 1 };
+            // (7.4 Bilddrehung: der Versatz liegt in gedrehten Bildachsen)
+            const vr = P.cam.rot || 0, rc = Math.cos(vr), rs = Math.sin(vr), po = job.pxoff;
+            const cx = P.cam.cx + HP.fromNumber((rc * po[0] - rs * po[1]) * P.s), cy = P.cam.cy + HP.fromNumber((rs * po[0] + rc * po[1]) * P.s);
+            const layer = { buf: job.buf, view: { cx, cy, rot: vr }, scale: P.s, alpha: 1 };
             const lk = Object.assign({}, C.look);  // 7.1.14: eingefrorener Farbverlauf (prep), nicht look() je Kachel
             lk.maxIter = P.maxIter;
             lk.outW *= P.W / canvas.width;      // 6.9 Grenznah: Saumbreite wie am Bildschirm, relativ zur Bildgröße
-            R.present([layer], { cx, cy, zoom: 3 / (P.s * tile.h) }, lk, { w: tile.w, h: tile.h, fbo: ct.fbo }, { feather: 0, recon: true, de: P.deMask ? [0.25, 1.25] : null, vp: [tile.gx, tile.gy, P.W, P.H] });
+            R.present([layer], { cx, cy, zoom: 3 / (P.s * tile.h), rot: vr }, lk, { w: tile.w, h: tile.h, fbo: ct.fbo }, { feather: 0, recon: true, de: P.deMask ? [0.25, 1.25] : null, vp: [tile.gx, tile.gy, P.W, P.H] });
             T.st = 'read';
             const buf = job.buf;
             readTile(C, ct.fbo, tile.w, tile.h, 0, 0, tile);
@@ -491,12 +493,13 @@ root.FKCapture = { create(ctx) {
                     w.busy++;
                     w.postMessage({ type: 'pixels', jobId: C.id, chunk: k, list: fx.chunks[k], refId: P.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.cf, X: P.X,
                                     maxIter: P.maxIter, useBLA: !!(REF.cur && REF.cur.bla64) && P.useBLA, offX: P.mode === 'perturb' ? P.off[0] : HP.toNumber(P.cam.cx), offY: P.mode === 'perturb' ? P.off[1] : HP.toNumber(P.cam.cy),
-                                    jx: P.julia[0], jy: P.julia[1], inn: P.inn });
+                                    jx: P.julia[0], jy: P.julia[1], inn: P.inn, rc: Math.cos(P.cam.rot || 0), rs: Math.sin(P.cam.rot || 0) });
                 } else if (job && job.tiles.length) {
                     const tl = job.tiles.shift();
                     w.busy++;
                     w.postMessage({ type: 'tile', jobId: C.id, refId: job.refId, bufW: P.W, bufH: P.H, scale: P.s, mode: P.mode, formula: P.cf, X: P.X, maxIter: P.maxIter, useBLA: job.useBLA,
-                                    de: P.de, inn: P.inn, st: job.st, stp: job.stp, cabs: job.cabs, offX: job.cpuOff[0], offY: job.cpuOff[1], jx: P.julia[0], jy: P.julia[1], x: tl.x + job.ox, y: tl.y + job.oy, w: tl.w, h: tl.h });
+                                    de: P.de, inn: P.inn, st: job.st, stp: job.stp, cabs: job.cabs, offX: job.cpuOff[0], offY: job.cpuOff[1], jx: P.julia[0], jy: P.julia[1], x: tl.x + job.ox, y: tl.y + job.oy, w: tl.w, h: tl.h,
+                                    rc: Math.cos(P.cam.rot || 0), rs: Math.sin(P.cam.rot || 0) });
                 } else break;
             }
         }

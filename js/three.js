@@ -52,6 +52,8 @@ ${iter ? rep(N3, i => `uniform usampler2D u_i${i};`) : ''}
 uniform vec4 u_lt[${N3}];
 uniform vec4 u_ls[${N3}];
 uniform vec2 u_lh[${N3}];
+uniform vec2 u_lr[${N3}];   // 7.4: Drehung der Ebene (cos, sin) – lokal (Weltachsen) -> Pufferachsen um −Winkel
+vec2 lrot(int i, vec2 P) { vec2 r = u_lr[i]; return vec2(r.x * P.x + r.y * P.y, r.x * P.y - r.y * P.x); }
 uniform int u_n3;
 uniform vec3 u_hn;        // L0, 1/(L1-L0), Höhenmaßstab (lokal)
 uniform float u_cdf[9];   // Höhen-Entzerrung: log2(1+mu) an den Quantilen 0, 1/8 … 1 (h8: normiert)
@@ -67,7 +69,7 @@ ${SWITCH(k => `v = textureLod(u_h${k}, uv, lod);`)}
 }
 vec4 hLayer(int i, vec2 P, float foot) {
     vec4 lt = u_lt[i], ls = u_ls[i];
-    vec2 tc = P * lt.x + lt.yz;
+    vec2 tc = lrot(i, P) * lt.x + lt.yz;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
     float e = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
     float cov = clamp(e / 10.0, 0.0, 1.0) * lt.w;
@@ -440,7 +442,7 @@ void inTexels(vec4 v, vec4 wb, vec3 lakeCol) {
 // die Menge legt main() pro Bildschirmpixel aus dem B-Kanal der Höhentextur darüber. Alle 4 Texel innen: Seefarbe.
 vec4 cLayerS(int i, vec2 P, vec3 lakeCol) {
     vec4 lt = u_lt[i], ls = u_ls[i];
-    vec2 tc = P * lt.x + lt.yz;
+    vec2 tc = lrot(i, P) * lt.x + lt.yz;
     if (tc.x < 0.0 || tc.y < 0.0 || tc.x > ls.x || tc.y > ls.y) return vec4(0.0);
     float e0 = min(min(tc.x, tc.y), min(ls.x - tc.x, ls.y - tc.y));
     float cov = clamp(e0 / 10.0, 0.0, 1.0) * lt.w;
@@ -461,7 +463,7 @@ vec4 cLayerS(int i, vec2 P, vec3 lakeCol) {
 #endif
     return vec4(wo > 0.0 ? c / wo : lakeCol, cov);
 }
-bool covers(int i, vec2 P) { vec4 lt = u_lt[i], ls = u_ls[i]; vec2 tc = P * lt.x + lt.yz; return tc.x >= 0.0 && tc.y >= 0.0 && tc.x <= ls.x && tc.y <= ls.y; }
+bool covers(int i, vec2 P) { vec4 lt = u_lt[i], ls = u_ls[i]; vec2 tc = lrot(i, P) * lt.x + lt.yz; return tc.x >= 0.0 && tc.y >= 0.0 && tc.x <= ls.x && tc.y <= ls.y; }
 // Farbe am Bodenpunkt: schärfste Ebene oben; zu feine Ebenen (Texel << Pixel, flimmern) treten zurück,
 // wenn darunter eine gröbere die Stelle deckt (6.3: "darunter" = vor der letzten deckenden Ebene, statt 6×6-Kette)
 vec3 colorAt(vec2 P, float foot, vec3 lakeCol, vec3 noData) {
@@ -914,13 +916,14 @@ ${rep(N3, i => `uniform usampler2D u_i${i};`)}
 ${rep(N3, i => `uniform sampler2D u_d${i};`)}
 uniform vec4 u_lt[${N3}];
 uniform vec4 u_ls[${N3}];
+uniform vec2 u_lr[${N3}];   // 7.4: Drehung der Ebene (wie LAYERS)
 uniform int u_n3;
 uniform vec2 u_psize;
 uniform float u_win;
 out uint o;
 uint probe(int i, vec2 P, out bool ok) {
-    vec4 lt = u_lt[i], ls = u_ls[i];
-    vec2 tc = P * lt.x + lt.yz;
+    vec4 lt = u_lt[i], ls = u_ls[i], r = vec4(u_lr[i], 0.0, 0.0);
+    vec2 tc = vec2(r.x * P.x + r.y * P.y, r.x * P.y - r.y * P.x) * lt.x + lt.yz;
     ok = tc.x >= 0.0 && tc.y >= 0.0 && tc.x < ls.x && tc.y < ls.y;
     if (!ok) return 0u;
     ivec2 c = ivec2(tc);
@@ -1048,15 +1051,19 @@ function create(R, flags) {
     };
 
     // ---------------- Ebenen-Uniforms (lokal)
-    const ltB = new Float32Array(4 * N3), lsB = new Float32Array(4 * N3), lhB = new Float32Array(2 * N3);
+    const ltB = new Float32Array(4 * N3), lsB = new Float32Array(4 * N3), lhB = new Float32Array(2 * N3), lrB = new Float32Array(2 * N3);
     function layerUniforms(list, focus, u) {
         for (let i = 0; i < N3; i++) {
             const l = list[i];
             if (!l) continue;
             const a = u / l.scale;
+            // 7.4: Ebene gedreht gerechnet (2D-Roll) -> Versatz in ihre Pufferachsen drehen (Shader: lrot)
+            const rl = l.view.rot || 0, rc = rl ? Math.cos(rl) : 1, rs = rl ? Math.sin(rl) : 0;
+            const dx = HP.toNumber(focus.cx - l.view.cx) / l.scale, dy = HP.toNumber(focus.cy - l.view.cy) / l.scale;
             ltB[4 * i] = a;
-            ltB[4 * i + 1] = HP.toNumber(focus.cx - l.view.cx) / l.scale + l.buf.w / 2;
-            ltB[4 * i + 2] = HP.toNumber(focus.cy - l.view.cy) / l.scale + l.buf.h / 2;
+            ltB[4 * i + 1] = rc * dx + rs * dy + l.buf.w / 2;
+            ltB[4 * i + 2] = rc * dy - rs * dx + l.buf.h / 2;
+            lrB[2 * i] = rc; lrB[2 * i + 1] = rs;
             ltB[4 * i + 3] = l.alpha === undefined ? 1 : l.alpha;
             lsB[4 * i] = l.buf.w; lsB[4 * i + 1] = l.buf.h;
             lsB[4 * i + 2] = l.h3d ? l.h3d.base : 0;
@@ -1080,6 +1087,7 @@ function create(R, flags) {
 
         gl.uniform4fv(U.u_lt, ltB); gl.uniform4fv(U.u_ls, lsB);
         if (U.u_lh) gl.uniform2fv(U.u_lh, lhB);
+        if (U.u_lr) gl.uniform2fv(U.u_lr, lrB);
         gl.uniform1i(U.u_n3, Math.min(N3, list.length));
     }
     let _df = null;
@@ -1844,6 +1852,7 @@ function create(R, flags) {
             gl.uniform1i(U['u_d' + i], N3 + i);
         }
         gl.uniform4fv(U.u_lt, ltB); gl.uniform4fv(U.u_ls, lsB);
+        if (U.u_lr) gl.uniform2fv(U.u_lr, lrB);
         gl.uniform1i(U.u_n3, list.length);
         gl.uniform2f(U.u_psize, PW, PH);
         gl.uniform1f(U.u_win, win);

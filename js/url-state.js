@@ -14,6 +14,8 @@ root.FKUrlState = { create(ctx) {
         p.set('m', S.formula);
         p.set('x', HP.toString(S.cam.cx, d)); p.set('y', HP.toString(S.cam.cy, d));
         p.set('z', S.cam.zoom.toPrecision(6));
+        // 7.4 Bilddrehung (Roll im Flug) in Grad; fehlt = ungedreht (alte Links unverändert)
+        const vr = ctx.viewRot(); if (Math.abs(vr) > 1e-4) p.set('r', +(vr * 180 / Math.PI).toFixed(2));
         p.set('p', PAL.list[S.palette].id);
         if (S.formula === 1) { p.set('jx', HP.toString(S.julia.x, 12)); p.set('jy', HP.toString(S.julia.y, 12)); }
         if (S.iterManual) p.set('it', S.iterValue);
@@ -54,6 +56,7 @@ root.FKUrlState = { create(ctx) {
         // von Minuten (Windows-Watchdog -> Kontextverlust)
         if (p.has('it')) { S.iterManual = true; S.iterValue = Math.max(50, Math.min(500000, parseInt(p.get('it'), 10) || 300)); }
         setCam(HP.fromString(p.get('x')), HP.fromString(p.get('y') || '0'), parseFloat(p.get('z')) || 1);
+        ctx.setViewRot(p.has('r') ? (parseFloat(p.get('r')) || 0) * Math.PI / 180 : 0);
         if (ctx.isRay(m) && ctx.BULB) {
             // ohne b= : Mandelbulb-Link bis 6.9 (x/y = Drehung, z = Abstand), sonst Startansicht
             if (!(p.has('b') && ctx.BULB.applyState(p.get('b')))) {

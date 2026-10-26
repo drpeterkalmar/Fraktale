@@ -380,6 +380,9 @@ function create(canvas) {
         gl.uniform2f(L.u_res, job.w, job.h);
         // 6.8.1 Kachel-Screenshot: Puffermitte relativ zur Bildmitte (sonst 0) – Uniforms gelten je Programm, darum immer setzen
         gl.uniform2f(L.u_pxoff, job.pxoff ? job.pxoff[0] : 0, job.pxoff ? job.pxoff[1] : 0);
+        // 7.4 Bilddrehung der Ansicht (immer setzen: ohne Wert stünde (0, 0) im Uniform und alle Pixel lägen auf der Mitte)
+        const vr = job.view.rot || 0;
+        gl.uniform2f(L.u_rcs, vr ? Math.cos(vr) : 1, vr ? Math.sin(vr) : 0);
         gl.uniform1f(L.u_scale, job.scale);
         gl.uniform1i(L.u_maxIter, job.maxIter);
         if (L.u_stp) { const p = job.stp || [5, 1, 24, 0.32]; gl.uniform4f(L.u_stp, p[0], p[1], p[2], p[3]); }     // 7.1 Stil: Streifendichte, Kreisradius, Fenster, Vergessen
@@ -542,13 +545,21 @@ function create(canvas) {
     };
 
     // ------------------------------------------------ Display
-    // layer: { buf, view:{cx,cy}, scale }  cam: { cx, cy, zoom }  target: {w,h,fbo?}
+    // layer: { buf, view:{cx,cy,rot?}, scale }  cam: { cx, cy, zoom, rot? }  target: {w,h,fbo?}
+    // 7.4: Texel = (a·x − b·y + ox, b·x + a·y + oy) mit (a, b) = k·(cos Δ, sin Δ), Δ = Drehung der Kamera − Drehung der Ebene
+    // (ohne Drehung: (k, 0, …) – dieselben Zahlen wie bis 7.3, dort stand (k, k, …))
     function xfFor(layer, cam, tw, th) {
+        const LX = (typeof self !== 'undefined' ? self : globalThis).FKLayers;     // dieselbe Rechnung wie die Ebenen-Abdeckung (layers.js)
+        if (LX && LX.rectXf) return LX.rectXf(layer.view, layer.scale, layer.buf.w, layer.buf.h, cam, cam.rot || 0, tw, th);
         const sCam = 3 / (cam.zoom * th);           // Welt pro Zielpixel
         const k = sCam / layer.scale;
-        const dx = HP.toNumber(cam.cx - layer.view.cx) / layer.scale;
-        const dy = HP.toNumber(cam.cy - layer.view.cy) / layer.scale;
-        return [k, k, dx - tw / 2 * k + layer.buf.w / 2, dy - th / 2 * k + layer.buf.h / 2];
+        let dx = HP.toNumber(cam.cx - layer.view.cx) / layer.scale;
+        let dy = HP.toNumber(cam.cy - layer.view.cy) / layer.scale;
+        const rl = layer.view.rot || 0, d = (cam.rot || 0) - rl;
+        if (!rl && !d) return [k, 0, dx - tw / 2 * k + layer.buf.w / 2, dy - th / 2 * k + layer.buf.h / 2];
+        if (rl) { const c = Math.cos(rl), s = Math.sin(rl); [dx, dy] = [c * dx + s * dy, -s * dx + c * dy]; }
+        const a = k * Math.cos(d), b = k * Math.sin(d);
+        return [a, b, dx - (a * tw / 2 - b * th / 2) + layer.buf.w / 2, dy - (b * tw / 2 + a * th / 2) + layer.buf.h / 2];
     }
     // layers: [{ buf, view, scale, alpha }] von oben (schärfste) nach unten, höchstens SH.NL.
     // opts: { feather, recon, de, vp } – vp (6.8.1): [x, y, W, H] Lage des Ziels im ganzen Bild (Kachel-Screenshot)

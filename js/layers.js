@@ -5,7 +5,18 @@
 (function (root) {
 'use strict';
 
-root.FKLayers = { create(ctx) {
+// 7.4: Abbildung Zielpixel (GL, y nach oben) -> Texel einer Ebene { cx, cy, rot } mit Pixelgröße scale und Puffer w×h, für die
+// Kamera cam (Drehwinkel rc) und ein Ziel tw×th: Texel = (a·x − b·y + ox, b·x + a·y + oy). Dieselbe Rechnung wie renderer.js
+// xfFor (rein, auch für die Node-Tests)
+function rectXf(view, scale, w, h, cam, rc, tw, th) {
+    const k = 3 / (cam.zoom * th) / scale, rl = view.rot || 0, d = rc - rl, HP = root.FKHP;
+    let dx = HP.toNumber(cam.cx - view.cx) / scale, dy = HP.toNumber(cam.cy - view.cy) / scale;
+    if (!rl && !d) return [k, 0, dx - tw / 2 * k + w / 2, dy - th / 2 * k + h / 2];    // (ohne Drehung: Zahlen wie bis 7.3)
+    if (rl) { const c = Math.cos(rl), s = Math.sin(rl); [dx, dy] = [c * dx + s * dy, -s * dx + c * dy]; }
+    const a = k * Math.cos(d), b = k * Math.sin(d);
+    return [a, b, dx - (a * tw / 2 - b * th / 2) + w / 2, dy - (b * tw / 2 + a * th / 2) + h / 2];
+}
+root.FKLayers = { rectXf, create(ctx) {
     let FADE_MOVE_MS, FADE_MS, HP, MAXL, MAXL3, R, RC, S, V3, canvas, deActive, innActive, smooth01, viewKey, stActive;   // aus app.js, gesetzt in link()
 
     // Inhalt eines Bildes: was es zeigt (unabhängig von Ansicht/Auflösung). Ebenen mit anderem Inhalt
@@ -46,11 +57,31 @@ root.FKLayers = { create(ctx) {
         return L.slice().sort((a, b) => b.score - a.score || b.seq - a.seq);
     }
     // Welt-Rechteck einer Ebene relativ zur Kamera (Zielpixel)
+    // 7.4 Bilddrehung: Ebene und Kamera mit verschiedenem Winkel -> das Rechteck liegt schräg im Bild. x0..y1 ist dann sein
+    // umschließendes Rechteck, xf die Abbildung Zielpixel -> Texel (wie renderer.js xfFor); inRect prüft genau
     function layerRect(l, cam) {
         const sCam = 3 / (cam.zoom * canvas.height);
-        const cx = HP.toNumber(l.view.cx - cam.cx) / sCam + canvas.width / 2, cy = HP.toNumber(l.view.cy - cam.cy) / sCam + canvas.height / 2;
-        const hw = l.buf.w / 2 * l.scale / sCam, hh = l.buf.h / 2 * l.scale / sCam;
-        return { x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh };
+        const rl = l.view.rot || 0, rc = cam.rot !== undefined ? cam.rot : ctx.viewRot(), d = rc - rl;
+        if (!rl && !d) {
+            const cx = HP.toNumber(l.view.cx - cam.cx) / sCam + canvas.width / 2, cy = HP.toNumber(l.view.cy - cam.cy) / sCam + canvas.height / 2;
+            const hw = l.buf.w / 2 * l.scale / sCam, hh = l.buf.h / 2 * l.scale / sCam;
+            return { x0: cx - hw, x1: cx + hw, y0: cy - hh, y1: cy + hh };
+        }
+        const xf = rectXf(l.view, l.scale, l.buf.w, l.buf.h, cam, rc, canvas.width, canvas.height);
+        const [a, b, ox, oy] = xf, n = a * a + b * b;
+        let x0 = 1e30, x1 = -1e30, y0 = 1e30, y1 = -1e30;
+        for (const [u, v] of [[0, 0], [l.buf.w, 0], [0, l.buf.h], [l.buf.w, l.buf.h]]) {
+            const x = (a * (u - ox) + b * (v - oy)) / n, y = (-b * (u - ox) + a * (v - oy)) / n;
+            x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+        }
+        return { x0, x1, y0, y1, xf, w: l.buf.w, h: l.buf.h };
+    }
+    // liegt der Zielpixel (x, y) in der Ebene?
+    function inRect(r, x, y) {
+        if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) return false;
+        if (!r.xf) return true;
+        const [a, b, ox, oy] = r.xf, u = a * x - b * y + ox, v = b * x + a * y + oy;
+        return u >= 0 && u <= r.w && v >= 0 && v <= r.h;
     }
     // Abdeckungsstatistik (Raster gx×gy über die um 'expand' vergrößerte Ansicht): mittlere effektive
     // Schärfe, Anteil grob (< 0.5) / unbedeckt, minimale Schärfe. list = sortierte Ebenen mit alpha.
@@ -71,7 +102,7 @@ root.FKLayers = { create(ctx) {
             const x = W / 2 + ((i + 0.5) / gx - 0.5) * W * ex, y = H / 2 + ((j + 0.5) / gy - 0.5) * H * ex;
             let T = 1, ke = 0, any = false;
             for (const e of L) {
-                if (x < e.r.x0 || x > e.r.x1 || y < e.r.y0 || y > e.r.y1) continue;
+                if (!inRect(e.r, x, y)) continue;
                 if (T * e.a > 0.01) e.n += (x >= 0 && x <= W && y >= 0 && y <= H) ? 10 : 1;   // Beitrag (im Bild ×10)
                 any = true;
                 ke += T * e.a * e.k; T *= 1 - e.a;
@@ -143,6 +174,6 @@ root.FKLayers = { create(ctx) {
     }
 
     return { link() { ({ FADE_MOVE_MS, FADE_MS, HP, MAXL, MAXL3, R, RC, S, V3, canvas, deActive, innActive, smooth01, viewKey, stActive } = ctx); },
-             addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers };
+             addLayer, contentSig, coverage, inRect, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);

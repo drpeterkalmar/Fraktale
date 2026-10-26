@@ -201,6 +201,7 @@ const S = {
     bulbStyle: 0, bulbFog: 0.15, bulbDof: 0, bulbBreathe: false, bulbFly: {}, bulbSway: true,   // 7.1.9 Flug-Art je 3D-Welt ('durch'/'tauch', leer = Standard der Welt), Schwanken             // 7.0 Mandelbulb: Stil (0 Klassisch, 1 Stein, 2 Metall, 3 Glas/Neon), Nebel, Tiefenunschärfe, Atmen
     hudFs: true,                                                            // 6.8: HUD im Vollbild ausblenden
     lava: true,                                                             // 7.2.1 Lavalampen-Flug (flight.js lavaStep)
+    flyRoll: true,                                                          // 7.4 Roll im Flug (flight.js rollStep)
     fsStart: true, startWorld: 'flug',                                      // 7.1.6: Vollbild beim ersten Tipp; 7.2.0 Start: 'flug' (Zufallsflug) | 'still' (Zufallswelt wie 7.1.6) | 'last'
     shotRes: 'screen', shotW: 3840, shotH: 2160, shotAspect: 'screen', shotLabel: true,   // 6.8.1: Screenshot-Auflösung, Beschriftung
     chrome: true,
@@ -279,7 +280,7 @@ function loadSettings() {
     PAL.loadCustom();
     try {
         const s = JSON.parse(localStorage.getItem('fraktal_v5_settings') || '{}');
-        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'bulbFly', 'bulbSway', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld', 'lava'])
+        for (const k of ['palette', 'density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'bulbFly', 'bulbSway', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld', 'lava', 'flyRoll'])
             if (s[k] !== undefined) S[k] = s[k];
         for (const f in WP_DEF) S.wp[f] = Object.assign({}, WP_DEF[f], S.wp[f] || {});
         if (typeof s.paletteId === 'string') S.palette = PAL.indexOf(s.paletteId);
@@ -298,7 +299,7 @@ function loadSettings() {
 }
 function saveSettings() {
     const o = {};
-    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'bulbFly', 'bulbSway', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld', 'lava']) o[k] = S[k];
+    for (const k of ['density', 'anim', 'speed', 'relief', 'reliefStrength', 'banded', 'particles', 'quality', 'renderer', 'precise', 'minimap', 'lang', 'zoomFormat', 'governor', 'h3d', 'flySpeed', 'deOn', 'aa', 'setCol', 'setHex', 'alpine', 'valley', 'inMode', 'outMode', 'edgeW', 'style', 'stMix', 'stS', 'wp', 'wpal', 'bulbStyle', 'bulbFog', 'bulbDof', 'bulbBreathe', 'bulbFly', 'bulbSway', 'hudFs', 'shotRes', 'shotW', 'shotH', 'shotAspect', 'shotLabel', 'fsStart', 'startWorld', 'lava', 'flyRoll']) o[k] = S[k];
     // 7.1.6: paletteId = Palette der Klassiker (bis 7.1.5 die gerade gezeigte – nach einem Start in einer neuen Welt bekamen
     // die Klassiker deren Palette); die Palette der aktuellen Welt steht in wpal
     S.wpal = Object.assign({}, S.wpal, { [palKey(S.formula)]: PAL.list[S.palette].id });
@@ -374,8 +375,41 @@ const worldPerCss = (zoom) => 3 / (zoom * cssH);
 // 7.1: Grenze je Welt; direkt gerechnete Exoten (f64 auf der CPU) bis 10¹³, Lyapunov 10¹²
 function maxZoom() { const cf = cformula(); return cf === 28 ? 1e12 : isExo(cf) ? 1e13 : MAX_ZOOM[S.formula]; }
 function clampZoom(z) { return Math.min(maxZoom(), Math.max(isDens() ? 0.005 : 0.2, z)); }     // 7.1: Lichtbilder weit heraus (Lorenz ~0,04)
+// 7.4 Bilddrehung der 2D-Ansicht (Roll im Flug, flight.js): VR.rot = Winkel der Kamera (rad, gegen den Uhrzeigersinn in
+// Weltachsen; das Bild dreht sich dabei im Uhrzeigersinn). Weltoffset = R(rot) · Bildschirmoffset (y nach oben). Jede
+// Rechnung (GPU, CPU-Kachel, Nachrechnung, Screenshot-Kachel) und jede Ebene merkt sich ihren Winkel (view.rot); der
+// Display-Pass, die Sonde und die 3D-Landschaft drehen beim Lesen um den Unterschied. In 3D und in Welten ohne
+// Iterationspuffer gilt 0. rot = 0 rechnet exakt wie bis 7.3.
+const VR = { rot: 0 };
+function viewRot() { return V3.on || !is2dW(S.formula) ? 0 : VR.rot; }
+// Kamera mit Drehwinkel (Display-Pass, Ebenen-Abdeckung): ohne eigenes rot gilt die aktuelle Drehung
+function camR(c) { return c.rot !== undefined ? c : { cx: c.cx, cy: c.cy, zoom: c.zoom, rot: viewRot() }; }
+function setViewRot(r) {
+    r = isFinite(r) ? r - 2 * Math.PI * Math.round(r / (2 * Math.PI)) : 0;
+    if (r !== VR.rot) {
+        const was = Math.abs(VR.rot) > 0.003;
+        VR.rot = r; camDirty = true;
+        if (was !== Math.abs(r) > 0.003) emit('fly');      // Kompass-Knopf zeigen/verbergen (ui.js sync3d)
+    }
+}
+// Geste, Mausrad, Doppeltipp: eine noch auslaufende Roll-Drehung sofort anhalten (der Weltpunkt unter dem Finger bleibt dort)
+function rollHalt() { FLY.rw = FLY.rv = 0; VR.north = null; }
+// 2D ausrichten (Knopf „Ausrichten“, ⌂): Drehung in ms weich auf 0 (ein laufender Flug rollt danach von 0 aus weiter)
+function northRot(ms) { VR.north = { t0: performance.now(), from: VR.rot, ms: ms || 450 }; }
+function rotAnim(now) {
+    const N = VR.north;
+    if (!N) return;
+    const u = Math.min(1, (now - N.t0) / N.ms);
+    setViewRot(N.from * (1 - ease(u)));
+    if (u >= 1) VR.north = null;
+}
 // Bildschirmpunkt (CSS px) -> Weltoffset zur Kameramitte (double)
-function screenOffset(x, y, zoom) { const s = worldPerCss(zoom); return [(x - cssW / 2) * s, -(y - cssH / 2) * s]; }
+function screenOffset(x, y, zoom) {
+    const s = worldPerCss(zoom), dx = (x - cssW / 2) * s, dy = -(y - cssH / 2) * s, r = viewRot();
+    if (!r) return [dx, dy];
+    const c = Math.cos(r), sn = Math.sin(r);
+    return [c * dx - sn * dy, sn * dx + c * dy];
+}
 function setCam(cx, cy, zoom, quiet) {
     const z = clampZoom(zoom);
     if (z !== zoom && zoom > maxZoom() && !setCam._warned && !quiet) { setCam._warned = true; toast(t('max_depth')); }
@@ -539,7 +573,7 @@ function predictCam(dt, clamp = true) {
 // ------------------------------------------------------------------ Gesten
 const gestures = self.FKGestures.attach(canvas, {
     rectMode: () => S.rectMode,
-    onStart(ax, ay) { if (!FLY.on) stopAnims(); gestureBase = { cam: S.cam, ax, ay, tilt: V3.tilt, heading: V3.heading }; FLY.userBase = FLY.user || 0; if (isBulb()) BULB.G.start(ax, ay); },
+    onStart(ax, ay) { if (!FLY.on) { stopAnims(); rollHalt(); } gestureBase = { cam: S.cam, ax, ay, tilt: V3.tilt, heading: V3.heading }; FLY.userBase = FLY.user || 0; if (isBulb()) BULB.G.start(ax, ay); },
     onTransform(ax0, ay0, ax, ay, scale, rot, n) {
         if (!gestureBase) return;
         if (isBulb()) { BULB.G.transform(ax0, ay0, ax, ay, scale, rot || 0, n || 1); return; }
@@ -595,7 +629,7 @@ const gestures = self.FKGestures.attach(canvas, {
     },
     onWheel(x, y, f) {
         inertia = null; flight = null;
-        stopFly();
+        stopFly(); rollHalt();
         if (isBulb()) { BULB.G.wheel(x, y, f); return; }
         if (V3.on) { x = cssW / 2; y = cssH / 2; }
         if (!wheelAnim || Math.abs(wheelAnim.x - x) + Math.abs(wheelAnim.y - y) > 4) wheelAnim = { x, y, ls: 0 };
@@ -658,7 +692,7 @@ function jmorphStep(now, dt) {
 // Stelle), zwei Finger beenden den Flug und zoomen ab hier normal weiter. true = Geste erledigt
 function gesture2dFly(b, ax0, ay0, ax, ay, scale, n) {
     if (n >= 2 || Math.abs(scale - 1) > 0.02) {
-        stopFly();
+        stopFly(); rollHalt();
         b.cam = anchoredCam(S.cam, ax, ay, ax0, ay0, 1 / scale);    // Ausgangskamera passend zur aktuellen Fingerlage
         return false;
     }
@@ -670,7 +704,7 @@ function gesture2dFly(b, ax0, ay0, ax, ay, scale, n) {
     return true;
 }
 function zoomAt(x, y, f) {
-    stopAnims();
+    stopAnims(); rollHalt();
     if (isBulb()) { BULB.keyZoom(f); return; }
     flyTo(null, null, S.cam.zoom * f, { anchor: { x, y }, duration: 0.42 });
 }
@@ -722,6 +756,7 @@ function setMode(m, keepView) {
     const prev = S.formula;
     S.formula = m;
     if (m !== prev) worldPalette(prev, m);
+    if (m !== prev || !keepView) { VR.north = null; setViewRot(0); }     // 7.4: neue Welt / Startansicht ungedreht
     if (!keepView) {
         const h = homeOf(m);
         stopAnims();
@@ -832,7 +867,8 @@ function df64OK(cf) {
 }
 function viewKey(cam) {
     const c = cam || S.cam;
-    return `${S.formula}|${c.cx}|${c.cy}|${c.zoom}|${S.iterManual ? S.iterValue : autoIter(c.zoom)}|${S.formula === 1 ? S.julia.x + ',' + S.julia.y : ''}|${canvas.width}x${canvas.height}|${S.renderer}${V3.on ? '|3d' : ''}`;
+    const r = c.rot !== undefined ? c.rot : viewRot();
+    return `${S.formula}|${c.cx}|${c.cy}|${c.zoom}|${S.iterManual ? S.iterValue : autoIter(c.zoom)}|${S.formula === 1 ? S.julia.x + ',' + S.julia.y : ''}|${canvas.width}x${canvas.height}|${S.renderer}${V3.on ? '|3d' : ''}${r ? '|r' + r : ''}`;
 }
 
 // Referenzorbit (Orbit-Worker): js/refs.js
@@ -930,7 +966,7 @@ function presentArgs(now) {
 function isFading(now) {
     return RC.layers.some(l => !l.prefetch && (!l.shown || layerFade(l, now) < 1));
 }
-function presentNow() { const a = presentArgs(performance.now()); R.present(a.list, S.cam, look(), null, a.opts); }
+function presentNow() { const a = presentArgs(performance.now()); R.present(a.list, camR(S.cam), look(), null, a.opts); }
 
 let lastPresentKey = '';
 function present(now, camChanged) {
@@ -955,7 +991,7 @@ function present(now, camChanged) {
     if (lk.dust !== RC.dustPrev) { RC.dustPrev = lk.dust; RC.dirty = true; }
     if (!camChanged && !anim && !RC.dirty) return;
     RC.dirty = false;
-    R.present(a.list, S.cam, lk, null, a.opts);
+    R.present(a.list, camR(S.cam), lk, null, a.opts);
     drawLupe();
     if (FS.on) frameStatsRecord(now, a.list);
 }
@@ -992,7 +1028,8 @@ function set3d(on) {
     if (!on && V3.prep) { V3.prep = 0; V3.prepFly = null; emit('3d'); if (!V3.on) return; }
     if (on && !V3.on && T3 && !ready3d()) { if (!V3.prep) { V3.prep = performance.now(); emit('3d'); } return; }
     if (on === V3.on && V3.dir === (on ? 1 : -1)) return;
-    if (on) { V3.on = true; V3.dir = 1; V3.heading = 0; if (T3) { T3.scale = baseScale3d(); T3.setStage(S.quality); T3.applyGrid(); } }   // 6.7: Gitter nach GPU-Messung
+    // 7.4: eine gedrehte 2D-Ansicht wird zum Kurs (Draufsicht mit Kurs h = 2D-Drehung −h, kein Sprung); 3D rechnet ungedreht
+    if (on) { const r2 = V3.on ? 0 : VR.rot; V3.on = true; V3.dir = 1; V3.heading = -r2; VR.rot = 0; VR.north = null; if (T3) { T3.scale = baseScale3d(); T3.setStage(S.quality); T3.applyGrid(); } }   // 6.7: Gitter nach GPU-Messung
     else { V3.dir = -1; if (!FLY2D) stopFly(); }       // 6.6: 3D aus im Flug -> der Flug läuft in 2D weiter
     invalidate(); emit('3d');
 }
@@ -1052,6 +1089,8 @@ function update3d(now, dt) {
         if (V3.cdfT && V3.cdf) for (let i = 0; i < 9; i++) { const d = (V3.cdfT[i] - V3.cdf[i]) * k; if (Math.abs(d) > 1e-4) { V3.cdf[i] += d; RC.dirty = true; } }
     }
     // (Flugschritt: frame(), auch in 2D)
+    // (7.4 Roll-Schaukeln der Landschaft klingt nach dem Flug ebenso aus)
+    if (!(FLY.on && !FLY.paused) && FLY.rollS) { FLY.rollS *= Math.exp(-dt * 1.5); if (Math.abs(FLY.rollS) < 1e-5) FLY.rollS = 0; FLY.r3 = Math.asin(Math.max(-1, Math.min(1, FLY.rollS / (FLY.rollCfg ? FLY.rollCfg.max3 : 0.21)))); RC.dirty = true; }
     if (!(FLY.on && !FLY.paused) && (Math.abs(FLY.roll || 0) > 1e-4 || FLY.om)) { FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); FLY.om = 0; if (Math.abs(FLY.roll) <= 1e-4) FLY.roll = 0; RC.dirty = true; }   // Schräglage klingt aus
     // 6.8 Umdrehen im Flug: der Blick dreht in 0,8 s weich um 180° (Kurs und Flugweg bleiben)
     if (V3.turnA !== V3.turnT) {
@@ -1091,7 +1130,7 @@ function deko3d() {
 }
 function view3d() {
     const em = e3(V3.mix);
-    return { tilt: V3.tilt * em, heading: (V3.heading + (V3.turnA || 0)) * (V3.dir < 0 ? em : 1), roll: (FLY.roll || 0) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time,
+    return { tilt: V3.tilt * em, heading: (V3.heading + (V3.turnA || 0)) * (V3.dir < 0 ? em : 1), roll: ((FLY.roll || 0) + (FLY.rollS || 0)) * em, height: S.h3d * 1.1, mix: em, focus: S.cam, u: 1.5 / S.cam.zoom, L: V3.L, cdf: V3.cdf, time: S.time,
              deko: deko3d(), ctime: DK.ct };
 }
 // Ebenen für 3D: gültiger Inhalt, schärfste zuerst, höchstens N3 – die größte (Horizont) immer dabei
@@ -1113,7 +1152,7 @@ function layers3d(list) {
 // ungeglätteter Kanten, wenn im Stillstand eine vorausgerechnete Ebene einblendet)
 function still3dKey(L3, v, lk) {
     const c = S.cam;
-    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine, T3.variant, lk.inner, lk.outM, lk.outW].join('|');
+    return [c.cx, c.cy, c.zoom, v.tilt.toFixed(5), v.heading.toFixed(5), (v.roll || 0).toFixed(4), v.height, v.mix, canvas.width, canvas.height, S.palette, lk.density, lk.banded, deActive(), FLY.on, lk.setCol.join(','), lk.alpine, T3.variant, lk.inner, lk.outM, lk.outW].join('|');
 }
 function still3dSoft(L3, v, lk) {
     return [v.L[0].toFixed(3), v.L[1].toFixed(3), (v.cdf || []).map(x => x.toFixed(3)).join(','), L3.map(l => l.seq + ':' + l.alpha.toFixed(2)).join(','), lk.maxIter].join('|');
@@ -1145,7 +1184,8 @@ function present3d(now, camChanged, force) {
             if (V3.accN === N) { V3.accMs = now - V3.accT0; V3.moved = false; }
         }
     } else {
-        if (alpha < 1) R.present(a.list, S.cam, lk, null, a.opts);
+        // (7.4: das 2D-Bild unter der Einblendung mit dem Kurs als Drehung – Draufsicht mit Kurs h = 2D-Ansicht mit Drehung −h)
+        if (alpha < 1) R.present(a.list, { cx: S.cam.cx, cy: S.cam.cy, zoom: S.cam.zoom, rot: -v.heading }, lk, null, a.opts);
         T3.render(L3, v, lk, alpha < 1 ? alpha : undefined, o);
         V3.moved = true;
         if (V3.accKey) V3.accN = 0;
@@ -1169,7 +1209,9 @@ function probe2d(now, list) {
     if (!T3.probeReady()) return;
     V3.probeT = now;
     const cam = S.cam;
-    const pr = T3.probe(layers3d(list), cam, 1.5 / cam.zoom, Math.max(1, cssW / cssH) * 1.05);
+    // (7.4: gedrehtes Bild -> Fenster um das umschließende Rechteck)
+    const asp = cssW / cssH, vr = viewRot(), hw = Math.abs(Math.cos(vr)) * asp + Math.abs(Math.sin(vr)), hh = Math.abs(Math.sin(vr)) * asp + Math.abs(Math.cos(vr));
+    const pr = T3.probe(layers3d(list), cam, 1.5 / cam.zoom, Math.max(1, hw, hh) * 1.05);
     if (pr) pr.then((pb) => {
         if (!pb) return;
         pb.cam = cam; pb.seq = (V3.probe ? V3.probe.seq || 0 : 0) + 1; V3.probe = pb; heightStats(pb);
@@ -1304,6 +1346,7 @@ function frame(now) {
     S.time %= 86400;
     if (S.anim && V3.on && !RM.matches) DK.ct += dt;     // 6.5 Wolkenzug
     updateAnims(now, dt);
+    rotAnim(now);
     morphStep(now, dt);
     jmorphStep(now, dt);
     if (isBulb()) BULB.update(now, dt);
@@ -1311,6 +1354,7 @@ function frame(now) {
     if (V3.on && !can3d()) { V3.on = false; V3.mix = 0; V3.dir = 0; stopFly(); emit('3d'); }
     if (FLY.on && !canFly()) stopFly();
     if (FLY.on && !FLY.paused) { const hold = now - (RC.resizeT || -1e9) < RESIZE_HOLD; flyUpdate(now, hold ? Math.min(dt, 1 / 30) : dt, hold); }
+    else rollIdle(Math.min(dt, 0.1));     // 7.4: Roll klingt nach dem Flug / in der Pause weich aus
     const camChanged = camDirty;
     camDirty = false;
     RC.dtEMA = RC.dtEMA === undefined ? 16 : RC.dtEMA * 0.8 + dt * 1000 * 0.2;
@@ -1587,6 +1631,11 @@ const CTX = {
     get innActive() { return innActive; },
     get recompute() { return recompute; },
     get worldPerCss() { return worldPerCss; },
+    get viewRot() { return viewRot; },
+    get northRot() { return northRot; },
+    get setViewRot() { return setViewRot; },
+    get camR() { return camR; },
+    get VR() { return VR; },
     get FADE_MOVE_MS() { return FADE_MOVE_MS; },
     get RESIZE_HOLD() { return RESIZE_HOLD; },
     get RESIZE_GOV_HOLD() { return RESIZE_GOV_HOLD; },
@@ -1635,6 +1684,7 @@ const CTX = {
     get jobProgress() { return jobProgress; },
     get layerK() { return layerK; },
     get layerRect() { return layerRect; },
+    get inRect() { return inRect; },
     get makeFrame() { return makeFrame; },
     get maxIterFor() { return maxIterFor; },
     get orderLayers() { return orderLayers; },
@@ -1693,9 +1743,9 @@ const { cancelFix, cpuBroadcast, cpuFeed, cpuPool, cpuSendRef, cpuWorkers, recom
 const M_Refs = self.FKRefs.create(CTX);
 const { REF, ensureRef, refUsable, requestRefFor, requestBLA } = M_Refs;
 const M_Layers = self.FKLayers.create(CTX);
-const { addLayer, contentSig, coverage, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers } = M_Layers;
+const { addLayer, contentSig, coverage, inRect, layerFade, layerK, layerRect, makeFrame, orderLayers, pruneLayers } = M_Layers;
 const M_Flight = self.FKFlight.create(CTX);
-const { FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, stopFlySoft, toggleFly, trailAt, turnFly, clearance } = M_Flight;
+const { FLY, FLY2D, RUECK, canFly, canFly2d, flyPanned, flyStep, flyUpdate, north3d, pauseFly, reverseFly, setFlySpeed, startFly, stopFly, stopFlySoft, toggleFly, trailAt, turnFly, clearance, rollIdle } = M_Flight;
 const M_Scheduler = self.FKScheduler.create(CTX);
 const { governorUpdate, schedule } = M_Scheduler;
 const M_Capture = self.FKCapture.create(CTX);
@@ -1769,7 +1819,8 @@ const API = {
         return new Promise((res) => { const poll = () => { if (!qs.every(q => gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE))) { setTimeout(poll, 20); return; }
             const ms = qs.map(q => gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6); qs.forEach(q => gl.deleteQuery(q)); res({ min: +Math.min(...ms).toFixed(2), max: +Math.max(...ms).toFixed(2), scale: T3.scale }); }; poll(); });
     },
-    goHome() { if (isBulb()) { stopFly(); BULB.goHome(); return; } const h = homeOf(S.formula); S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); emit('iter'); },
+    goHome() { if (isBulb()) { stopFly(); BULB.goHome(); return; } const h = homeOf(S.formula); S.iterManual = false; flyTo(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); if (VR.rot) northRot(900); emit('iter'); },
+    northRot, VR, viewRot,
     goTo(p) {
         if ((p.formula || 0) !== S.formula) setMode(p.formula || 0, true);
         applyPlaceWP(p);
