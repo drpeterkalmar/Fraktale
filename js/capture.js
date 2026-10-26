@@ -71,7 +71,7 @@ root.FKCapture = { create(ctx) {
             const rcpu = S.renderer === 'cpu' || ctx.forceCPU, f = S.formula, z = P.zEff;
             P.cf = ctx.cformula(); P.X = ctx.xparams(P.cf);          // 7.1: Rechen-Formel + Welt-Parameter
             if (f === 5) { P.dev = z <= ctx.NEWTON_GPU_MAX && !rcpu ? 'gpu' : 'cpu'; P.mode = 'direct'; }
-            else if (ctx.isExo(P.cf)) { P.dev = z <= (P.cf === 28 ? 600 : 2000) && !rcpu ? 'gpu' : 'cpu'; P.mode = 'direct'; }
+            else if (ctx.isExo(P.cf)) { const e = ctx.exoPlan(P.cf, z, rcpu); P.dev = e.kind; P.mode = e.mode; }    // 7.3: df64 über 2000×
             else if (z < ctx.DIRECT_MAX && !rcpu) { P.dev = 'gpu'; P.mode = 'direct'; }
             else if (rcpu || !ctx.gpuPerturbOK || z > ctx.GPU_MAX) { P.dev = 'cpu'; P.mode = z < ctx.DIRECT_MAX ? 'direct' : 'perturb'; }
             else { P.dev = 'gpu'; P.mode = 'perturb'; }

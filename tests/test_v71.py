@@ -8,7 +8,7 @@
   D  „Ansicht merken“ trägt die Welt-Parameter, goTo stellt sie wieder her
   E  Sehenswürdigkeiten: Orte-Tab listet sie, ▶ Tour landet am Ziel mit Parametern; Rundgang fliegt zum nächsten Ort
   F  Multibrot-Morph: der Exponent wandert, Bilder kommen nach
-  G  Exoten über der GPU-Grenze: CPU f64 (Magnet 10⁴), Bild fertig
+  G  Exoten über 2000×: GPU-df64 (Magnet 10⁴), jenseits der df64-Grenze CPU f64 (10¹²), Bild fertig
   H  Lichtbilder: erstes ansehnliches Bild < 1 s, Link mit eigener Flamme, Mutieren, Screenshot in Kacheln, Nebulabrot/Anti,
      CPU-Rückfall (?dens=cpu)
   I  3D-Welten (Quaternionen-Julia, Kaleidoskop-IFS, Apollonian): Ruhebild, Link mit Parametern, Tour, Flug
@@ -215,12 +215,16 @@ def case_F(p):
 
 
 def case_G(p):
-    print('G  Exoten über der GPU-Grenze: CPU f64')
+    print('G  Exoten über 2000×: df64, jenseits CPU f64')
     a = App(p).open(); pg = a.page
     pg.goto('about:blank'); a.open('m=13&x=0.0947088068&y=-1.0600142045&z=1e4')
     t, st = a.wait_done(240)
     sd = pg.evaluate(STD)
-    check(st['plan'] == {'kind': 'cpu', 'mode': 'direct'} and st['done'] and sd > 4, f"Magnet 10⁴: {st['plan']}, fertig in {t:.1f} s, Streuung {sd:.0f}")
+    # 7.3.0: über 2000× rechnen die Exoten in df64 auf der GPU (tests/test_v730.py); der Prozessor erst jenseits der df64-Grenze
+    check(st['plan'] == {'kind': 'gpu', 'mode': 'df64'} and st['done'] and sd > 4, f"Magnet 10⁴: {st['plan']}, fertig in {t:.1f} s, Streuung {sd:.0f}")
+    pg.goto('about:blank'); a.open('m=13&x=0.0947088068&y=-1.0600142045&z=1e12')
+    t, st = a.wait_done(300)
+    check(st['plan'] == {'kind': 'cpu', 'mode': 'direct'} and st['done'], f"Magnet 10¹²: {st['plan']} (jenseits df64), fertig in {t:.1f} s")
     check(not a.errors, f'keine Fehler {a.errors[:2]}')
     a.close()
 

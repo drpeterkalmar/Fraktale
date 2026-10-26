@@ -23,6 +23,13 @@ const GPU_MAX = 1e30;           // f32-Perturbation (Deltas bis ~1e-35 darstellb
 const DEEP_MAX = 1e290;         // CPU-f64-Perturbation
 const NEWTON_GPU_MAX = 3000;
 const EXO_GPU_MAX = 2000;       // 7.1 Exoten (direkt in f32)
+// 7.3 Exoten darüber auf der GPU in emulierter doppelter Genauigkeit (df64, shaders.js exoticDF), solange ein Pufferpixel mindestens
+// DF64_PX Welteinheiten breit ist (df64 trägt ~48 bit: bei |c| ≤ 4 sind das ≥ 7 Rundungsstufen je Pixel) – gemessen gegen die
+// CPU-f64-Rechnung (tests/test_v730.py, 480×360: alle Exoten bis 10¹¹ gleich, ab 3·10¹¹ Magnet II/Lyapunov nicht mehr). Als Zoom:
+// Handy (2400 px hoch) bis ~1,2·10¹⁰, 1440p bis ~2·10¹⁰. Darüber wie bisher der Prozessor (f64). ?df64=0: ohne df64 (A/B)
+const DF64_PX = 1e-13;
+const DF64_ON = Q.get('df64') !== '0';
+let DF64_MIN = +Q.get('df64min') || 0;     // Test (tests/test_v730.py D): df64 schon ab diesem Zoom (Vergleich mit f32 bei kleinem Zoom)
 const MAX_ZOOM = [DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, DEEP_MAX, 1e13, 1e7, 1e6, 1e7, 1e7, 1e12, 1e13, 1e13, 1e13, 2e4, 2e4, 1e7, 1e7, 1e7];   // Mandelbulb: Grenze setzt js/bulb.js (Pixel an der Oberfläche)
 const MODE_KEYS = ['mandelbrot', 'julia', 'burning_ship', 'tricorn', 'mandel_z3', 'newton', 'mandelbulb', 'buddhabrot', 'mandelbox', 'menger', 'lyapunov', 'phoenix', 'nova', 'magnet', 'flame', 'attractor', 'quatjulia', 'kifs', 'apollonian'];
 // 7.1: Welten-Gruppen im Modus-Wähler
@@ -795,9 +802,8 @@ function plan() {
     if (isDens(f)) return { kind: 'density' };
     const rcpu = S.renderer === 'cpu' || forceCPU;
     if (f === 5) return z <= NEWTON_GPU_MAX && !rcpu ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
-    // 7.1 Exoten: f32 direkt bis EXO_GPU_MAX (Lyapunov: Koordinaten um 3 -> früher grob), darüber CPU f64 direkt
     const cf = cformula();
-    if (isExo(cf)) return z <= (cf === 28 ? 600 : EXO_GPU_MAX) && !rcpu ? { kind: 'gpu', mode: 'direct' } : { kind: 'cpu', mode: 'direct' };
+    if (isExo(cf)) return exoPlan(cf, z, rcpu);
     const cpu = rcpu || !gpuPerturbOK;
     if (z < DIRECT_MAX && !rcpu) return { kind: 'gpu', mode: 'direct' };
     if (cpu || z > GPU_MAX) {
@@ -808,6 +814,21 @@ function plan() {
         return { kind: 'cpu', mode: 'perturb' };
     }
     return { kind: 'gpu', mode: 'perturb' };
+}
+// 7.1 Exoten: f32 direkt bis EXO_GPU_MAX (Lyapunov: Koordinaten um 3 -> früher grob); 7.3 darüber df64 auf der GPU bis DF64_PX
+// (Multibrot nur mit ganzem Exponenten), sonst CPU f64 direkt. Auch für den Kachel-Screenshot (capture.js, z = Zoom der Bildpixel)
+function exoPlan(cf, z, rcpu) {
+    const dfIn = 3 / (z * canvas.height) >= DF64_PX;              // (capture.js: z = Zoom der Bildpixel bezogen auf die Bildschirmhöhe)
+    if (!rcpu && DF64_MIN && z >= DF64_MIN && df64OK(cf) && dfIn) return { kind: 'gpu', mode: 'df64' };
+    if (!rcpu && z <= (cf === 28 ? 600 : EXO_GPU_MAX)) return { kind: 'gpu', mode: 'direct' };
+    if (!rcpu && df64OK(cf) && dfIn) return { kind: 'gpu', mode: 'df64' };
+    return { kind: 'cpu', mode: 'direct' };
+}
+// df64 nutzbar? (Schalter, Selbsttest der GPU nicht durchgefallen, Rechen-Variante nicht defekt; Multibrot: Exponent ganz, kein Morph)
+let df64Off = false;
+function df64OK(cf) {
+    if (!DF64_ON || df64Off || SIMPLE || R.df64State() < 0) return false;
+    return cf !== 23 || Number.isInteger(mexpNow()) && mexpNow() >= 4;
 }
 function viewKey(cam) {
     const c = cam || S.cam;
@@ -860,6 +881,7 @@ function jobFailed(job) {
     R.cancelJob(job);
     if (job.inn) innBlocked = true;
     else if (job.mode === 'perturb') gpuPerturbOK = false;
+    else if (job.mode === 'df64') { df64Off = true; invalidate(); return; }   // 7.3: Exoten in der Tiefe wie bis 7.2 auf dem Prozessor (ohne Meldung)
     else forceCPU = true;
     toast(t('shader_fallback'), 4500);
     invalidate();
@@ -1333,6 +1355,8 @@ function frame(now) {
     try { present(now, camChanged); } catch (e) { reportOnce(e); }
     if (!GW.firstPic && (RC.layers.length || !is2dW(S.formula))) gwFirstPicture();
     M_Zufall.tick(now);                     // 7.2.0 Zufallsstart: erstes Bild prüfen, einblenden, losfliegen
+    // 7.3 df64-Selbsttest beim Start (nach dem ersten Bild, im Leerlauf; nicht blockierend, wenige Bilder) – der erste tiefe Exot wartet nicht
+    if (GW.firstPic && DF64_ON && !SIMPLE && (R.df64State() === 1 || (R.df64State() === 0 && !RC.job))) { try { R.df64Step(); } catch (e) { reportOnce(e); } }
     if (PROF) { const tE = performance.now(); if (tE - js0 > 25) PROF.push({ t: Math.round(now), pre: +(tS - js0).toFixed(1), sched: +(tP - tS).toFixed(1), present: +(tE - tP).toFixed(1), job: RC.job ? RC.job.key.slice(-12) : '', n: RC.layers.length }); }
     stats.frames++;
     if (now - stats.fpsT > 1000) { stats.fps = Math.round(stats.frames * 1000 / (now - stats.fpsT)); stats.frames = 0; stats.fpsT = now; }
@@ -1578,6 +1602,7 @@ const CTX = {
     get xparams() { return xparams; },
     get xsig() { return xsig; },
     get isExo() { return isExo; },
+    get exoPlan() { return exoPlan; },
     get styleJob() { return styleJob; },
     get smooth01() { return smooth01; },
     get viewKey() { return viewKey; },
@@ -1696,7 +1721,7 @@ M_Zufall.link();
 function isDone() { const f = RC.front, now = performance.now(); return !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(now); }
 // Öffentliche API für ui.js + E2E-Tests (window.__fraktal)
 const API = {
-    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, deActive, aaFrames, stActive,
+    APP_VERSION, S, R, RC, REF, stats, HP, PAL, MODE_KEYS, MAX_ZOOM, MODE_HOME, DIRECT_MAX, GPU_MAX, DF64_PX, EXO_GPU_MAX, deActive, aaFrames, stActive,
     MODE_GROUPS, WP_DEF, cformula, xparams, setWP, styleOK, hasSetW, is2dW, maxZoom, lyaSeq, mexpNow, SIGHTS, startRound, stopRound, ROUND,
     isDens, DENS, homeOf, flameRandom, flameMutate, LUPE, lupeAt, jmorphStart, JM, START, NAV_RELOAD, SETTINGS_V,
     t, fmtZoom, fmtC, toast, on: (f) => listeners.push(f), emit, DEKO, RM, freshFrame,
@@ -1850,9 +1875,10 @@ const API = {
                  fading: RC.fading, done: !!f && f.key === viewKey() && f.stage === 1 && !!f.fixed && !RC.job && !RC.fix && !isFading(performance.now()), fix: stats.lastFix || null, fixing: !!RC.fix, gpuFullMs: stats.gpuFullMs,
                  plan: plan(), ref: REF.cur ? { id: REF.cur.id, method: REF.cur.method, period: REF.cur.period, len: REF.cur.lenA, ms: REF.cur.ms } : null,
                  jsMs: stats.jsMs, jsMax: stats.jsMax, capturing: !!RC.cap, vsync: RC.vsync, dtEMA: RC.dtEMA, chunk: R.chunkInfo(), lastFullMs: stats.lastFullMs, lastJobMs: stats.lastJobMs, fps: stats.fps, useBLA: f ? f.useBLA : null, kind: f ? f.kind : null, previewDiv: RC.previewDiv,
-                 canvas: [canvas.width, canvas.height], maxIter: currentMaxIter(), gpuPerturbOK };
+                 canvas: [canvas.width, canvas.height], maxIter: currentMaxIter(), gpuPerturbOK, df64: { state: R.df64State(), info: R.df64Info, off: df64Off || !DF64_ON } };
     },
     setView(cx, cy, zoom) { stopAnims(); setCam(HP.fromString(cx), HP.fromString(cy), zoom); },
+    df64min(v) { DF64_MIN = +v || 0; invalidate(); },
     // Test (6.8.1): Planer anhalten (keine neuen Ebenen, nichts wird verworfen) – Vergleichsbilder auf demselben Ebenen-Stapel
     freeze(on) { RC.freeze = !!on; },
     // Test (P1-1): neue Referenz für die aktuelle Ansicht erzwingen (z. B. mitten in der exakten Nachrechnung)

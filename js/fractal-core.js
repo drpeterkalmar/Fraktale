@@ -247,7 +247,7 @@ function directPixel(px, py, formula, maxIter, jx, jy, deS, inn) {
 //  7.1 Welt-Parameter der Exoten (wie die Uniforms u_xp, u_xq, u_xi, Newton-Polynom u_pc/u_root im Shader).
 //  xpSetup() einmal je Kachel (tile-worker.js); X = { xp: [4], xq: [4], xi: [4], poly: { c: [c0…c8], deg, roots: [[x, y]…] } }
 // ------------------------------------------------------------------
-const XP = { xp: [2, 0, 0, 0], xq: [0, 0, 0, 0], xi: [0, 1, 0, 0], poly: null };
+const XP = { xp: [2, 0, 0, 0], xq: [0, 0, 0, 0], xi: [0, 1, 0, 0], poly: null, q: null };   // q: Test (7.3, tests/test_v730.py) – Bahn je Schritt runden
 function xpSetup(X) { if (!X) return; XP.xp = X.xp || XP.xp; XP.xq = X.xq || XP.xq; XP.xi = X.xi || XP.xi; XP.poly = X.poly || null; }
 // Newton-Polynome (reelle Koeffizienten c0 … c_deg) – dieselbe Liste wie die Auswahl in der App
 const NEWTON_POLYS = [
@@ -323,7 +323,7 @@ function deMu(A, B, gnx, gny, gpx, gpy, dex) {
 const cdivx = (ax, ay, bx, by) => { const d = bx * bx + by * by; return d > 0 ? [(ax * bx + ay * by) / d, (ay * bx - ax * by) / d] : [0, 0]; };
 function dePx(d) { if (!(d < Infinity)) return 255; if (!(d > 0)) return 1; return Math.max(1, Math.min(255, Math.floor((Math.log2(d) + 6) * 16 + 0.5))); }
 function exoticPixel(F, px, py, maxIter, deS) {
-    const X = XP.xp, st = STA.st;
+    const X = XP.xp, st = STA.st, qf = XP.q;
     let dex = 0;
     if (F === 23) {
         const P = X[0], lnP = Math.log(P);
@@ -336,6 +336,7 @@ function exoticPixel(F, px, py, maxIter, deS) {
             if (r2 > 0) { const a = (P - 1) * Math.atan2(zy, zx), rp = Math.pow(r2, 0.5 * (P - 1)); ax = rp * Math.cos(a); ay = rp * Math.sin(a); }
             if (deS) { const tx = P * (ax * Dx - ay * Dy) + deS; Dy = P * (ax * Dy + ay * Dx); Dx = tx; if (Math.abs(Dx) > TWO_512 || Math.abs(Dy) > TWO_512) { Dx *= TWO_M512; Dy *= TWO_M512; dex += 512; } }
             const nx = ax * zx - ay * zy + px; zy = ax * zy + ay * zx + py; zx = nx;
+            if (qf) { zx = qf(zx); zy = qf(zy); }
             if (st) stAdd(zx, zy, qx, qy, 1);
             if (zx * zx + zy * zy > BAIL) {
                 if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex);
@@ -362,6 +363,7 @@ function exoticPixel(F, px, py, maxIter, deS) {
             }
             const nx = zx * zx - zy * zy + cx + pkx * ox - pky * oy, ny = 2 * zx * zy + cy + pkx * oy + pky * ox;
             ox = zx; oy = zy; zx = nx; zy = ny;
+            if (qf) { zx = qf(zx); zy = qf(zy); }
             if (st) stAdd(zx, zy, qx, qy, 1);
             if (zx * zx + zy * zy > BAIL) {
                 if (deS) OUT.de = encDE(zx, zy, Dx, Dy, dex);
@@ -396,6 +398,7 @@ function exoticPixel(F, px, py, maxIter, deS) {
             const nx = zx - R * qx + cx, ny = zy - R * qy + cy;
             const wsx = nx - zx, wsy = ny - zy, e = Math.hypot(wsx, wsy);
             zx = nx; zy = ny;
+            if (qf) { zx = qf(zx); zy = qf(zy); }
             if (!(zx * zx + zy * zy < 1e20)) break;
             if (e < EPS) {
                 const A = Math.log(EPS / Math.max(e, 1e-300)), B = ep < 1e29 ? Math.log(ep / Math.max(e, 1e-300)) : 0;
@@ -429,7 +432,7 @@ function exoticPixel(F, px, py, maxIter, deS) {
                 Az = [3 * z2[0] + 3 * c1x, 3 * z2[1] + 3 * c1y]; Bz = [6 * zx + 3 * c2x, 6 * zy + 3 * c2y]; Ac = [3 * zx + 2 * cx - 3, 3 * zy + 2 * cy];
             }
             if (B[0] * B[0] + B[1] * B[1] < 1e-30) break;
-            const q = div(A[0], A[1], B[0], B[1]);
+            const qd = div(A[0], A[1], B[0], B[1]);
             if (deS) {
                 const B2 = mul(B[0], B[1], B[0], B[1]);
                 const t1 = mul(Az[0], Az[1], B[0], B[1]), t2 = mul(A[0], A[1], Bz[0], Bz[1]);
@@ -437,13 +440,14 @@ function exoticPixel(F, px, py, maxIter, deS) {
                 const t3 = mul(Ac[0], Ac[1], B[0] - A[0], B[1] - A[1]);
                 const qc = div(t3[0], t3[1], B2[0], B2[1]);
                 const u = mul(qz[0], qz[1], Dx, Dy);
-                const v = mul(q[0], q[1], u[0] + qc[0] * deS, u[1] + qc[1] * deS);
+                const v = mul(qd[0], qd[1], u[0] + qc[0] * deS, u[1] + qc[1] * deS);
                 Px = Dx; Py = Dy;
                 Dx = 2 * v[0]; Dy = 2 * v[1];
                 if (Math.abs(Dx) > TWO_512 || Math.abs(Dy) > TWO_512) { Dx *= TWO_M512; Dy *= TWO_M512; Px *= TWO_M512; Py *= TWO_M512; dex += 512; }
             }
-            const z = mul(q[0], q[1], q[0], q[1]);
+            const z = mul(qd[0], qd[1], qd[0], qd[1]);
             zx = z[0]; zy = z[1];
+            if (qf) { zx = qf(zx); zy = qf(zy); }
             if (st) stAdd(zx, zy, qx0, qy0, 1);
             const r2 = zx * zx + zy * zy;
             if (r2 > 1e4) {
@@ -481,6 +485,7 @@ function exoticPixel(F, px, py, maxIter, deS) {
             dxb = g * dxb + (isB ? h : 0);
             if (Math.max(Math.abs(dxa), Math.abs(dxb)) > 1e18) { dxa *= 1e-18; dxb *= 1e-18; bad = true; }
             x = r * h;
+            if (qf) x = qf(x);
             if (!(Math.abs(x) < 1e10)) { bad = true; lam = 1e10; break; }
         }
         lam /= N;

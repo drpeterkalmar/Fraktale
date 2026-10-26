@@ -168,7 +168,7 @@ vec2 stEnc(vec3 A, vec2 z) {
 // ---------------------------------------------------------------- COMPUTE
 function computeFS(formula, mode, err, de, inn, st) {
     const F = formula | 0;
-    if (F >= 23) return exoticFS(F, de, st);      // 7.1 Exoten: nur direkt (f32), eigener Rechen-Shader
+    if (F >= 23) return mode === 'df64' ? exoticDF(F, de, st) : exoticFS(F, de, st);   // 7.1 Exoten: direkt (f32), eigener Rechen-Shader; 7.3 df64
     const IN = inn && F !== 5 ? 1 : 0;
     const ST = F !== 5 ? (st | 0) : 0;
     const common = `#version 300 es
@@ -700,23 +700,7 @@ ${hasBLA ? `        if (u_blaOn != 0 && m > 0 && --bwait <= 0
 // Konvergenz (Nova, Magnet): Schrittweite bzw. Abstand e_n < ε, glatt μ = n − log(ε/e_n)/log(e_{n−1}/e_n) (stetig, für lineare
 // wie quadratische Konvergenz); Distanz dort e·|ln e| / |dz/dPixel| (Gegenstück zur Fluchtformel |z|·ln|z| / |dz/dPixel|).
 // Lyapunov: Ableitung von λ nach den Parametern läuft mit (Vorwärtsableitung), Distanz zum Rand λ = 0: |λ| / |∇λ| (Pixel).
-function exoticFS(F, de, st) {
-    const ST = F === 25 || F === 28 ? 0 : (st | 0);
-    return `#version 300 es
-#define F ${F}
-#define DE ${de ? 1 : 0}
-#define ST ${ST}
-${COMMON}
-uniform vec2 u_res;
-uniform vec2 u_pxoff;
-uniform float u_scale;
-uniform int u_maxIter;
-uniform vec2 u_center;
-uniform vec4 u_xp, u_xq;      // Welt-Parameter (js/app.js xparams)
-uniform ivec4 u_xi;
-layout(location = 0) out uint o_it;
-layout(location = 1) out vec4 o_de;
-vec2 cdiv(vec2 a, vec2 b) { return vec2(dot(a, b), a.y * b.x - a.x * b.y) / dot(b, b); }
+const EXO_HELP = `vec2 cdiv(vec2 a, vec2 b) { return vec2(dot(a, b), a.y * b.x - a.x * b.y) / dot(b, b); }
 float encDE(vec2 z, vec2 Dt, float dex) {
     float m = max(abs(Dt.x), abs(Dt.y));
     if (!(m < 3.0e38)) return 1.0 / 255.0;
@@ -744,7 +728,24 @@ float encMu(float A, float B, vec2 gn, vec2 gp, float dex) {
     if (m == 0.0) return 1.0;
     float l = log2(B * B / 0.6931472) - log2(m) - 0.5 * log2(dot(G / m, G / m)) - dex;
     return clamp(floor((l + 6.0) * 16.0 + 0.5), 1.0, 255.0) / 255.0;
-}
+}`;
+function exoticFS(F, de, st) {
+    const ST = F === 25 || F === 28 ? 0 : (st | 0);
+    return `#version 300 es
+#define F ${F}
+#define DE ${de ? 1 : 0}
+#define ST ${ST}
+${COMMON}
+uniform vec2 u_res;
+uniform vec2 u_pxoff;
+uniform float u_scale;
+uniform int u_maxIter;
+uniform vec2 u_center;
+uniform vec4 u_xp, u_xq;      // Welt-Parameter (js/app.js xparams)
+uniform ivec4 u_xi;
+layout(location = 0) out uint o_it;
+layout(location = 1) out vec4 o_de;
+${EXO_HELP}
 ${ST ? STYLE_CORE : ''}
 void main() {
     vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;
@@ -940,6 +941,329 @@ void main() {
     lam /= float(N);
     if (lam < 0.0) {
         result = u_xp.x * (1.0 - exp(lam));          // ein weicher Verlauf: Rand (λ = 0) -> 0, superstabil (λ -> −∞) -> u_xp.x
+#if DE
+        float gl = length(vec2(la, lb)) / float(N) * u_scale;
+        o_de.r = bad ? 1.0 / 255.0 : encPx(-lam / max(gl, 1e-30));
+#endif
+    }
+#endif
+    o_it = floatBitsToUint(result);
+}`;
+}
+
+// ---------------------------------------------------------------- 7.3 df64 (emulierte doppelte Genauigkeit)
+// Zahl = Paar (hi, lo) zweier f32 mit Wert hi + lo, |lo| ≤ ½ ulp(hi): ~48 bit Mantisse (f32: 24, f64: 53), Exponent wie f32.
+// Bausteine nach Dekker/Knuth ohne FMA (GLSL ES 3.00 kennt kein fma): twoSum (Summe + exakter Rundungsfehler), Aufspalten in
+// 12-bit-Hälften (4097 = 2^12 + 1), twoProd (Produkt + exakter Rundungsfehler). Addition/Multiplikation in der schnellen
+// Form (Fehler ~2^-48 · max|Operand| – für Iterationen zählt der absolute Fehler, nicht der relative bei Auslöschung).
+// Schutz gegen „fast math“: ANGLE/Metal ordnet Summen um ((a + b) − a -> b, t·u − (t − a) -> t·(u − 1) + a) und strich so alle
+// Fehlerterme – gemessen am M1: mit dem bekannten Trick „× Uniform 1,0“ blieb nur f32-Genauigkeit (Fehler ~2^24 · 2^-48). Darum
+// läuft jedes Zwischenergebnis, dessen Rundung zählt, durch O(): Bits XOR Uniform u_z (= 0, von js/renderer.js gesetzt). Der
+// Übersetzer kennt den Wert nicht, sieht keine Rechnung mehr und kann nichts umordnen (Kosten: eine Ganzzahl-Operation).
+// Beim ersten Gebrauch prüft ein Selbsttest (DF64_TEST_FS, renderer.js df64Step) die Bausteine gegen JS-f64; fällt er
+// durch, rechnet der Prozessor wie bis 7.2.
+const DF64_GLSL = `
+uniform uint u_z;
+float O(float x) { return uintBitsToFloat(floatBitsToUint(x) ^ u_z); }
+vec2 twoSum(float a, float b) { float s = O(a + b); float v = O(s - a); return vec2(s, O(a - O(s - v)) + O(b - v)); }
+vec2 qSum(float a, float b) { float s = O(a + b); return vec2(s, b - O(s - a)); }       // |a| ≥ |b|
+vec2 dSplit(float a) { float t = O(a * 4097.0); float h = O(t - O(t - a)); return vec2(h, a - h); }
+vec2 twoProd(float a, float b) { float p = O(a * b); vec2 A = dSplit(a), B = dSplit(b); return vec2(p, O(O(O(O(A.x * B.x) - p) + O(A.x * B.y)) + O(A.y * B.x)) + A.y * B.y); }
+vec2 dAdd(vec2 a, vec2 b) { vec2 s = twoSum(a.x, b.x); s.y += a.y + b.y; return qSum(s.x, s.y); }
+vec2 dSub(vec2 a, vec2 b) { return dAdd(a, -b); }
+vec2 dMul(vec2 a, vec2 b) { vec2 p = twoProd(a.x, b.x); p.y += a.x * b.y + a.y * b.x; return qSum(p.x, p.y); }
+vec2 dMulF(vec2 a, float b) { vec2 p = twoProd(a.x, b); p.y += a.y * b; return qSum(p.x, p.y); }
+vec2 dSqr(vec2 a) { vec2 p = twoProd(a.x, a.x); p.y += 2.0 * a.x * a.y; return qSum(p.x, p.y); }
+vec2 dDiv(vec2 a, vec2 b) { float q = a.x / b.x; vec2 r = dSub(a, dMulF(b, q)); return qSum(q, r.x / b.x); }
+// komplex: vec4(Re.hi, Re.lo, Im.hi, Im.lo); f32-Näherung = .xz
+vec4 cAddD(vec4 a, vec4 b) { return vec4(dAdd(a.xy, b.xy), dAdd(a.zw, b.zw)); }
+vec4 cSubD(vec4 a, vec4 b) { return vec4(dSub(a.xy, b.xy), dSub(a.zw, b.zw)); }
+vec4 cMulD(vec4 a, vec4 b) { return vec4(dSub(dMul(a.xy, b.xy), dMul(a.zw, b.zw)), dAdd(dMul(a.xy, b.zw), dMul(a.zw, b.xy))); }
+vec4 cSqrD(vec4 a) { return vec4(dSub(dSqr(a.xy), dSqr(a.zw)), 2.0 * dMul(a.xy, a.zw)); }
+vec4 cScaleD(vec4 a, vec2 s) { return vec4(dMul(a.xy, s), dMul(a.zw, s)); }
+vec4 cMulFD(vec4 a, float s) { return vec4(dMulF(a.xy, s), dMulF(a.zw, s)); }
+// a/b: Schätzung q0 in f32, Rest r = a − q0·b in df64 (q0 hat nur 24 bit: vier Produkte df64 × f32), Korrektur r/b in f32 –
+// Fehler ~2^-24 · |r/b| ≈ 2^-48 · |q|, gut halb so teuer wie |b|² + Kehrwert + zwei komplexe df64-Produkte
+vec4 cDivD(vec4 a, vec4 b) {
+    vec2 bf = b.xz, q0 = vec2(dot(a.xz, bf), a.z * bf.x - a.x * bf.y) / dot(bf, bf);
+    vec2 rx = dSub(a.xy, dSub(dMulF(b.xy, q0.x), dMulF(b.zw, q0.y))), ry = dSub(a.zw, dAdd(dMulF(b.zw, q0.x), dMulF(b.xy, q0.y)));
+    vec2 d = vec2(rx.x * bf.x + ry.x * bf.y, ry.x * bf.x - rx.x * bf.y) / dot(bf, bf);
+    return vec4(qSum(q0.x, d.x), qSum(q0.y, d.y));
+}
+`;
+// Selbsttest: je Fall (u_ta[i] = a.hi, a.lo, b.hi, b.lo) Summe, Produkt, Quotient, Quadrat von a – je hi und lo als Bits;
+// Pixel x: Fall x / 8, Rechnung (x % 8) / 2, Teil x % 2
+const DF64_N = 8;
+const DF64_TEST_FS = `#version 300 es
+${COMMON}
+uniform vec4 u_ta[${DF64_N}];
+layout(location = 0) out uint o_it;
+${DF64_GLSL}
+void main() {
+    int x = int(gl_FragCoord.x), i = x / 8, op = (x % 8) / 2;
+    vec4 t = u_ta[0];
+    for (int k = 1; k < ${DF64_N}; k++) if (k == i) t = u_ta[k];
+    vec2 a = t.xy, b = t.zw, r;
+    if (op == 0) r = dAdd(a, b); else if (op == 1) r = dMul(a, b); else if (op == 2) r = dDiv(a, b); else r = dSqr(a);
+    o_it = floatBitsToUint(x % 2 == 0 ? r.x : r.y);
+}`;
+// Exoten in df64 (Rechenweg mode 'df64', js/app.js plan: über EXO_GPU_MAX bis DF64_MAX je Formel): dieselben Formeln, Konstanten,
+// Fluchtgrenzen und Glättungen wie exoticFS – nur die Bahn (z bzw. x), die Pixelkoordinate (Mitte df64 + Pixel · Pixelgröße
+// df64) und die Welt-Parameter (Doppelwerte als hi + lo, wie die CPU sie nimmt) laufen in df64. Ableitungen (Distanz),
+// Glättung und Färbe-Stile rechnen in f32 aus den hi-Anteilen: Sie hängen nur relativ von z ab, dafür reicht f32.
+// Multibrot nur mit ganzem Exponenten 4–8 (z^(P−1) als Produkt; gebrochene Exponenten/Morph: Prozessor). Nova: Schritt
+// als z + (c − R/3·(z − 1/z²)) (= z − R(z³ − 1)/(3z²) + c ohne die Überläufe von |z|⁶). Lyapunov: λ als df64-Summe.
+// Schleifen mit Uniform-Grenzen (kein Entrollen unter FXC, 7.1.11).
+function exoticDF(F, de, st) {
+    const ST = F === 25 || F === 28 ? 0 : (st | 0);
+    return `#version 300 es
+#define F ${F}
+#define DE ${de ? 1 : 0}
+#define ST ${ST}
+${COMMON}
+uniform vec2 u_res;
+uniform vec2 u_pxoff;
+uniform float u_scale;
+uniform vec2 u_scaleD;       // Weltbreite je Pufferpixel als df64
+uniform vec4 u_centerD;      // Ansichtsmitte als df64 (x.hi, x.lo, y.hi, y.lo)
+uniform int u_maxIter;
+uniform vec4 u_xp, u_xq, u_xpl;   // Welt-Parameter (js/app.js xparams); u_xpl = lo-Anteile von u_xp
+uniform ivec4 u_xi;
+uniform int u_cyc;           // Zyklus-Erkennung an (1) / aus (0, ?cyc=0)
+layout(location = 0) out uint o_it;
+layout(location = 1) out vec4 o_de;
+${DF64_GLSL}
+${EXO_HELP}
+${ST ? STYLE_CORE : ''}
+// Zyklus-Erkennung (Brent): Bahn bei n = 8, 16, 32 … merken; liegt ein späterer Wert näher als 10⁻¹²·|z| am gemerkten, ist
+// die Bahn in einem anziehenden Zyklus gefangen – sie flieht/konvergiert nie mehr, das Ergebnis bleibt „Menge“ (−1) wie nach
+// allen u_maxIter Schritten, nur ohne sie zu rechnen (Innenpunkte kosteten im Flug ~80 % der Rechenzeit). df64-Rauschen ~10⁻¹⁴.
+bool cyc(vec4 z, vec4 s) { vec2 d = (z.xz - s.xz) + (z.yw - s.yw); return dot(d, d) <= 1e-24 * max(dot(z.xz, z.xz), 1.0); }
+void main() {
+    vec2 p = gl_FragCoord.xy - 0.5 * u_res + u_pxoff;
+    vec4 pos = vec4(dAdd(u_centerD.xy, dMulF(u_scaleD, p.x)), dAdd(u_centerD.zw, dMulF(u_scaleD, p.y)));
+    float result = -1.0;
+    o_de = vec4(0.0);
+    float dex = 0.0;
+#if F == 23
+    int Pi = int(u_xp.x + 0.5);
+    float P = float(Pi), lnP = log(P);
+    vec4 z = vec4(0.0), c = pos;
+    vec2 Dt = vec2(0.0);
+#if ST
+    vec3 sA = stInit(); float cabs = length(pos.xz);
+#endif
+    vec4 sv = vec4(1e30);
+    int chk = 8;
+    for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zq = z.xz;
+        vec4 zp1 = z;                                           // z^(P−1)
+        for (int k = 2; k < Pi; k++) zp1 = cMulD(zp1, z);
+#if DE
+        Dt = P * cmul(zp1.xz, Dt) + vec2(u_scale, 0.0);
+        if (max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; dex += 60.0; }
+#endif
+        z = cAddD(cMulD(zp1, z), c);
+        vec2 zf = z.xz;
+#if ST
+        stAdd(sA, zf, zq, 1.0, cabs);
+#endif
+        if (dot(zf, zf) > 256.0) {
+            result = float(n) + 1.0 - log(0.5 * log2(dot(zf, zf))) / lnP;
+#if DE
+            o_de.r = encDE(zf, Dt, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, zf);
+#endif
+            break;
+        }
+        if (n == chk) { sv = z; chk += chk; } else if (u_cyc != 0 && cyc(z, sv)) break;
+    }
+#elif F == 24
+    bool mand = u_xq.x > 0.5;
+    vec4 c = mand ? pos : vec4(u_xp.x, u_xpl.x, u_xp.y, u_xpl.y), pk = vec4(u_xp.z, u_xpl.z, u_xp.w, u_xpl.w);
+    vec2 pkf = u_xp.zw;
+    vec4 z = mand ? vec4(0.0) : vec4(-pos.zw, pos.xy), zo = vec4(0.0);  // Julia-Art um 90° gedreht (wie exoticFS)
+    vec2 Dt = mand ? vec2(0.0) : vec2(0.0, u_scale), Do = vec2(0.0);
+    vec2 zf = z.xz;
+#if ST
+    vec3 sA = stInit(); float cabs = length(c.xz);
+#endif
+    vec4 sv = vec4(1e30), svo = vec4(1e30);
+    int chk = 8;
+    if (dot(zf, zf) > 256.0) {
+        result = max(3.0 - log2(0.5 * log2(dot(zf, zf))), 0.0);
+#if DE
+        o_de.r = encDE(zf, Dt, 0.0);
+#endif
+    } else for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zq = zf;
+#if DE
+        vec2 Dn = 2.0 * cmul(zf, Dt) + cmul(pkf, Do);
+        if (mand) Dn.x += u_scale;
+        Do = Dt; Dt = Dn;
+        if (max(abs(Dt.x), abs(Dt.y)) > 1e6) { Dt *= 8.6736174e-19; Do *= 8.6736174e-19; dex += 60.0; }
+#endif
+        vec4 zn = cAddD(cAddD(cSqrD(z), c), cMulD(pk, zo));
+        zo = z; z = zn; zf = z.xz;
+#if ST
+        stAdd(sA, zf, zq, 1.0, cabs);
+#endif
+        if (dot(zf, zf) > 256.0) {
+            result = float(n) + 3.0 - log2(0.5 * log2(dot(zf, zf)));
+#if DE
+            o_de.r = encDE(zf, Dt, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, zf);
+#endif
+            break;
+        }
+        if (n == chk) { sv = z; svo = zo; chk += chk; } else if (u_cyc != 0 && cyc(z, sv) && cyc(zo, svo)) break;   // (Zustand = z und z davor)
+    }
+#elif F == 25
+    float R = u_xp.x;
+    vec2 R3 = dDiv(vec2(u_xp.x, u_xpl.x), vec2(3.0, 0.0));
+    bool jul = u_xp.w > 0.5;
+    vec4 c = jul ? vec4(u_xp.y, u_xpl.y, u_xp.z, u_xpl.z) : pos;
+    vec4 z = jul ? pos : vec4(1.0, 0.0, 0.0, 0.0);
+    vec2 D = jul ? vec2(u_scale, 0.0) : vec2(0.0), Dp = D, wp = vec2(0.0), dwp = vec2(0.0);
+    float ep = 1e30;
+    const float EPS = 1e-4;
+    vec4 sv = vec4(1e30);
+    int chk = 8;
+    for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zf = z.xz;
+        vec2 z2 = cmul(zf, zf), z3 = cmul(z2, zf), w = z3 - vec2(1.0, 0.0);
+        if (dot(z2, z2) < 1e-30) break;
+#if DE
+        Dp = D;
+        D = cmul(vec2(1.0 - R, 0.0) + R * cdiv(2.0 * w, 3.0 * z3), D);
+        if (!jul) D.x += u_scale;
+        if (max(abs(D.x), abs(D.y)) > 1e6) { D *= 8.6736174e-19; Dp *= 8.6736174e-19; dwp *= 8.6736174e-19; dex += 60.0; }
+#endif
+        vec4 iz = cDivD(vec4(1.0, 0.0, 0.0, 0.0), z);           // 1/z
+        vec4 ws = cSubD(c, cScaleD(cSubD(z, cSqrD(iz)), R3));   // Schritt c − R/3·(z − 1/z²)
+        float e = length(ws.xz);
+        z = cAddD(z, ws);
+        zf = z.xz;
+        if (!(dot(zf, zf) < 1e20)) break;
+        if (e < EPS) {
+            float A = log(EPS / max(e, 1e-30)), B = ep < 1e29 ? log(ep / max(e, 1e-30)) : 0.0;
+            float f = B > 0.0 ? clamp(A / B, 0.0, 1.0) : 0.0;
+            float mu = max(float(n) - f, 0.0);
+            result = 12.0 * log2(1.0 + mu / 12.0);
+#if DE
+            o_de.r = encMu(A, B, cdiv(D - Dp, ws.xz), dot(wp, wp) > 0.0 ? cdiv(dwp, wp) : vec2(0.0), dex);
+#endif
+            break;
+        }
+        ep = e;
+#if DE
+        wp = ws.xz; dwp = D - Dp;
+#endif
+        if (n == chk) { sv = z; chk += chk; } else if (u_cyc != 0 && cyc(z, sv)) break;
+    }
+#elif F == 26 || F == 27
+    const vec4 ONE = vec4(1.0, 0.0, 0.0, 0.0);
+    vec4 c = pos, z = vec4(0.0);
+    vec4 c1 = cSubD(c, ONE), c2 = cSubD(c, vec4(2.0, 0.0, 0.0, 0.0));
+    vec2 cf = c.xz, c1f = c1.xz, c2f = c2.xz;
+#if F == 27
+    vec4 cc = cMulD(c1, c2);
+#endif
+    vec2 D = vec2(0.0), Dp = vec2(0.0), zp1 = vec2(-1.0, 0.0);
+#if ST
+    vec3 sA = stInit(); float cabs = length(cf);
+#endif
+    float ep = 1e30;
+    const float EPS = 1e-4;
+    vec4 sv = vec4(1e30);
+    int chk = 8;
+    for (int n = 1; n <= u_maxIter; n++) {
+        vec2 zf = z.xz, zq = zf;
+#if F == 26
+        vec4 A = cAddD(cSqrD(z), c1), B = cAddD(2.0 * z, c2);
+        vec2 Az = 2.0 * zf, Bz = vec2(2.0, 0.0), Ac = vec2(1.0, 0.0);
+#else
+        vec4 z2 = cSqrD(z);
+        vec4 A = cAddD(cAddD(cMulD(z2, z), cMulFD(cMulD(c1, z), 3.0)), cc);
+        vec4 B = cAddD(cAddD(cAddD(cMulFD(z2, 3.0), cMulFD(cMulD(c2, z), 3.0)), cc), ONE);
+        vec2 z2f = z2.xz;
+        vec2 Az = 3.0 * z2f + 3.0 * c1f, Bz = 6.0 * zf + 3.0 * c2f, Ac = 3.0 * zf + 2.0 * cf - vec2(3.0, 0.0);
+#endif
+        vec2 Af = A.xz, Bf = B.xz;
+        if (dot(Bf, Bf) < 1e-30) break;
+        vec4 q = cDivD(A, B);
+#if DE
+        vec2 B2 = cmul(Bf, Bf);
+        vec2 qz = cdiv(cmul(Az, Bf) - cmul(Af, Bz), B2), qc = cdiv(cmul(Ac, Bf - Af), B2);
+        Dp = D;
+        D = 2.0 * cmul(q.xz, cmul(qz, D) + qc * u_scale);
+        if (max(abs(D.x), abs(D.y)) > 1e6) { D *= 8.6736174e-19; Dp *= 8.6736174e-19; dex += 60.0; }
+#endif
+        z = cSqrD(q);
+        zf = z.xz;
+#if ST
+        stAdd(sA, zf, zq, 1.0, cabs);
+#endif
+        if (dot(zf, zf) > 1e4) {
+            result = float(n) + 1.0 - log2(log(dot(zf, zf)) / log(1e4));
+#if DE
+            o_de.r = encDE(zf, D, dex);
+#endif
+#if ST
+            o_de.gb = stEnc(sA, zf);
+#endif
+            break;
+        }
+        vec2 zm1 = cSubD(z, ONE).xz;                            // Abstand zu z = 1 (genau)
+        float e = length(zm1);
+        if (e < EPS) {
+            float La = log(EPS / max(e, 1e-30)), Lb = ep < 1e29 ? log(ep / max(e, 1e-30)) : 0.0;
+            float f = Lb > 0.0 ? clamp(La / Lb, 0.0, 1.0) : 0.0;
+            result = max(float(n) - f, 0.0);
+#if DE
+            o_de.r = encMu(La, Lb, cdiv(D, zm1), cdiv(Dp, zp1), dex);
+#endif
+            break;
+        }
+        ep = e;
+        zp1 = zm1;
+        if (n == chk) { sv = z; chk += chk; } else if (u_cyc != 0 && cyc(z, sv)) break;
+    }
+#elif F == 28
+    vec2 ra = pos.xy, rb = pos.zw;
+    int bits = u_xi.x, L = max(u_xi.y, 1), warm = u_xi.z;
+    int N = clamp(u_maxIter, 100, 4000);
+    vec2 x = vec2(0.5, 0.0), lamD = vec2(0.0);
+    float dxa = 0.0, dxb = 0.0, la = 0.0, lb = 0.0;
+    int k = 0;
+    bool bad = false;
+    for (int i = 0; i < warm + N; i++) {
+        bool isB = ((bits >> k) & 1) == 1;
+        k = k + 1 == L ? 0 : k + 1;
+        vec2 rd = isB ? rb : ra;
+        float r = rd.x;
+        float q = dSub(vec2(1.0, 0.0), 2.0 * x).x, g = r * q;    // 1 − 2x genau (superstabil: x ≈ ½)
+        if (i >= warm) {
+            lamD = dAdd(lamD, vec2(log(max(abs(g), 1e-30)), 0.0));
+            float iq = abs(q) > 1e-12 ? 1.0 / q : 0.0;
+            la += (isB ? 0.0 : 1.0 / r) - 2.0 * dxa * iq;
+            lb += (isB ? 1.0 / r : 0.0) - 2.0 * dxb * iq;
+        }
+        vec2 hd = dMul(x, dSub(vec2(1.0, 0.0), x));
+        float h = hd.x;
+        dxa = g * dxa + (isB ? 0.0 : h);
+        dxb = g * dxb + (isB ? h : 0.0);
+        if (max(abs(dxa), abs(dxb)) > 1e18) { dxa *= 1e-18; dxb *= 1e-18; bad = true; }
+        x = dMul(rd, hd);
+        if (!(abs(x.x) < 1e10)) { bad = true; lamD = vec2(1e10, 0.0); break; }
+    }
+    float lam = (lamD.x + lamD.y) / float(N);
+    if (lam < 0.0) {
+        result = u_xp.x * (1.0 - exp(lam));
 #if DE
         float gl = length(vec2(la, lb)) / float(N) * u_scale;
         o_de.r = bad ? 1.0 / 255.0 : encPx(-lam / max(gl, 1e-30));
@@ -1586,5 +1910,5 @@ flat in uint v_val;
 out uint o_it;
 void main() { o_it = v_val; }`;
 
-root.FKShaders = { VS, computeFS, exoticFS, displayFS, DISPLAY_FS, DISPLAY_FS_ST, DISPLAY_FS_D, DISPLAY_FS_STD, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
+root.FKShaders = { VS, computeFS, exoticFS, exoticDF, DF64_TEST_FS, DF64_N, displayFS, DISPLAY_FS, DISPLAY_FS_ST, DISPLAY_FS_D, DISPLAY_FS_STD, NL, PAL_GLSL, STYLE_GLSL, COMMON, BULB_FS, BUDDHA_FS, BUDDHA_RGB_FS, LUPE_FS, FLAGPACK_FS, SCATTER_VS, SCATTER_FS, COPY_FS };
 })(typeof self !== 'undefined' ? self : globalThis);

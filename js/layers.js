@@ -17,7 +17,7 @@ root.FKLayers = { create(ctx) {
         job.buf && (job.kept = true);
         return { buf: job.buf, view: job.view, scale: job.scale, key: job.key, stage: job.stage, formula: job.formula, maxIter: job.maxIter, ms: now - job.t0,
                  kind: job.kind, mode: job.mode, useBLA: job.useBLA, refId: job.refId, julia: job.julia, fixed: !job.err, gpuMs: job.gpuMs, X: job.X,
-                 sig: job.sig, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de, inn: !!job.inn, st: job.st | 0 };
+                 sig: job.sig, chunks: job.chunks, prefetch: job.prefetch, preview: job.preview || job.stage > 1, exact: false, de: !!job.de, inn: !!job.inn, st: job.st | 0 };
     }
     function addLayer(fr, now, moving) {
         fr.seq = ++RC.layerSeq;

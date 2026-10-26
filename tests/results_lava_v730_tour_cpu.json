@@ -1,0 +1,102 @@
+{
+ "tag": "tour_df64=0",
+ "base": "http://localhost:8472/index.html",
+ "secs": 30.0,
+ "query": "df64=0",
+ "speed": 0.3,
+ "runs": [
+  {
+   "n": 1755,
+   "secs": 30.0,
+   "coarse": 0.7561,
+   "still": 0.0086,
+   "jz95": 1.952,
+   "jzmax": 11.026,
+   "jp95": 1.129,
+   "jpmax": 6.53,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 22.3,
+   "sharp_mean": 22.3,
+   "episodes": 1,
+   "lz0": -0.49,
+   "lz1": 6.26,
+   "cruise": 0.711,
+   "phases": {
+    "": 1755
+   },
+   "fps": 58.5,
+   "brake": 0.0,
+   "name": "tour_phoenix",
+   "plan": {
+    "kind": "cpu",
+    "mode": "direct"
+   },
+   "errors": []
+  },
+  {
+   "n": 1775,
+   "secs": 30.0,
+   "coarse": 0.7341,
+   "still": 0.0073,
+   "jz95": 3.246,
+   "jzmax": 6.762,
+   "jp95": 3.663,
+   "jpmax": 7.632,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 20.57,
+   "sharp_mean": 4.35,
+   "episodes": 5,
+   "lz0": -0.26,
+   "lz1": 5.82,
+   "cruise": 0.646,
+   "phases": {
+    "": 1775
+   },
+   "fps": 59.2,
+   "brake": 0.0,
+   "name": "tour_magnet2",
+   "plan": {
+    "kind": "cpu",
+    "mode": "direct"
+   },
+   "errors": []
+  },
+  {
+   "n": 1752,
+   "secs": 30.0,
+   "coarse": 0.7626,
+   "still": 0.0074,
+   "jz95": 2.473,
+   "jzmax": 5.77,
+   "jp95": 4.67,
+   "jpmax": 19.483,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 22.75,
+   "sharp_mean": 22.75,
+   "episodes": 1,
+   "lz0": 0.0,
+   "lz1": 5.99,
+   "cruise": 0.62,
+   "phases": {
+    "": 1752
+   },
+   "fps": 58.4,
+   "brake": 0.0,
+   "name": "tour_multi",
+   "plan": {
+    "kind": "cpu",
+    "mode": "direct"
+   },
+   "errors": []
+  }
+ ]
+}

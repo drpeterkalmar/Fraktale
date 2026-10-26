@@ -63,7 +63,8 @@ def main():
             # (wie tief er kommt, hängt von der Rechenlast ab – gemessen 6·10⁷ … 10¹⁰; geprüft wird, dass er zügig taucht)
             need(r['zoom'] >= 1e6 and not r['errors'], f"A Zoom nach 30 s {r['zoom']:.2e} (≥ 10⁶), Fehler {r['errors']}")
         if 'B' in ONLY:
-            r = res['B'] = fly(p, 'm=11&x=0.690104&y=0.546875&z=30000', 40)
+            # (7.3.0: Phoenix rechnet dort in df64 auf der GPU – der Fall prüft die Lavalampe auf einer Prozessor-Welt, darum ?df64=0)
+            r = res['B'] = fly(p, 'm=11&x=0.690104&y=0.546875&z=30000', 40, query='nosw&noanim&df64=0')
             ph = phases(r)
             need('rev' in ph and 'hover' in ph, f"B Phoenix 3·10⁴: bremsen → schweben → heraus ({ph[:8]})")
             need(r['still'] == 0 and (r['minGap'] is None or r['minGap'] >= 8), f"B Kamera steht nie ({r['still']:.1%}), kürzestes Pendel {r['minGap']} s (≥ 8)")

@@ -8,13 +8,17 @@
 const HP = root.FKHP;
 const SH = root.FKShaders;
 const TEXW = 2048;
+// 7.3 df64: Doppelwert als Paar zweier f32 (hi = gerundeter Wert, lo = Rest; hi + lo trägt ~48 bit)
+function dfSplit(v) { const h = Math.fround(v); return [h, Math.fround(v - h)]; }
 const POLY0 = root.FKCore ? root.FKCore.newtonPoly(0) : { c: [-1, 0, 0, 1], deg: 3, roots: [[1, 0], [-0.5, 0.8660254], [-0.5, -0.8660254]] };
 
 function create(canvas) {
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false,
         preserveDrawingBuffer: false, powerPreference: 'high-performance', desynchronized: false });
     if (!gl) return null;
-    const R = { gl, canvas, lost: gl.isContextLost() };    // 6.5.2: kann schon beim Anlegen verloren sein (WebGL gesperrt)
+    const R = { gl, canvas, lost: gl.isContextLost() };
+    try { R.logChunks = /[?&]logchunks/.test(location.search); } catch (e) {}
+    try { R.noCyc = /[?&]cyc=0/.test(location.search); } catch (e) {}           // 7.3 A/B: df64-Zyklus-Erkennung aus      // Test: Häppchen je Job mitschreiben (Zeilen, Zeit)    // 6.5.2: kann schon beim Anlegen verloren sein (WebGL gesperrt)
     let programs = {};
     let vao = null;
     // 7.1.11 Direct3D (Windows: Chrome/Edge/Firefox über ANGLE → HLSL → FXC): Anzeige-Pass als Schleife über die Ebenen.
@@ -269,6 +273,14 @@ function create(canvas) {
     R.maxInflight = 2;                // 2 Häppchen in der GPU-Warteschlange: kein Leerlauf zwischen Frames
     // Häppchen nachschieben, fertige einsammeln. Liefert true wenn Job fertig.
     let pxMove = 16384;               // Häppchengröße während Bewegung (Frame-Zeit-geregelt)
+    // 7.3 df64: Häppchen nach Rechenaufwand begrenzen (Pixel × Iterationen). df64 kostet je Schritt ~10–20× f32 – ein Häppchen nach
+    // der f32-Regel lief bei 10⁹–10¹⁰ (5000 Iterationen) 100–300 ms auf der GPU, macOS brach solche Befehlspuffer gelegentlich ab
+    // (gemessen am M1: Zeilenbänder mit 0 statt Wert, 1 von ~4 Läufen; Windows: Gerät weg nach 2 s). Ziel ~1–2 Bildtakte je
+    // Häppchen: Startwert 10⁷ (M1 ≈ 25 ms; gemessen ~4·10⁵ Pixel·Iterationen je ms), dauert ein Häppchen ≥ 3 Bilder -> ×0,6, ist es
+    // im nächsten Bild fertig -> ×1,15. ?dfcap=<n>: fester Wert (Messung/A-B)
+    const DFCAP_Q = (() => { try { return +new URLSearchParams(location.search).get('dfcap') || 0; } catch (e) { return 0; } })();
+    let dfBudget = DFCAP_Q || 1e7;
+    R.dfBudget = () => dfBudget;
     // ctl: { moving, dt (EMA ms), vsync (ms) } — während Gesten regelt die gemessene Frame-Zeit
     // die Häppchengröße (Ziel: Frame <= 1.3 x Vsync), im Stillstand der Durchsatz (Fence-Polls).
     R.pump = function (job, now, ctl) {
@@ -292,12 +304,17 @@ function create(canvas) {
                 if (polls <= 0) pxPerChunk = Math.min(8e6, pxPerChunk * 1.5);
                 else if (polls >= 2) pxPerChunk = Math.max(4096, pxPerChunk * (polls >= 4 ? 0.4 : 0.7));
             }
+            if (c.df && !DFCAP_Q) {
+                if (polls >= 3) dfBudget = Math.max(1e6, dfBudget * 0.6);
+                else if (polls <= 0) dfBudget = Math.min(1.5e8, dfBudget * 1.15);
+            }
         }
         if (job.row >= job.h && !job.q.length) { job.done = true; job.gpuMs = performance.now() - job.gpuStart; return true; }
         // Vorausrechnen: kleinere Häppchen (halbes Stillstands-Häppchen), damit eine neue Geste nicht wartet
         let px = ctl && ctl.prefetch ? Math.min(pxPerChunk, 250000) * 0.5 : (moving ? pxMove : pxPerChunk);
         // 6.4 Flug: Mindestanteil, damit der Job in ctl.minS Sekunden fertig wird (Bildzeit dt ms pro Häppchen-Runde)
         if (moving && ctl && ctl.minS) px = Math.max(px, Math.min(2e5, job.w * job.h * (ctl.dt / 1000) / ctl.minS));
+        if (job.mode === 'df64') px = Math.min(px, dfBudget / Math.max(100, job.maxIter));
         // P1-2: Rechen-Variante defekt -> Job als gescheitert beenden (app.js wählt einen anderen Rechenweg)
         const key = computeKey(job);
         if (R.broken[key]) { job.failed = true; job.done = true; return true; }
@@ -305,12 +322,17 @@ function create(canvas) {
             // neue Rechen-Variante erst übersetzen lassen – nicht blockierend, bis dahin ruht der Job (6.4 nur Bunt; P2-7 alle:
             // erster Wechsel auf eine Formel, erste finale Stufe, „Menge glatt“ – vorher stand das Bild so lange)
             if (job.row < job.h && !programs[key] && !R.programReady(key, SH.computeFS(job.formula, job.mode, job.err, job.de, job.inn, job.st))) return false;
+            // 7.3 df64: erst der Selbsttest (nicht blockierend, wenige Bilder); durchgefallen -> Job gescheitert (app.js: Prozessor)
+            const ds = job.mode === 'df64' ? R.df64Step() : 2;
+            if (ds < 0) { job.failed = true; job.done = true; return true; }
+            if (ds !== 2) return false;
             while (job.row < job.h && job.q.length < R.maxInflight) {
                 const rows = Math.max(1, Math.min(job.h - job.row, Math.floor(px / job.w)));
                 drawCompute(job, job.row, rows);
+                if (R.logChunks) (job.chunks || (job.chunks = [])).push([job.row, rows, Math.round(performance.now() - job.gpuStart)]);
                 job.row += rows;
                 // ein zweites Häppchen wartet erst auf das erste -> seine Poll-Zählung entsprechend versetzen
-                job.q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0, waited: job.q.length ? 1 : 0 });
+                job.q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), polls: 0, waited: job.q.length ? 1 : 0, df: job.mode === 'df64' });
                 R.submitted++;
                 gl.flush();
             }
@@ -352,7 +374,15 @@ function create(canvas) {
             const rt = new Float32Array(16); P.roots.forEach((r, i) => { if (i < 8) { rt[2 * i] = r[0]; rt[2 * i + 1] = r[1]; } });
             gl.uniform1fv(L.u_pc, pc); gl.uniform1i(L.u_pdeg, P.deg); gl.uniform2fv(L.u_root, rt); gl.uniform1i(L.u_nroot, Math.min(8, P.roots.length));
         }
-        if (job.mode === 'direct') {
+        if (job.mode === 'df64') {
+            // 7.3 df64: Mitte, Pixelgröße und Welt-Parameter als hi + lo (Doppelwert -> zwei f32), u_z = 0 gegen Umordnen (shaders.js O())
+            const x = dfSplit(HP.toNumber(job.view.cx)), y = dfSplit(HP.toNumber(job.view.cy)), s = dfSplit(job.scale);
+            gl.uniform4f(L.u_centerD, x[0], x[1], y[0], y[1]);
+            gl.uniform2f(L.u_scaleD, s[0], s[1]);
+            gl.uniform1ui(L.u_z, 0);
+            if (L.u_cyc) gl.uniform1i(L.u_cyc, R.noCyc ? 0 : 1);
+            if (L.u_xpl) { const a = X && X.xp || [0, 0, 0, 0]; gl.uniform4f(L.u_xpl, ...a.map(v => dfSplit(v)[1])); }
+        } else if (job.mode === 'direct') {
             gl.uniform2f(L.u_center, HP.toNumber(job.view.cx), HP.toNumber(job.view.cy));
             if (L.u_julia) gl.uniform2f(L.u_julia, job.julia[0], job.julia[1]);
         } else {
@@ -476,7 +506,7 @@ function create(canvas) {
     R.acquireBuffer = acquire;
     // 6.8.1: Puffer sofort löschen (große Screenshot-Kacheln sollen nicht im Pool liegen bleiben)
     R.dropBuffer = function (b) { if (!b) return; const i = pool.indexOf(b); if (i >= 0) pool.splice(i, 1); if (!gl.isContextLost()) freeBuffer(b); };
-    R.chunkInfo = () => ({ pxPerChunk: Math.round(pxPerChunk), pxMove: Math.round(pxMove) });
+    R.chunkInfo = () => ({ dfBudget, pxPerChunk: Math.round(pxPerChunk), pxMove: Math.round(pxMove) });
 
     R.cancelJob = function (job) {
         if (!job) return;
@@ -772,6 +802,67 @@ function create(canvas) {
     };
 
     // Kurzer Selbsttest: kompilieren die Perturbations-Shader auf diesem Gerät?
+    // 7.3 df64-Selbsttest (einmal je Kontext, nicht blockierend, wenige Bilder): Summe, Produkt, Quotient, Quadrat der df64-Bausteine
+    // (shaders.js DF64_GLSL) auf der GPU gegen JS-f64. Ein Übersetzer mit „fast math“ striche die Fehlerterme (am M1 mit dem
+    // Uniform-1,0-Trick gemessen) – das Ergebnis hätte dann nur f32-Genauigkeit (~2^-24) statt ~2^-47. Zustand: 0 nicht gestartet, 1 läuft, 2 bestanden, −1 durchgefallen
+    // (Exoten rechnen dann wie bis 7.2 auf dem Prozessor). R.df64Info: Messwerte (größter Fehler in Einheiten 2^-48).
+    const DF_CASES = [[1 / 3, 2 / 7], [Math.PI, -Math.E], [1.0000001234567891, -1.0000000987654321], [0.74530000123456789, 0.11270000098765432],
+                      [123.456789012345, 0.000987654321098], [-2.5e-5 * Math.SQRT2, 3.75 + 1e-8 / 3], [-0.999999940395355, 1.00000011920929], [1e10 / 3, -7 / 3e10]];
+    const DFT = { st: 0, buf: null, sync: null };
+    R.df64Info = null;
+    R.df64State = () => DFT.st;
+    R.df64Step = function () {
+        if (DFT.st === 2 || DFT.st === -1 || gl.isContextLost()) return DFT.st;
+        try {
+            DFT.st = 1;
+            if (!R.programReady('df64test', SH.DF64_TEST_FS)) return 1;
+            const N = SH.DF64_N, W = N * 8;
+            if (!DFT.sync) {
+                const pr = program('df64test', SH.DF64_TEST_FS), L = pr.loc;
+                const ta = new Float32Array(N * 4);
+                DF_CASES.forEach(([a, b], i) => { ta.set(dfSplit(a), 4 * i); ta.set(dfSplit(b), 4 * i + 2); });
+                DFT.buf = makeBuffer(W, 1, true);
+                gl.useProgram(pr.p);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, DFT.buf.fbo);
+                gl.viewport(0, 0, W, 1);
+                gl.uniform1ui(L.u_z, 0);
+                gl.uniform4fv(L.u_ta, ta);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                DFT.sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+                gl.flush();
+                return 1;
+            }
+            if (gl.clientWaitSync(DFT.sync, 0, 0) === gl.TIMEOUT_EXPIRED) return 1;
+            gl.deleteSync(DFT.sync); DFT.sync = null;
+            const u = new Uint32Array(W * 4);
+            gl.bindFramebuffer(gl.READ_FRAMEBUFFER, DFT.buf.fbo);
+            gl.readPixels(0, 0, W, 1, gl.RGBA_INTEGER, gl.UNSIGNED_INT, u);
+            gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+            freeBuffer(DFT.buf); DFT.buf = null;
+            const f = new Float32Array(W), fu = new Uint32Array(f.buffer);
+            for (let i = 0; i < W; i++) fu[i] = u[4 * i];
+            let worst = 0;
+            const ops = [0, 0, 0, 0];
+            DF_CASES.forEach(([a, b], i) => {
+                const sa = dfSplit(a), sb = dfSplit(b), A = sa[0] + sa[1], B = sb[0] + sb[1];
+                const ex = [A + B, A * B, A / B, A * A], ref = [Math.max(Math.abs(A), Math.abs(B)), Math.abs(A * B), Math.abs(A / B), A * A];
+                for (let k = 0; k < 4; k++) {
+                    const g = f[8 * i + 2 * k] + f[8 * i + 2 * k + 1];
+                    const e = Math.abs(g - ex[k]) / (ref[k] * Math.pow(2, -48));
+                    worst = Math.max(worst, e === e ? e : Infinity);
+                    ops[k] = Math.max(ops[k], e === e ? e : Infinity);
+                }
+            });
+            R.df64Info = { worst: +worst.toFixed(2), ops: ops.map(e => +e.toPrecision(3)) };      // ops: Summe, Produkt, Quotient, Quadrat
+            DFT.st = worst <= 16 ? 2 : -1;          // Soll ≲ 2–4 Einheiten; f32 ohne Fehlerterme: ~2^24 Einheiten
+            if (DFT.st < 0) console.warn('df64-Selbsttest durchgefallen (größter Fehler ' + worst.toExponential(2) + ' · 2^-48) – Exoten rechnen in der Tiefe auf dem Prozessor');
+        } catch (e) {
+            DFT.st = -1;
+            console.warn('df64-Selbsttest:', e.message);
+        }
+        return DFT.st;
+    };
     R.selfTest = function () {
         try { program('c0perturbd', SH.computeFS(0, 'perturb', false, true)); program('c0directd', SH.computeFS(0, 'direct', false, true)); program(displayKey(false, false), displaySrc(false, false)); return true; }
         catch (e) { console.warn('GPU-Selbsttest:', e.message); return false; }
@@ -783,7 +874,7 @@ function create(canvas) {
     };
 
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); R.lost = true; if (R.onLost) R.onLost(); });
-    canvas.addEventListener('webglcontextrestored', () => { R.lost = false; initGL(); if (R.onRestored) R.onRestored(); });
+    canvas.addEventListener('webglcontextrestored', () => { R.lost = false; initGL(); DFT.st = 0; DFT.buf = DFT.sync = null; if (R.onRestored) R.onRestored(); });   // (7.3: df64-Selbsttest je Kontext)
 
     initGL();
     return R;

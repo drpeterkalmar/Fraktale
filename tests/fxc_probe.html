@@ -25,6 +25,13 @@ const V = {
     displaySDL: () => SH.displayFS(true, true, true),
     guardU: () => SH.computeFS(0, 'perturb', false, true).replace('guard < 4000000', 'guard < u_guard').replace('uniform int u_maxIter;', 'uniform int u_maxIter;\nuniform int u_guard;'),
     noBLA: () => cut(SH.computeFS(0, 'perturb', false, true), '        if (u_blaOn != 0', '        vec2 Z = Zc;'),
+    // 7.3 df64-Exoten (emulierte doppelte Genauigkeit) und ihr Selbsttest; f32-Gegenstücke zum Vergleich
+    dfTest: () => SH.DF64_TEST_FS,
+    dfMulti: () => SH.computeFS(23, 'df64', false, true), dfPhoenix: () => SH.computeFS(24, 'df64', false, true),
+    dfNova: () => SH.computeFS(25, 'df64', false, true), dfMagnet1: () => SH.computeFS(26, 'df64', false, true),
+    dfMagnet2: () => SH.computeFS(27, 'df64', false, true), dfLya: () => SH.computeFS(28, 'df64', false, true),
+    dfPhoenixS: () => SH.computeFS(24, 'df64', false, true, false, 1), dfMagnet2S: () => SH.computeFS(27, 'df64', false, true, false, 4),
+    exPhoenix: () => SH.computeFS(24, 'direct', false, true), exMagnet2: () => SH.computeFS(27, 'direct', false, true),
 };
 for (const k of Object.keys(V)) { const f = V[k]; V[k] = () => { const s = f(); return s.replace('#version 300 es\n', '#version 300 es\n' + salt()); }; }
 self.V = V;

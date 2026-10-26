@@ -15,6 +15,8 @@ Größen:
   sharp_s     Zeit bis „wieder scharf“: Dauer der Episoden grober Bilder (max, Mittel)
 Aufruf: FK_HEADED=1 python3 tests/measure_lava.py [--base=http://localhost:8479/index.html] [--tag=v7114] [--secs=60]
         [--runs=seepferd,ship,phoenix,phoenix,bulb,menger,tour] [--query=lava=0]
+        7.3.0 (df64-Exoten): --runs=phoenix,nova,magnet,magnet2,ship --secs=20; Vergleich ohne df64: --query=df64=0
+  fps         Bilder je Sekunde (rAF), brake = Anteil der Bilder außerhalb des Reiseflugs (Lavalampe bremst/schwebt/zoomt heraus)
 Ergebnis: tests/results_lava_<tag>.json + Tabelle
 """
 import sys, os, json, time, math
@@ -34,6 +36,14 @@ SPEC = {
     'seepferd': {'hash': 'm=0&x=-0.7453&y=0.1127&z=180', 'kind': '2d'},
     'ship': {'hash': 'm=2&x=-1.7609&y=-0.0275&z=60', 'kind': '2d'},
     'phoenix': {'hash': 'm=11&x=0.690104&y=0.546875&z=30000', 'kind': '2d'},
+    # 7.3.0 df64-Exoten (Brief fraktale-v7-2-exoten-df64, Etappe 2): Orte der Sehenswürdigkeiten, Start bei 3·10⁴
+    'nova': {'hash': 'm=12&x=-0.3690755&y=0.0488281&z=30000', 'kind': '2d'},
+    'magnet': {'hash': 'm=13&x=0.0947088068&y=-1.0600142045&z=30000', 'kind': '2d'},
+    'magnet2': {'hash': 'm=13&x=1.3384943182&y=-0.5326704545&z=30000&wp=v1', 'kind': '2d'},
+    # Tour (Autozoom zu einem festen Ziel 10⁸, gerade Fahrt ohne Suchen des Autopiloten): Randstellen aus tests/test_v730.py B
+    'tour_phoenix': {'hash': 'm=11&x=0&y=0&z=0.45', 'kind': 'tour', 'place': {'formula': 11, 'cx': '0.755715446865423024', 'cy': '-0.466920850049038216', 'zoom': 1e8}},
+    'tour_magnet2': {'hash': 'm=13&x=1.2&y=0&z=0.55&wp=v1', 'kind': 'tour', 'place': {'formula': 13, 'cx': '-0.131243619308578779', 'cy': '-0.190348596093646183', 'zoom': 1e8, 'wp': {'v': 1}}},
+    'tour_multi': {'hash': 'm=4&x=0&y=0&z=1&wp=e5', 'kind': 'tour', 'place': {'formula': 4, 'cx': '0.795511286006855167', 'cy': '-0.757434906948750264', 'zoom': 1e8, 'wp': {'e': 5, 'm': 0}}},
     'bulb': {'world': 6, 'kind': 'bulb'},
     'menger': {'world': 9, 'kind': 'bulb'},
     'tour': {'hash': 'm=0&x=-0.5&y=0&z=1', 'kind': 'tour', 'sight': 'mb_deep'},
@@ -135,7 +145,9 @@ def analyse(d, kind):
             'jz95': round(float(q(jz, 0.95)), 3), 'jzmax': round(float(max(jz or [0])), 3), 'jp95': round(float(q(pj, 0.95)), 3), 'jpmax': round(float(max(pj or [0])), 3),
             'hard': hard, 'flips': len(flips), 'flips_min': round(len(flips) / dur * 60, 2), 'minGap': round(float(min(gaps)), 1) if gaps else None,
             'sharp_max': round(max(eps or [0]), 2), 'sharp_mean': round(sum(eps) / len(eps), 2) if eps else 0, 'episodes': len(eps),
-            'lz0': round(float(lz[0]), 2) if len(lz) else None, 'lz1': round(float(lz[-1]), 2) if len(lz) else None, 'cruise': round(float(cruise), 3), 'phases': phases}
+            'lz0': round(float(lz[0]), 2) if len(lz) else None, 'lz1': round(float(lz[-1]), 2) if len(lz) else None, 'cruise': round(float(cruise), 3), 'phases': phases,
+            # 7.3.0: Bildrate und Anteil der Flugbilder, in denen der Lavalampen-Wächter nicht im Reiseflug ist (bremsen/schweben/heraus)
+            'fps': round(n / dur, 1), 'brake': round(sum(v for k, v in phases.items() if k and k != 'cruise') / max(1, n), 3)}
 
 
 def main():
@@ -151,7 +163,8 @@ def main():
             elif sp['kind'] == 'tour':
                 try: a.wait_done(60)
                 except Exception: pass
-                pg.evaluate("(k) => { const A = window.__fraktal; const p = A.SIGHTS[0].find(s => s.k === k); A.startTour(p); }", sp['sight'])
+                if sp.get('place'): pg.evaluate("(p) => window.__fraktal.startTour(p)", sp['place'])
+                else: pg.evaluate("(k) => { const A = window.__fraktal; const p = A.SIGHTS[0].find(s => s.k === k); A.startTour(p); }", sp['sight'])
             else:
                 try: a.wait_done(60)
                 except Exception: pass
@@ -161,7 +174,7 @@ def main():
             r['name'] = name; r['plan'] = pg.evaluate("() => window.__fraktal.status().plan")
             r['errors'] = a.errors[:3]
             out['runs'].append(r)
-            print(f"{name:9s} " + json.dumps({k: r[k] for k in ('coarse', 'still', 'jz95', 'jzmax', 'jp95', 'jpmax', 'hard', 'flips_min', 'minGap', 'sharp_max', 'sharp_mean', 'lz0', 'lz1', 'plan', 'phases', 'errors')}, ensure_ascii=False), flush=True)
+            print(f"{name:9s} " + json.dumps({k: r[k] for k in ('coarse', 'fps', 'brake', 'still', 'jz95', 'jzmax', 'jp95', 'jpmax', 'hard', 'flips_min', 'minGap', 'sharp_max', 'sharp_mean', 'lz0', 'lz1', 'plan', 'phases', 'errors')}, ensure_ascii=False), flush=True)
             if ARGS.get('dump'): json.dump(d, open(f'/tmp/fk_lava_{TAG}_{name}_{len(out["runs"])}.json', 'w'))
             a.close()
     fn = os.path.join(os.path.dirname(__file__), f'results_lava_{TAG}.json')
