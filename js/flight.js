@@ -82,6 +82,17 @@ root.FKFlight = { create(ctx) {
     const LAVA_REVQ = ctx.Q.get('lavarevq') !== '0';       // 7.3.x: Herauszoomen an die Schärfe gekoppelt (?lavarevq=0: wie 7.3.0)
     const qn = (k, d) => { const v = parseFloat(ctx.Q.get(k)); return isFinite(v) && v >= 0 ? v : d; };
     const LV = { rueck: qn('lavarueck', 0.3), seit: qn('lavaseit', 0.04), tau: Math.max(0.5, qn('lavatau', 5)) };
+    // 7.4 Schweben am Rand (Peter 26.10.2026: „Fraktal-Autopilot: hover immer entlang der Mengengrenze“): Im Schweben, Herauszoomen
+    // und Warten der Lavalampe trieb die Bildmitte bis 7.4.0 in eine gemächlich drehende, vom Bild unabhängige Richtung – ins
+    // Innere (schwarz) oder in leere Außenflächen. Jetzt läuft sie am Rand entlang (edgeWalk, bei jeder Sonde): Kandidaten auf
+    // zwei Kreisen (0,1 / 0,18 Bildhälften, je 24 Richtungen) um die Bildmitte, gewertet nach dem Abstand zur Menge (Ziel
+    // EDGE.ds = 0,05 Bildhälften, Korridor wie FLY_DE), Inneres und ein Weg durchs Innere stark negativ, Abweichung von der
+    // bisherigen Richtung quadratisch negativ (die Richtung bleibt lange gleich: am Rand entlang statt hin und her). Der Kurs der
+    // Drift folgt dem besten Kandidaten über eine gedämpfte Drehung (höchstens 0,5 rad/s) – Kurven weich. Der Zoompunkt und das
+    // Ziel der Randsuche wandern mit der Drift (bis 7.4.0 blieben sie stehen, nach dem Schweben glitt das Bild zurück).
+    // ?randschweb=0 = Drift wie 7.4.0.
+    const RAND_SCHWEB = ctx.Q.get('randschweb') !== '0';
+    const EDGE = { ds: 0.05, r: [0.1, 0.18], turn: 0.5, k: 1.2, nin: qn('randnin', 0) };
     FLY.lavaCfg = LV;             // (Test, Bericht)
     // 7.4 Roll im Flug (Peter 26.10.2026: „Kannst du beim Fraktal-Autopiloten ganz langsame Rotationen (Roll) hinzufügen?“):
     // Der Autopilot (2D-Flug und 3D-Landschaft, Zufalls- und Ziel-Flug, mit Lavalampe) dreht das Bild ganz langsam um die
@@ -310,9 +321,10 @@ root.FKFlight = { create(ctx) {
         if (!FLY.d3) {
             // 2D: Zoom um den Zoompunkt A, dazu gleitet die Bildmitte zu A (verloren schneller: zum Randstück hin)
             const k = 1 - cam.zoom / z1, u1 = 1.5 / z1, c = Math.min(0.5, dt * g * (FLY_C2 + 1.2 * lost)) * ks;
-            const pan = [FLY.A[0] * c, FLY.A[1] * c];
+            const pan = [FLY.A[0] * c, FLY.A[1] * c], gl = pan.slice();
             if (LA) { pan[0] += FLY.lava.dv[0] * dt; pan[1] += FLY.lava.dv[1] * dt; }    // 7.2.1 Seitendrift (Bildhälften)
-            return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + pan[0] * u1), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + pan[1] * u1), zoom: z1 }, heading, done, lat: pan, pan: true };
+            // (7.4: Zoompunkt und Ziel wandern mit der Drift – lat ohne sie; ?randschweb=0: wie 7.4.0)
+            return { cam: { cx: cam.cx + HP.fromNumber(FLY.A[0] * u * k + pan[0] * u1), cy: cam.cy + HP.fromNumber(FLY.A[1] * u * k + pan[1] * u1), zoom: z1 }, heading, done, lat: RAND_SCHWEB ? gl : pan, pan: true };
         }
         // 6.4: verloren -> erst zum Randstück drehen, dann vorwärts dorthin gleiten (statt seitlich zu rutschen)
         const al = FLY.glide ? Math.max(0, f[0] * FLY.glide[0] + f[1] * FLY.glide[1]) : 1;
@@ -479,13 +491,20 @@ root.FKFlight = { create(ctx) {
         // Seitendrift (nur 2D): Ein-/Ausblenden über eine kritisch gedämpfte Feder (ω = 1,2/s), Richtung dreht gemächlich
         const dwT = bulb || L.phase === 'cruise' ? 0 : 1, w = 1.2;
         L.dwv += (w * w * (dwT - L.dw) - 2 * w * L.dwv) * dt; L.dw += L.dwv * dt;
-        L.th += dt * (0.09 + 0.05 * Math.sin(now / 1000 * 0.071));
+        if (RAND_SCHWEB && !bulb && L.hT !== undefined && now - L.hTt < 2000) {
+            // 7.4: Kurs der Drift folgt dem Randläufer (gedämpft, Drehrate begrenzt)
+            const e = angDiff(L.hT, L.th);
+            L.tw = Math.max(-EDGE.turn, Math.min(EDGE.turn, (L.tw || 0) + (EDGE.k * e - 2 * Math.sqrt(EDGE.k) * (L.tw || 0)) * dt));
+            L.th += L.tw * dt;
+        } else { L.tw = 0; L.th += dt * (0.09 + 0.05 * Math.sin(now / 1000 * 0.071)); }
         // Richtung mit Hysterese (um 0 herum kein Hin und Her zwischen Hinein- und Herauszoom-Schritt)
         L.rev = L.rev ? L.r < 0.004 * cref : L.r < -0.004 * cref;
         // (Prozessor-Rechnung – Exoten ab 2000×, Klassiker jenseits 10³⁰: jedes neue Randstück kostet Sekunden – nur ein Viertel)
         // (Wechsel des Rechenwegs, z. B. Exoten bei 2000×: weich über ~1 s, sonst spränge das Drifttempo)
         L.cpuK = (L.cpuK === undefined ? 1 : L.cpuK) + ((ctx.plan().kind === 'cpu' ? 0.25 : 1) - (L.cpuK === undefined ? 1 : L.cpuK)) * Math.min(1, dt / 1.0);
-        const amp = LV.seit * Math.max(0, L.dw) * L.cpuK;
+        // (7.4: abseits des Randes – innen, leer – bis 2,5× so schnell zurück an den Rand, weich über ~1,5 s)
+        L.eb = (L.eb || 1) + ((RAND_SCHWEB && L.lostE && now - (L.hTt || -1e9) < 2000 ? 2.5 : 1) - (L.eb || 1)) * Math.min(1, dt / 1.5);
+        const amp = LV.seit * Math.max(0, L.dw) * L.cpuK * L.eb;
         L.dv = [Math.cos(L.th) * amp, Math.sin(L.th) * amp];
     }
     function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
@@ -551,7 +570,7 @@ root.FKFlight = { create(ctx) {
         let revTrail = false;
         if (FLY.mode === 'random' && rev) {
             // Rückflug: keine Zielwahl (der Weg ist der Kursverlauf bzw. heraus; am Rand bleibt man beim Herauszoomen ohnehin)
-            if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; if (FLY.rec && (T3.lastCam || !FLY.d3)) FLY.recM.push(flyMetrics(V3.probe, now)); }
+            if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; edgeWalk(V3.probe, now); if (FLY.rec && (T3.lastCam || !FLY.d3)) FLY.recM.push(flyMetrics(V3.probe, now)); }
             // 3D: Wischen lenkt auch rückwärts (Zoompunkt dreht, der Kurs folgt) – der Kursverlauf gilt danach nicht mehr
             const du = (FLY.user || 0) - (FLY.userPrev || 0);
             if (du && FLY.d3) { FLY.A = rot2(FLY.A, du); FLY.userPrev = FLY.user; FLY.userT = now; if (FLY.trail) FLY.trail.length = 0; }
@@ -562,7 +581,7 @@ root.FKFlight = { create(ctx) {
                 steerHeading(dt, ks);
             } else { FLY.om = 0; FLY.roll = (FLY.roll || 0) * Math.exp(-dt * 3); }
         } else if (FLY.mode === 'random') {
-            if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; flyEdgeSteer(now); }
+            if (V3.probe && V3.probe.seq !== FLY.probeSeq) { FLY.probeSeq = V3.probe.seq; edgeWalk(V3.probe, now); flyEdgeSteer(now); }
             // Wischen: Zoompunkt und Ziel um den Fokus drehen (der Kurs folgt gedämpft), danach führt die Automatik
             // von der neuen Richtung aus weiter (2D: Schieben verschiebt das Bild, siehe flyPanned)
             const du = (FLY.user || 0) - (FLY.userPrev || 0);
@@ -611,6 +630,13 @@ root.FKFlight = { create(ctx) {
         }
         // 2D: die Bildmitte ist zum Zoompunkt geglitten – er bleibt auf seinem Weltpunkt, liegt also näher an der Mitte
         if (st.pan) FLY.A = [FLY.A[0] - st.lat[0], FLY.A[1] - st.lat[1]];
+        // 7.4 Schweben am Rand: der Zoompunkt rückt weich in die Bildmitte (die am Rand entlangläuft) – Herauszoomen und das
+        // nächste Eintauchen gehen dann von dort aus (beim Schweben steht der Zoom, das Verschieben des Fixpunkts sieht man nicht)
+        if (st.pan && RAND_SCHWEB && FLY.lava && FLY.lava.on && FLY.lava.dw > 0) {
+            const k = Math.exp(-dt * FLY.lava.dw / 2.5);
+            FLY.A = [FLY.A[0] * k, FLY.A[1] * k];
+            if (FLY.T) FLY.T = [FLY.T[0] * k, FLY.T[1] * k];
+        }
         if (FLY.rec) FLY.rec.push([+now.toFixed(1), +V3.heading.toFixed(5), S.cam.zoom, +(FLY.om || 0).toFixed(5), +(FLY.lost || 0).toFixed(2)]);
         if (st.done) { stopFly(); if (FLY.mode === 'random') toast(t('fly_max')); }
     }
@@ -769,6 +795,54 @@ root.FKFlight = { create(ctx) {
             FLY.glide = [FLY.T[0] / r, FLY.T[1] / r]; FLY.gv = Math.min(1, Math.max(0.15, (r - 0.3) / 0.6));
         } else { FLY.glide = null; FLY.gv = 1; }
     }
+    // 7.4 Randläufer fürs Schweben (siehe EDGE): bester Kandidat um die Bildmitte -> Kurs L.hT der Drift
+    function edgeWalk(pb, now) {
+        const L = FLY.lava;
+        if (!RAND_SCHWEB || !L || !L.on || FLY.d3 || !pb || !pb.hasDE || (L.phase === 'cruise' && L.dw < 0.02)) return;
+        const M = probeMap(pb), W = pb.w, H = pb.h;
+        const dAt = (x, y) => {
+            const q = M.toP(x, y), i = Math.floor((q[0] / pb.win * 0.5 + 0.5) * W), j = Math.floor((q[1] / pb.win * 0.5 + 0.5) * H);
+            return i < 0 || j < 0 || i >= W || j >= H ? NaN : pb.de[j * W + i] / M.k;
+        };
+        const held = L.hT !== undefined && now - L.hTt < 2000;
+        const d0 = dAt(0, 0), hug = d0 > 0 && d0 < EDGE.ds * 0.25;      // Mitte klebt fast an der Menge: nach außen bevorzugen
+        let best = null;
+        for (let a = 0; a < 24; a++) {
+            const ang = a * Math.PI / 12, c = Math.cos(ang), s = Math.sin(ang);
+            for (const r of EDGE.r) {
+                const d = dAt(c * r, s * r);
+                if (Number.isNaN(d)) continue;
+                let sc = d === 0 ? -3 : -0.7 * Math.min(4, Math.abs(Math.log2(d / EDGE.ds)));
+                if (dAt(c * r * 0.5, s * r * 0.5) === 0) sc -= 1.5;           // Weg durchs Innere
+                // viel Menge rundum (Inneres eines Minibrots, große Fläche): schwarzes Bild – lieber an Filamenten entlang
+                let nin = 0, nv = 0;
+                for (let q = 0; q < 8; q++) { const e = dAt(c * r + Math.cos(q * Math.PI / 4) * 0.12, s * r + Math.sin(q * Math.PI / 4) * 0.12); if (!Number.isNaN(e)) { nv++; if (e === 0) nin++; } }
+                if (nv) sc -= EDGE.nin * Math.max(0, nin / nv - 0.3);
+                if (held) sc -= 1.2 * Math.pow(angDiff(ang, L.th) / Math.PI, 2);
+                sc += 0.1 * r / EDGE.r[1];
+                if (hug && d > d0) sc += 0.6 * Math.min(1, Math.log2(d / d0) / 3);
+                if (!best || sc > best.sc) best = { sc, ang };
+            }
+        }
+        L.d0 = dAt(0, 0);
+        // Mitte innen bzw. ringsum nur Inneres/Leere (großes Minibrot füllt das Bild): nächste Randstelle im ganzen Sondenfenster
+        // ansteuern, die Drift läuft dann schneller (L.eb, weich)
+        const lost = L.d0 === 0 || L.d0 > 0.3 || !best || best.sc < -2.2;
+        if (lost) {
+            let nb = null;
+            for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+                const d = pb.de[j * W + i] / M.k;
+                if (!(d > 0 && d <= 0.12)) continue;
+                const p = M.fromP(((i + 0.5) / W * 2 - 1) * pb.win, ((j + 0.5) / H * 2 - 1) * pb.win), r = Math.hypot(p[0], p[1]);
+                if (r > 0.02 && (!nb || r < nb.r)) nb = { r, ang: Math.atan2(p[1], p[0]) };
+            }
+            if (nb) best = { sc: -2, ang: nb.ang };
+        }
+        L.lostE = lost;
+        if (!best) return;
+        L.hT = best.ang; L.hTt = now;
+        if (!held) { L.th = best.ang; L.tw = 0; }          // erste Wahl: gleich in diese Richtung (die Drift blendet ohnehin weich ein)
+    }
     // Messung (tests/measure_fly.py): pro Sonde Anteil Bild mit Mengenrand im mittleren Drittel (Distanz < 0,3
     // Bildhälften), Anteil innen bzw. leer (Distanz > 1) am sichtbaren Boden im Sondenfenster
     // (2D: Bildschirmanteile direkt in lokale Einheiten, x mal Seitenverhältnis)
@@ -793,7 +867,7 @@ root.FKFlight = { create(ctx) {
             nAll++; if (d === 0) nIn++; else if (d > 1) nEmpty++; else if (d < 0.3) nEdge++;
         }
         const deAt = (P) => { if (!P) return null; const d = at(P); return Number.isNaN(d) ? null : +d.toPrecision(3); };
-        return { dA: deAt(FLY.A), dT: deAt(FLY.T), dF: deAt([0, 0]), A: FLY.A ? FLY.A.map(x => +x.toFixed(3)) : null, T: FLY.T ? FLY.T.map(x => +x.toFixed(3)) : null, t: +now.toFixed(0), z: S.cam.zoom, edgeMid: nMid ? edgeMid / nMid : null, inFrac: nAll ? nIn / nAll : null, emptyFrac: nAll ? nEmpty / nAll : null, edgeFrac: nAll ? nEdge / nAll : null, n: nAll, lost: +(FLY.lost || 0).toFixed(2), hasDE: !!pb.hasDE, d3: FLY.d3 };
+        return { dA: deAt(FLY.A), dT: deAt(FLY.T), dF: deAt([0, 0]), A: FLY.A ? FLY.A.map(x => +x.toFixed(3)) : null, T: FLY.T ? FLY.T.map(x => +x.toFixed(3)) : null, t: +now.toFixed(0), ph: FLY.lava && FLY.lava.on ? FLY.lava.phase : null, dw: FLY.lava ? +(FLY.lava.dw || 0).toFixed(2) : 0, z: S.cam.zoom, edgeMid: nMid ? edgeMid / nMid : null, inFrac: nAll ? nIn / nAll : null, emptyFrac: nAll ? nEmpty / nAll : null, edgeFrac: nAll ? nEdge / nAll : null, n: nAll, lost: +(FLY.lost || 0).toFixed(2), hasDE: !!pb.hasDE, d3: FLY.d3 };
     }
 
     // Test (6.8, tests/test_rueck.py): Bodenabstand der 3D-Kamera aus der Sonde – Augenhöhe minus höchstes Gelände im Umkreis

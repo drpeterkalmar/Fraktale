@@ -1,0 +1,149 @@
+{
+ "sum": {
+  "variant": "alt",
+  "secs": 120,
+  "centerIn012": 0.561,
+  "centerIn03": 0.642,
+  "zoomptIn012": 0.825,
+  "centerInside": 0.252,
+  "centerEmpty": 0.054,
+  "imgInside": 0.233,
+  "imgEmpty": 0.065,
+  "flips": 0,
+  "ms": 20692
+ },
+ "runs": [
+  {
+   "place": "Seepferdchental 10³",
+   "variant": "alt",
+   "n": 697,
+   "phases": {
+    "cruise": 15,
+    "brake": 11,
+    "hover": 36,
+    "rev": 298,
+    "wait": 360
+   },
+   "centerIn012": 0.739,
+   "centerIn03": 1,
+   "zoomptIn012": 0.851,
+   "centerInside": 0,
+   "centerEmpty": 0,
+   "imgInside": 0,
+   "imgEmpty": 0,
+   "flips": 0,
+   "z0": 1000,
+   "z1": 1670
+  },
+  {
+   "place": "Seepferdchental 10⁵",
+   "variant": "alt",
+   "n": 697,
+   "phases": {
+    "cruise": 15,
+    "brake": 11,
+    "hover": 36,
+    "rev": 298,
+    "wait": 360
+   },
+   "centerIn012": 0.858,
+   "centerIn03": 0.858,
+   "zoomptIn012": 0.813,
+   "centerInside": 0.142,
+   "centerEmpty": 0,
+   "imgInside": 0.08,
+   "imgEmpty": 0,
+   "flips": 0,
+   "z0": 100000,
+   "z1": 167000
+  },
+  {
+   "place": "Elefantental 10³",
+   "variant": "alt",
+   "n": 697,
+   "phases": {
+    "cruise": 15,
+    "brake": 11,
+    "hover": 36,
+    "rev": 298,
+    "wait": 360
+   },
+   "centerIn012": 0.664,
+   "centerIn03": 0.768,
+   "zoomptIn012": 0.776,
+   "centerInside": 0.172,
+   "centerEmpty": 0,
+   "imgInside": 0.058,
+   "imgEmpty": 0,
+   "flips": 0,
+   "z0": 1000,
+   "z1": 1670
+  },
+  {
+   "place": "Spirale 10⁴",
+   "variant": "alt",
+   "n": 697,
+   "phases": {
+    "cruise": 15,
+    "brake": 11,
+    "hover": 36,
+    "rev": 298,
+    "wait": 360
+   },
+   "centerIn012": 0.297,
+   "centerIn03": 0.42,
+   "zoomptIn012": 0.831,
+   "centerInside": 0,
+   "centerEmpty": 0.323,
+   "imgInside": 0,
+   "imgEmpty": 0.391,
+   "flips": 0,
+   "z0": 10000,
+   "z1": 16700
+  },
+  {
+   "place": "Kardioide 30×",
+   "variant": "alt",
+   "n": 697,
+   "phases": {
+    "cruise": 15,
+    "brake": 11,
+    "hover": 36,
+    "rev": 298,
+    "wait": 360
+   },
+   "centerIn012": 0.286,
+   "centerIn03": 0.286,
+   "zoomptIn012": 0.829,
+   "centerInside": 0.714,
+   "centerEmpty": 0,
+   "imgInside": 0.709,
+   "imgEmpty": 0,
+   "flips": 0,
+   "z0": 30,
+   "z1": 50.2
+  },
+  {
+   "place": "Antenne 10³",
+   "variant": "alt",
+   "n": 697,
+   "phases": {
+    "cruise": 15,
+    "brake": 11,
+    "hover": 36,
+    "rev": 298,
+    "wait": 360
+   },
+   "centerIn012": 0.519,
+   "centerIn03": 0.519,
+   "zoomptIn012": 0.849,
+   "centerInside": 0.481,
+   "centerEmpty": 0,
+   "imgInside": 0.552,
+   "imgEmpty": 0,
+   "flips": 0,
+   "z0": 1000,
+   "z1": 1670
+  }
+ ]
+}

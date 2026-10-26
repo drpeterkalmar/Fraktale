@@ -8,6 +8,9 @@
   D  Gesten in gedrehter Ansicht: ein Finger schiebt um (120, 0) CSS-px – der Weltpunkt unter dem Finger bleibt unter dem Finger
   E  Ausrichten (Kompass-Knopf) nach dem Flug: Winkel in 0,6 s weich auf 0
   F  ⛰ aus gedrehter 2D-Ansicht: 3D übernimmt den Winkel als Kurs (Kurs = −Drehung), 2D-Drehung 0
+  G  Schweben am Rand (7.4.x): 2D-Flug 45 s mit erzwungen grober Schärfe (GOV.lq = 0,3 -> Bremsen/Schweben/Herauszoomen/Warten),
+     Elefantental 10³ und Kardioide 30×: Bildmitte in den Schwebe-Phasen ≥ 90 % im Rand-Korridor (0 < d ≤ 0,12 Bildhälften), seltener
+     innen als mit ?randschweb=0; grobe Bilder nicht mehr als ohne (+3 Prozentpunkte)
 Aufruf: FK_HEADED=1 python3 tests/test_v740.py [--only=A,B,…]   (Server: python3 tools/serve.py 8472)
 Stand 26.10.2026: geschrieben in der Leicht-Spur (kein Browser erlaubt) – noch nicht ausgeführt.
 """
@@ -17,7 +20,7 @@ from e2e_lib import App
 from playwright.sync_api import sync_playwright
 
 ARGS = dict(a.lstrip('-').split('=', 1) if '=' in a else (a.lstrip('-'), '1') for a in sys.argv[1:])
-ONLY = set(ARGS.get('only', 'A,B,C,D,E,F').split(','))
+ONLY = set(ARGS.get('only', 'A,B,C,D,E,F,G').split(','))
 SEA = ('-0.743643887037158704752191506114774', '0.131825904205311970493132056385139')
 OUT = os.path.join(os.path.dirname(__file__), 'results_v740.json')
 fails, res = [], {}
@@ -149,9 +152,39 @@ def case_F(p):
     check(ok3 and abs(h[0] + math.radians(20)) < 1e-6 and h[1] == 0, f'3D an: {ok3}, Kurs {math.degrees(h[0]):.2f}° (soll −20°), 2D-Drehung {h[1]}')
 
 
+HOVER = """(ms) => new Promise(res => { const A = window.__fraktal, G = A.GOV, F = A.FLY, t0 = performance.now();
+  Object.defineProperty(G, 'lq', { configurable: true, get() { return 0.3; }, set(v) {} });
+  A.frameStats(true); A.S.flySpeed = 0.3; A.startFly(undefined, { d3: false }); F.rec = []; F.recM = [];
+  const f = () => { if (performance.now() - t0 < ms) { requestAnimationFrame(f); return; }
+    delete G.lq; const fs = A.frameStats(false), fr = fs.frames.filter(x => x.t - fs.frames[0].t > 3000);
+    const M = F.recM.filter(m => m.ph && m.ph !== 'cruise' && m.dw > 0.5); A.stopFly();
+    const fr2 = (g) => M.length ? M.filter(g).length / M.length : null;
+    res({ n: M.length, inC: fr2(m => m.dF !== null && m.dF > 0 && m.dF <= 0.12), inside: fr2(m => m.dF === 0), img: M.length ? M.reduce((a, m) => a + (m.inFrac || 0), 0) / M.length : null,
+          coarse: fr.length ? fr.filter(x => x.coarse > 0.1).length / fr.length : null }); };
+  requestAnimationFrame(f); })"""
+
+
+def case_G(p):
+    print('G  Schweben am Rand')
+    res['G'] = []
+    for name, x, y, z in [('Elefantental', '0.2925755', '-0.0149977', '1e3'), ('Kardioide', '-0.7487', '0.0647', '30')]:
+        r = {}
+        for v, q in [('neu', ''), ('alt', '&randschweb=0')]:
+            a = App(p, query='nosw&noanim&roll=0' + q).open(f'm=0&x={x}&y={y}&z={z}')
+            a.wait_done(120)
+            r[v] = a.page.evaluate(HOVER, 45000); r[v]['errors'] = a.errors[:3]
+            a.close()
+        res['G'].append({'ort': name, **r})
+        n, o = r['neu'], r['alt']
+        check(n['n'] > 50 and n['inC'] >= 0.9 and n['inside'] <= o['inside'] and not n['errors'],
+              f"{name}: Mitte im Korridor {n['inC']:.2f} (ohne {o['inC']}), innen {n['inside']:.2f} (ohne {o['inside']}), Bild schwarz {n['img']:.2f} (ohne {o['img']}) {n['errors']}")
+        if n['coarse'] is not None and o['coarse'] is not None:
+            check(n['coarse'] <= o['coarse'] + 0.03, f"{name}: grob {n['coarse'] * 100:.1f} % (ohne {o['coarse'] * 100:.1f} %)")
+
+
 def main():
     with sync_playwright() as p:
-        for k, f in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F)]:
+        for k, f in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G)]:
             if k in ONLY:
                 f(p)
     json.dump(res, open(OUT, 'w'), indent=1, ensure_ascii=False)
