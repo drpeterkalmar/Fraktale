@@ -11,6 +11,8 @@
   G  Schweben am Rand (7.4.x): 2D-Flug 45 s mit erzwungen grober Schärfe (GOV.lq = 0,3 -> Bremsen/Schweben/Herauszoomen/Warten),
      Elefantental 10³ und Kardioide 30×: Bildmitte in den Schwebe-Phasen ≥ 90 % im Rand-Korridor (0 < d ≤ 0,12 Bildhälften), seltener
      innen als mit ?randschweb=0; grobe Bilder nicht mehr als ohne (+3 Prozentpunkte)
+  H  Start am Rand (7.4.x): 20 Zufallsstarts (?seed=1…20, Pixel 7): bei jeder 2D-Welt liegt der Rand in der Bildmitte (CPU-Sonde
+     ±0,04 Bildhälften um die Kamera beim Losfliegen), Zeit bis zur Bewegung nicht länger als mit ?randstart=0 (+10 %)
 Aufruf: FK_HEADED=1 python3 tests/test_v740.py [--only=A,B,…]   (Server: python3 tools/serve.py 8472)
 Stand 26.10.2026: geschrieben in der Leicht-Spur (kein Browser erlaubt) – noch nicht ausgeführt.
 """
@@ -20,7 +22,7 @@ from e2e_lib import App
 from playwright.sync_api import sync_playwright
 
 ARGS = dict(a.lstrip('-').split('=', 1) if '=' in a else (a.lstrip('-'), '1') for a in sys.argv[1:])
-ONLY = set(ARGS.get('only', 'A,B,C,D,E,F,G').split(','))
+ONLY = set(ARGS.get('only', 'A,B,C,D,E,F,G,H').split(','))
 SEA = ('-0.743643887037158704752191506114774', '0.131825904205311970493132056385139')
 OUT = os.path.join(os.path.dirname(__file__), 'results_v740.json')
 fails, res = [], {}
@@ -182,9 +184,33 @@ def case_G(p):
             check(n['coarse'] <= o['coarse'] + 0.03, f"{name}: grob {n['coarse'] * 100:.1f} % (ohne {o['coarse'] * 100:.1f} %)")
 
 
+START = """() => new Promise(res => { const A = window.__fraktal, t0 = performance.now();
+  const f = () => { const S = A.START; if (!S.motion && performance.now() - t0 < 20000) { setTimeout(f, 50); return; }
+    const w = A.S.formula, two = A.is2dW ? A.is2dW(w) : ![6, 7, 8, 9, 14, 15, 16, 17, 18].includes(w);
+    res({ world: w, two, edge: S.info && S.info.edge, t: performance.now(), on: two ? A.ZUFALL.centerOnEdge(A.HP.toNumber(A.S.cam.cx), A.HP.toNumber(A.S.cam.cy), A.S.cam.zoom, w) : null }); };
+  f(); })"""
+
+
+def case_H(p):
+    print('H  Start am Rand')
+    res['H'] = {'neu': [], 'alt': []}
+    for v, q in [('neu', ''), ('alt', '&randstart=0')]:
+        for sd in range(1, 21):
+            a = App(p, query=f'nosw&noanim&start=flug&seed={sd}' + q).open()
+            t0 = time.time()
+            r = a.page.evaluate(START); r['ms'] = round((time.time() - t0) * 1000); r['errors'] = a.errors[:2]
+            a.close()
+            res['H'][v].append(r)
+    n2 = [r for r in res['H']['neu'] if r['two']]
+    ok = sum(1 for r in n2 if r['on'])
+    tn = sum(r['ms'] for r in res['H']['neu']) / 20; ta = sum(r['ms'] for r in res['H']['alt']) / 20
+    check(n2 and ok == len(n2) and not any(r['errors'] for r in res['H']['neu']), f'Rand in der Mitte: {ok}/{len(n2)} 2D-Starts')
+    check(tn <= ta * 1.1, f'Zeit bis zur Bewegung Ø {tn:.0f} ms (ohne {ta:.0f} ms)')
+
+
 def main():
     with sync_playwright() as p:
-        for k, f in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G)]:
+        for k, f in [('A', case_A), ('B', case_B), ('C', case_C), ('D', case_D), ('E', case_E), ('F', case_F), ('G', case_G), ('H', case_H)]:
             if k in ONLY:
                 f(p)
     json.dump(res, open(OUT, 'w'), indent=1, ensure_ascii=False)

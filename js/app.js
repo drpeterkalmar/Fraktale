@@ -1566,6 +1566,12 @@ function randomStart() {
         else { const h = isDens(w) ? homeOf(w) : null; setCam(HP.fromString(h ? h[0] : p.cx), HP.fromString(h ? h[1] : p.cy), h ? h[2] : +p.zoom); }
     }
     START.world = w; START.sight = p ? p.k : null;
+    // 7.4.2: auch hier der Rand in der Bildmitte (js/zufall.js edgeCenter; ?randstart=0 = wie 7.4.1)
+    if (is2dW(w) && Q.get('randstart') !== '0') {
+        const e = M_Zufall.edgeCenter(HP.toNumber(S.cam.cx), HP.toNumber(S.cam.cy), S.cam.zoom, S.formula);
+        if (e.found) setCam(S.cam.cx + HP.fromNumber(e.dx), S.cam.cy + HP.fromNumber(e.dy), S.cam.zoom);
+        START.edge = { found: e.found, moved: +(e.moved || 0).toFixed(3) };
+    }
 }
 function init() {
     loadSettings();

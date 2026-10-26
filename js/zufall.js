@@ -20,6 +20,11 @@
 // Regler: Einstellung „Start“ (Zufallsflug / Zufallswelt still = 7.1.6 / Wie zuletzt), ?start=flug|still|last,
 // ?zufall=0 = nur Welt + Ort würfeln wie 7.1.6 (Flug und Kino bleiben), ?seed=N = fester Zufall (Test, Bericht).
 // Tests (navigator.webdriver) starten wie bisher im Mandelbrot – außer mit ?start= oder ?seed= (bzw. ?startworld=random = 7.1.6).
+// 7.4.2 Start immer am Rand (Peter 26.10.2026: „Fraktal auch beim Start und Neuladen immer an der Mengengrenze starten“): nach der
+// Wahl des Orts (Startansicht, Tour-Ort, Kundschafter) rückt die Bildmitte auf die nächste Stelle des Mengenrands – Wechsel
+// innen/außen zwischen zwei Nachbarzellen der CPU-Sonde (Newton: zwischen zwei Einzugsgebieten; ohne Inneres: der stärkste
+// Sprung im Iterationswert), danach in einem 8× feineren Ausschnitt nachgeschärft (edgeCenter). Der Flug beginnt dort (sein
+// Zoompunkt ist die Bildmitte). Links/Lesezeichen (x/y/z) und „Wie zuletzt“ bleiben exakt. ?randstart=0 = wie 7.4.1.
 (function (root) {
 'use strict';
 
@@ -184,7 +189,58 @@ root.FKZufall = { create(ctx) {
             const x = cx + ((i + 0.5) / nx - 0.5) * w, y = cy + ((j + 0.5) / ny - 0.5) * h;
             v[j * nx + i] = C.directPixel(x, y, cf, maxIter, jx, jy, 0, false);
         }
-        return { v, nx, ny, f, w, h };
+        return { v, nx, ny, f, w, h, cx, cy };
+    }
+    // ---------------- 7.4.2 Rand in die Bildmitte
+    // Klasse einer Zelle: innen (-1) / außen (0) bzw. Newton: Wurzel; Rand = zwei Nachbarzellen verschiedener Klasse
+    const clsOf = (t, f) => t < 0 ? -1 : f === 5 ? Math.floor(t / 1000) : 0;
+    const uOf = (t, f) => t < 0 ? 0 : f === 5 ? t % 1000 : Math.log2(1 + t);
+    // nächste Randstelle zur Mitte des Rasters g (Welt-Koordinaten; Mitte zwischen den beiden Zellen) oder null
+    function nearestEdge(g, f) {
+        const { v, nx, ny, w, h } = g;
+        let best = null, bestJ = null;
+        for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+            const a = v[j * nx + i];
+            for (const [di, dj] of [[1, 0], [0, 1]]) {
+                if (i + di >= nx || j + dj >= ny) continue;
+                const b = v[(j + dj) * nx + i + di];
+                const x = ((i + 0.5 + di / 2) / nx - 0.5) * w, y = ((j + 0.5 + dj / 2) / ny - 0.5) * h, r = Math.hypot(x, y);
+                if (clsOf(a, f) !== clsOf(b, f)) { if (!best || r < best.r) best = { r, x, y }; }
+                else if (!best) {
+                    // ohne Inneres/Wechsel: stärkster Sprung des Iterationswerts (Filament), nahe der Mitte bevorzugt
+                    const du0 = Math.abs(uOf(a, f) - uOf(b, f)), du = du0 - 2 * r / h;
+                    if (du0 > 0.6 && (!bestJ || du > bestJ.du)) bestJ = { du, r, x, y };
+                }
+            }
+        }
+        const e = best || bestJ;
+        return e ? { x: g.cx + e.x, y: g.cy + e.y, r: e.r / (g.h / 2), edge: !!best } : null;
+    }
+    // Ansicht (cx, cy, zoom) auf den Rand zentrieren; g = schon gerechnete Sonde dieser Ansicht (sonst neu). Kein Rand im Bild (leere
+    // Außenfläche, ganz innen): in 4×, 16×, 64× weiterer Ansicht suchen und von dort Stufe für Stufe (×4) bis zum Ausgangszoom
+    // nachführen – der Zoom bleibt. Am Ende ein 8× feinerer Ausschnitt. Liefert die neue Mitte (dx/dy = Versatz)
+    function edgeCenter(cx, cy, zoom, f, g) {
+        const asp = ctx.cssH / Math.max(1, ctx.cssW), ny = Math.max(16, Math.round(48 * asp)), ny2 = Math.max(12, Math.round(24 * asp));
+        g = g || probeGrid(cx, cy, zoom, 48, ny, f);
+        let e = nearestEdge(g, f), lv = 0;
+        const zmin = Math.min(zoom, 0.2);
+        while (!e && lv < 3 && zoom / Math.pow(4, lv + 1) >= zmin) { lv++; e = nearestEdge(probeGrid(cx, cy, zoom / Math.pow(4, lv), 48, ny, f), f); }
+        if (!e) return { cx, cy, dx: 0, dy: 0, moved: 0, found: false, g };
+        const kind = e.edge;
+        // zurück zum Ausgangszoom (je Stufe ×4) und 8× feiner: jeweils die nächste Randstelle gleicher Art um die bisherige
+        for (let k = lv - 1; k >= -1; k--) {
+            const z = k >= 0 ? zoom / Math.pow(4, k) : zoom * 8;
+            const e2 = nearestEdge(probeGrid(e.x, e.y, z, k >= 0 ? 48 : 24, k >= 0 ? ny : ny2, f), f);
+            if (e2 && e2.edge === kind) e = e2;
+        }
+        return { cx: e.x, cy: e.y, dx: e.x - cx, dy: e.y - cy, moved: Math.hypot(e.x - cx, e.y - cy) / (1.5 / zoom), found: true, edge: kind, lv, g };
+    }
+    // liegt der Rand in der Bildmitte? (Ausschnitt ±0,04 Bildhälften, 12×12)
+    function centerOnEdge(cx, cy, zoom, f) {
+        const g = probeGrid(cx, cy, zoom * 25, 12, 12, f);
+        let c0 = null, mx = 0, mn = 1e9, mixed = false;
+        for (const t of g.v) { const c = clsOf(t, f); if (c0 === null) c0 = c; else if (c !== c0) mixed = true; const u = uOf(t, f); mx = Math.max(mx, u); mn = Math.min(mn, u); }
+        return mixed || mx - mn > 0.6;
     }
     // Wertung einer Ansicht: Anteil Menge (innen), Struktur (Anteil Nachbarpaare mit deutlichem Unterschied), Streuung
     function judgeGrid(g) {
@@ -241,6 +297,20 @@ root.FKZufall = { create(ctx) {
     }
 
     // ---------------- Anwenden
+    // 7.4.2 würfeln + anwenden; liegt danach kein Rand im Bild (Welt mit Menge: kein Wechsel innen/außen; sonst gar keiner) –
+    // gewürfelte Parameter ohne Menge an dieser Stelle, leere Fläche –, bis zu 2× neu würfeln (gleiche Welt, Zufall läuft weiter)
+    function rollApply(r, opts) {
+        let P, info;
+        for (let k = 0; k < 3; k++) {
+            if (k && Z.saved) restore(Z.saved);
+            P = rollPlan(r, k ? Object.assign({}, opts, { world: P.world }) : opts);
+            info = applyPlan(P, r);
+            const e = info.edge;
+            if (!e || P.only || (e.found && (e.kind === 'rand' || !ctx.hasSetW(P.world)))) break;
+            (START.edgeRerolls = START.edgeRerolls || []).push({ world: P.world, place: P.place.kind, edge: e });
+        }
+        return { P, info };
+    }
     function snapshot() { const o = {}; for (const k of KEYS) o[k] = deep(S[k]); o.wp = deep(S.wp); o.bulbFly = deep(S.bulbFly || {}); o.wpal = deep(S.wpal || {}); o.paletteId = PAL.list[S.palette].id; return o; }
     function applyPlan(P, r) {
         Z.applying = true;
@@ -279,14 +349,21 @@ root.FKZufall = { create(ctx) {
             // bis zu 6 Orte; der erste, den die Sonde für schön genug hält, gilt (sonst der beste, zuletzt die Startansicht)
             for (let k = 0; k < 6; k++) {
                 const c = scout(rr, +h[0], +h[1], h[2], Math.max(1, P.place.steps - (k >> 1)), P.place.fac);
-                const j = judgeGrid(probeGrid(c[0], c[1], c[2], 48, Math.max(16, Math.round(48 * ctx.cssH / Math.max(1, ctx.cssW))), S.formula));
+                const g = probeGrid(c[0], c[1], c[2], 48, Math.max(16, Math.round(48 * ctx.cssH / Math.max(1, ctx.cssW))), S.formula), j = judgeGrid(g);
                 info.tries = k + 1;
-                if (j.ok) { best = { c, j }; break; }
+                if (j.ok) { best = { c, j, g }; break; }
             }
-            if (best) { ctx.setCam(HP.fromNumber(best.c[0]), HP.fromNumber(best.c[1]), best.c[2]); info.probe = best.j; }
+            if (best) { ctx.setCam(HP.fromNumber(best.c[0]), HP.fromNumber(best.c[1]), best.c[2]); info.probe = best.j; info.grid = best.g; }
             else { ctx.setCam(HP.fromString(h[0]), HP.fromString(h[1]), h[2]); info.place = 'home'; info.fallback = 'sonde'; }
         }
-        if (!info.probe && ctx.is2dW(w)) info.probe = judgeGrid(probeGrid(HP.toNumber(S.cam.cx), HP.toNumber(S.cam.cy), S.cam.zoom, 48, Math.max(16, Math.round(48 * ctx.cssH / Math.max(1, ctx.cssW))), S.formula));
+        if (!info.probe && ctx.is2dW(w)) { info.grid = probeGrid(HP.toNumber(S.cam.cx), HP.toNumber(S.cam.cy), S.cam.zoom, 48, Math.max(16, Math.round(48 * ctx.cssH / Math.max(1, ctx.cssW))), S.formula); info.probe = judgeGrid(info.grid); }
+        // 7.4.2: Rand in die Bildmitte (dieselbe Sonde, ein feiner Ausschnitt dazu)
+        if (ctx.is2dW(w) && Q.get('randstart') !== '0' && info.grid) {
+            const e = edgeCenter(HP.toNumber(S.cam.cx), HP.toNumber(S.cam.cy), S.cam.zoom, S.formula, info.grid);
+            if (e.found) ctx.setCam(S.cam.cx + HP.fromNumber(e.dx), S.cam.cy + HP.fromNumber(e.dy), S.cam.zoom);
+            info.edge = { found: e.found, moved: +(e.moved || 0).toFixed(3), kind: e.found ? (e.edge ? 'rand' : 'filament') : null, weiter: e.lv || 0 };
+        }
+        delete info.grid;
         S.iterManual = false;
         ctx.invalidate();
         ctx.emit('mode'); ctx.emit('settings'); ctx.emit('wp');
@@ -351,8 +428,9 @@ root.FKZufall = { create(ctx) {
         Z.saved = snapshot();
         Z.mode = mode;
         const only = Q.get('zufall') === '0';
-        Z.plan = rollPlan(Z.r, { seeded, only });
-        const info = applyPlan(Z.plan, Z.r);
+        const ra = rollApply(Z.r, { seeded, only });
+        Z.plan = ra.P;
+        const info = ra.info;
         Z.rolled = snapshot();
         Object.assign(START, { how: START.how, mode, seed, world: info.world, sight: info.sight, place: info.place, info, plan: Z.plan, image: null, rerolls: 0, fallback: info.fallback || null, flying: false, kino: true });
         writeURL();
@@ -384,8 +462,9 @@ root.FKZufall = { create(ctx) {
                 Z.tries++; START.rerolls = Z.tries;
                 (START.rejected = START.rejected || []).push({ why: j.why, plan: Z.plan });
                 restore(Z.saved);
-                Z.plan = rollPlan(Z.r, { world: Z.plan.world });
-                const info = applyPlan(Z.plan, Z.r);
+                const ra = rollApply(Z.r, { world: Z.plan.world });
+                Z.plan = ra.P;
+                const info = ra.info;
                 Z.rolled = snapshot();
                 Object.assign(START, { info, sight: info.sight, place: info.place, plan: Z.plan });
                 writeURL();
@@ -448,6 +527,6 @@ root.FKZufall = { create(ctx) {
     function info() { return { active: Z.active, phase: Z.phase, mode: Z.mode, saved: Z.saved, rolled: Z.rolled }; }
 
     return { link() { ({ HP, PAL, Q, S, START } = ctx); },
-             startMode, begin, tick, patchSave, rollPlan, judgeGrid, probeGrid, judgeImage, info, rng };
+             startMode, begin, tick, patchSave, rollPlan, judgeGrid, probeGrid, judgeImage, info, rng, scout, edgeCenter, centerOnEdge, nearestEdge, applyPlanTest: applyPlan, rollApply };
 } };
 })(typeof self !== 'undefined' ? self : globalThis);
