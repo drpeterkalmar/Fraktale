@@ -41,5 +41,6 @@ run python3 tests/test_v7113.py
 run python3 tests/test_v7114.py
 run python3 tests/test_v720.py
 run env FK_HEADED=1 python3 tests/test_v721.py
+run python3 tests/test_v730.py
 run env FK_HEADED=1 python3 tests/test_memory3d.py
 exit $fail

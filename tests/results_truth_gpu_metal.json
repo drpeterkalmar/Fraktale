@@ -7,8 +7,8 @@
    "id": 2,
    "method": "center",
    "period": 0,
-   "len": 3878,
-   "ms": 9
+   "len": 7974,
+   "ms": 6
   },
   "size": "824x1678",
   "maxIter": 2450,
@@ -22,8 +22,8 @@
    674.0,
    2354.7
   ],
-  "renderS": 1.8,
-  "lastFullMs": 1296.8999999761581,
+  "renderS": 3.24,
+  "lastFullMs": 2617.7000000476837,
   "truthS": 0.7,
   "pass": true
  },
@@ -50,8 +50,8 @@
    308.9,
    1273.7
   ],
-  "renderS": 1.54,
-  "lastFullMs": 1156.099999976158,
+  "renderS": 1.64,
+  "lastFullMs": 1358.199999856949,
   "truthS": 0.4,
   "pass": true
  },
@@ -78,9 +78,9 @@
    49.0,
    119.6
   ],
-  "renderS": 0.86,
-  "lastFullMs": 378.60000000000036,
-  "truthS": 0.2,
+  "renderS": 0.73,
+  "lastFullMs": 421.3000000000002,
+  "truthS": 0.3,
   "pass": true
  },
  {
@@ -91,8 +91,8 @@
    "id": 8,
    "method": "center",
    "period": 0,
-   "len": 12492,
-   "ms": 6
+   "len": 24983,
+   "ms": 20
   },
   "size": "824x1678",
   "maxIter": 9800,
@@ -106,9 +106,9 @@
    3030.3,
    8961.4
   ],
-  "renderS": 3.89,
-  "lastFullMs": 3570.8999999999996,
-  "truthS": 1.4,
+  "renderS": 5.19,
+  "lastFullMs": 4784.600000047683,
+  "truthS": 1.9,
   "pass": true
  },
  {
@@ -120,7 +120,7 @@
    "method": "grid",
    "period": 0,
    "len": 1635,
-   "ms": 6
+   "ms": 5
   },
   "size": "824x1678",
   "maxIter": 11250,
@@ -134,9 +134,9 @@
    1005.4,
    1712.9
   ],
-  "renderS": 1.8,
-  "lastFullMs": 1228.7999999821186,
-  "truthS": 0.6,
+  "renderS": 1.6,
+  "lastFullMs": 1304.3999999523166,
+  "truthS": 0.7,
   "pass": true
  },
  {
@@ -148,7 +148,7 @@
    "method": "nucleus",
    "period": 1958,
    "len": 1959,
-   "ms": 2
+   "ms": 13
   },
   "size": "824x1678",
   "maxIter": 30000,
@@ -162,9 +162,9 @@
    2318.6,
    3093.2
   ],
-  "renderS": 2.85,
-  "lastFullMs": 2403.099999982118,
-  "truthS": 1.2,
+  "renderS": 3.42,
+  "lastFullMs": 2989.399999952315,
+  "truthS": 1.5,
   "pass": true
  },
  {
@@ -172,11 +172,11 @@
   "engine": "gpu/perturb",
   "bla": true,
   "ref": {
-   "id": 14,
+   "id": 15,
    "method": "grid",
    "period": 0,
    "len": 1874,
-   "ms": 4
+   "ms": 7
   },
   "size": "824x1678",
   "maxIter": 5000,
@@ -190,9 +190,9 @@
    747.7,
    1715.8
   ],
-  "renderS": 1.8,
-  "lastFullMs": 1416.5999999761589,
-  "truthS": 0.5,
+  "renderS": 2.07,
+  "lastFullMs": 1670.2999999523163,
+  "truthS": 0.6,
   "pass": true
  },
  {
@@ -200,11 +200,11 @@
   "engine": "gpu/perturb",
   "bla": true,
   "ref": {
-   "id": 16,
+   "id": 17,
    "method": "nucleus",
    "period": 90,
    "len": 91,
-   "ms": 0
+   "ms": 1
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -218,9 +218,9 @@
    143.4,
    906.4
   ],
-  "renderS": 1.96,
-  "lastFullMs": 1438.7000000000007,
-  "truthS": 0.3,
+  "renderS": 1.88,
+  "lastFullMs": 1577.9000000000015,
+  "truthS": 0.6,
   "pass": true
  },
  {
@@ -231,8 +231,8 @@
    "id": 18,
    "method": "grid",
    "period": 0,
-   "len": 82,
-   "ms": 2
+   "len": 475,
+   "ms": 5
   },
   "size": "824x1678",
   "maxIter": 1250,
@@ -246,8 +246,8 @@
    73.4,
    309.4
   ],
-  "renderS": 1.13,
-  "lastFullMs": 615.6999999880791,
+  "renderS": 0.93,
+  "lastFullMs": 537.499999952317,
   "truthS": 0.3,
   "pass": true
  },
@@ -256,11 +256,11 @@
   "engine": "gpu/perturb",
   "bla": true,
   "ref": {
-   "id": 20,
+   "id": 21,
    "method": "nucleus",
    "period": 180,
    "len": 181,
-   "ms": 1
+   "ms": 0
   },
   "size": "824x1678",
   "maxIter": 2450,
@@ -274,9 +274,9 @@
    214.5,
    1288.5
   ],
-  "renderS": 1.96,
-  "lastFullMs": 1630.2000000000007,
-  "truthS": 0.3,
+  "renderS": 2.07,
+  "lastFullMs": 1585.4000000476844,
+  "truthS": 0.4,
   "pass": true
  },
  {
@@ -284,11 +284,11 @@
   "engine": "gpu/perturb",
   "bla": true,
   "ref": {
-   "id": 22,
+   "id": 23,
    "method": "nucleus",
    "period": 270,
    "len": 271,
-   "ms": 1
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 3200,
@@ -302,9 +302,9 @@
    491.5,
    3113.8
   ],
-  "renderS": 5.0,
-  "lastFullMs": 4529.499999976157,
-  "truthS": 0.7,
+  "renderS": 4.39,
+  "lastFullMs": 4023.5999998569496,
+  "truthS": 0.8,
   "pass": true
  },
  {
@@ -312,11 +312,11 @@
   "engine": "gpu/perturb",
   "bla": false,
   "ref": {
-   "id": 24,
+   "id": 25,
    "method": "grid",
    "period": 0,
    "len": 1034,
-   "ms": 3
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -330,8 +330,8 @@
    297.3,
    1358.3
   ],
-  "renderS": 2.07,
-  "lastFullMs": 1521.8999999761581,
+  "renderS": 1.78,
+  "lastFullMs": 1298.4000000476808,
   "truthS": 0.3,
   "pass": true
  },
@@ -340,11 +340,11 @@
   "engine": "gpu/perturb",
   "bla": false,
   "ref": {
-   "id": 25,
+   "id": 27,
    "method": "grid",
    "period": 0,
-   "len": 872,
-   "ms": 12
+   "len": 816,
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 1800,
@@ -358,8 +358,8 @@
    753.1,
    849.6
   ],
-  "renderS": 1.12,
-  "lastFullMs": 689.3999999940424,
+  "renderS": 1.05,
+  "lastFullMs": 773.4000000000015,
   "truthS": 0.4,
   "pass": true
  },
@@ -368,11 +368,11 @@
   "engine": "gpu/direct",
   "bla": null,
   "ref": {
-   "id": 26,
+   "id": 27,
    "method": "grid",
    "period": 0,
    "len": 816,
-   "ms": 5
+   "ms": 2
   },
   "size": "824x1678",
   "maxIter": 450,
@@ -386,9 +386,9 @@
    40.1,
    447.2
   ],
-  "renderS": 0.89,
-  "lastFullMs": 448,
-  "truthS": 0.2,
+  "renderS": 1.15,
+  "lastFullMs": 695.3000000476823,
+  "truthS": 0.3,
   "pass": true
  },
  {
@@ -396,10 +396,10 @@
   "engine": "gpu/perturb",
   "bla": true,
   "ref": {
-   "id": 27,
+   "id": 29,
    "method": "nucleus",
-   "period": 25,
-   "len": 26,
+   "period": 27,
+   "len": 28,
    "ms": 0
   },
   "size": "824x1678",
@@ -414,9 +414,9 @@
    40.1,
    427.7
   ],
-  "renderS": 0.88,
-  "lastFullMs": 502.19999997616105,
-  "truthS": 0.2,
+  "renderS": 0.94,
+  "lastFullMs": 518.6999999999971,
+  "truthS": 0.4,
   "pass": true
  },
  {
@@ -424,11 +424,11 @@
   "engine": "cpu/perturb",
   "bla": true,
   "ref": {
-   "id": 29,
+   "id": 30,
    "method": "center",
    "period": 0,
    "len": 3980,
-   "ms": 11
+   "ms": 16
   },
   "size": "824x1678",
   "maxIter": 30000,
@@ -442,9 +442,9 @@
    3276.4,
    3803.4
   ],
-  "renderS": 6.46,
-  "lastFullMs": 6049.800000000003,
-  "truthS": 2.4,
+  "renderS": 7.37,
+  "lastFullMs": 6949.699999999997,
+  "truthS": 2.7,
   "pass": true
  }
 ]

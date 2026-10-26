@@ -1,0 +1,28 @@
+{
+ "ok": true,
+ "checks": [
+  "ok ganz: in Kacheln gerendert (60)",
+  "ok ganz: Kachelkanten 1.77 ≤ 1,5 × übriges Bild 1.47",
+  "ok tief: in Kacheln gerendert (60)",
+  "ok tief: Kachelkanten 11.80 ≤ 1,5 × übriges Bild 12.48",
+  "ok keine Seiten-/Konsolenfehler []"
+ ],
+ "res": {
+  "ganz": {
+   "seam": 1.7734126984126986,
+   "rest": 1.4741870590828934,
+   "tiles": 60,
+   "ms": 15354,
+   "W": 640,
+   "H": 384
+  },
+  "tief": {
+   "seam": 11.796614583333332,
+   "rest": 12.47595468887787,
+   "tiles": 60,
+   "ms": 18780,
+   "W": 640,
+   "H": 384
+  }
+ }
+}

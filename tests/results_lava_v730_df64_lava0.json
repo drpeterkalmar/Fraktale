@@ -1,0 +1,133 @@
+{
+ "tag": "v730_df64_lava0",
+ "base": "http://localhost:8472/index.html",
+ "secs": 20.0,
+ "query": "lava=0",
+ "speed": 0.3,
+ "runs": [
+  {
+   "n": 1192,
+   "secs": 20.0,
+   "coarse": 0.3733,
+   "still": 0.0,
+   "jz95": 0.639,
+   "jzmax": 1.415,
+   "jp95": 6.925,
+   "jpmax": 15.294,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 1.93,
+   "sharp_mean": 0.31,
+   "episodes": 24,
+   "lz0": 4.48,
+   "lz1": 4.61,
+   "cruise": 0.05,
+   "phases": {
+    "cruise": 1192
+   },
+   "fps": 59.6,
+   "brake": 0.0,
+   "name": "phoenix",
+   "plan": {
+    "kind": "gpu",
+    "mode": "df64"
+   },
+   "errors": []
+  },
+  {
+   "n": 1189,
+   "secs": 20.0,
+   "coarse": 0.9016,
+   "still": 0.0,
+   "jz95": 1.383,
+   "jzmax": 2.127,
+   "jp95": 0.148,
+   "jpmax": 0.334,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 17.96,
+   "sharp_mean": 17.96,
+   "episodes": 1,
+   "lz0": 4.48,
+   "lz1": 8.91,
+   "cruise": 0.3,
+   "phases": {
+    "cruise": 1189
+   },
+   "fps": 59.5,
+   "brake": 0.0,
+   "name": "nova",
+   "plan": {
+    "kind": "gpu",
+    "mode": "df64"
+   },
+   "errors": []
+  },
+  {
+   "n": 1189,
+   "secs": 20.0,
+   "coarse": 0.9066,
+   "still": 0.0,
+   "jz95": 1.35,
+   "jzmax": 2.137,
+   "jp95": 0.056,
+   "jpmax": 0.119,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 17.98,
+   "sharp_mean": 17.98,
+   "episodes": 1,
+   "lz0": 4.48,
+   "lz1": 9.37,
+   "cruise": 0.3,
+   "phases": {
+    "cruise": 1189
+   },
+   "fps": 59.4,
+   "brake": 0.0,
+   "name": "magnet",
+   "plan": {
+    "kind": "gpu",
+    "mode": "df64"
+   },
+   "errors": []
+  },
+  {
+   "n": 1191,
+   "secs": 20.0,
+   "coarse": 0.9076,
+   "still": 0.0008,
+   "jz95": 0.0,
+   "jzmax": 2.996,
+   "jp95": 0.07,
+   "jpmax": 0.117,
+   "hard": 0,
+   "flips": 0,
+   "flips_min": 0.0,
+   "minGap": null,
+   "sharp_max": 18.0,
+   "sharp_mean": 18.0,
+   "episodes": 1,
+   "lz0": 4.48,
+   "lz1": 6.6,
+   "cruise": 0.09,
+   "phases": {
+    "cruise": 1191
+   },
+   "fps": 59.5,
+   "brake": 0.0,
+   "name": "magnet2",
+   "plan": {
+    "kind": "gpu",
+    "mode": "df64"
+   },
+   "errors": []
+  }
+ ]
+}
