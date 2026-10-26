@@ -182,7 +182,7 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
-**Version VNEXT** – Roll im Flug: der Autopilot dreht das Bild ganz langsam (Peter: „Kannst du beim Fraktal-Autopiloten ganz langsame Rotationen (Roll) hinzufügen?“)
+**Version 7.4.0** – Roll im Flug: der Autopilot dreht das Bild ganz langsam (Peter: „Kannst du beim Fraktal-Autopiloten ganz langsame Rotationen (Roll) hinzufügen?“)
 - Neu: Bilddrehung der 2D-Ansicht. Jede Rechnung merkt sich ihren Winkel (`view.rot`): Rechen-Shader drehen die Pixelversätze um die Puffermitte (`u_rcs`, alle vier Familien inkl. df64 und Kachel-Screenshot), ebenso die CPU-Kacheln und die exakte Nachrechnung (`tile-worker.js`); der Display-Pass bildet Zielpixel mit Drehung auf die Texel jeder Ebene ab (`layers.js` `rectXf`, `renderer.js` `xfFor`, Federung der Ränder verallgemeinert – ohne Drehung dieselben Zahlen wie 7.3), Abdeckung/Planer prüfen schräge Ebenen genau (`inRect`), Sonde und 3D-Landschaft lesen gedrehte Ebenen (`three.js` `u_lr`). Gesten (`screenOffset`), Pfeiltasten, Minikarte, Referenzpunkt-Suche, Link (`r=`) kennen den Winkel. 3D rechnet ungedreht; ⛰ übernimmt den Winkel als Kurs.
 - `js/flight.js` `rollStep`: Drehtempo über eine kritisch gedämpfte Feder zu einem Ziel aus zwei langsamen Sinus (83 s/47 s, je Flug gewürfelt) – gemessen über 10 min (Node): höchstens 1,50°/s, im Mittel 0,98°/s, Drehbeschleunigung ≤ 0,38°/s², 14 Richtungswechsel; Anfahrt mit dem Flug, Ausrollen weich (≤ 1,2°/s², steht nach ≤ 9 s), Gesten halten eine auslaufende Drehung sofort an. 3D-Landschaft: Schaukeln ±12°.
 - Einstellung Mehr → „Roll im Flug“ (Standard an), `?roll=0` aus, `?roll=<°/s>`. Kompass-Knopf richtet die 2D-Ansicht aus (auch nach dem Flug).
