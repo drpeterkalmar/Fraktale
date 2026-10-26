@@ -184,7 +184,7 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
-**Version VNEXT** – Schweben immer entlang der Mengengrenze (Peter: „Fraktal-Autopilot: hover immer entlang der Mengengrenze.“)
+**Version 7.4.1** – Schweben immer entlang der Mengengrenze (Peter: „Fraktal-Autopilot: hover immer entlang der Mengengrenze.“)
 - `js/flight.js` `edgeWalk`: im Schweben, Herauszoomen und Warten der Lavalampe folgt der Kurs der Seitendrift einem Randläufer aus der Distanzschätzung der Sonde (2 Kreise × 24 Richtungen um die Bildmitte, Ziel 0,05 Bildhälften vom Rand, Inneres/Weg durchs Innere stark negativ, Richtungswechsel quadratisch negativ, gedämpfte Drehung ≤ 0,5 rad/s). Abseits des Randes (Mitte innen/leer): nächste Randstelle im Sondenfenster, Drift bis 2,5× (weich). Zoompunkt und Ziel wandern mit der Drift und rücken weich in die Mitte (bis 7.4.0 blieben sie stehen, nach dem Schweben glitt das Bild zurück).
 - Gemessen ohne Browser (`tests/sim_schweben.js`: echter 2D-Flug aus `flight.js`, Sonde auf dem Prozessor, Lavalampe dauerhaft im Schweben/Herauszoomen/Warten, 6 Orte × 120 s): Bildmitte im Rand-Korridor (≤ 0,12 Bildhälften) 56 % → **97 %**, im Inneren 25 % → 3 %, in leerer Fläche 5 % → 0 %; Bildanteil schwarz 23 % → 13 %, leer 6,5 % → 0 %; Zoompunkt am Rand 83 % → 97 %. Andere Zufallswerte: 65–73 % → 93–97 %. Schwächster Ort: Antenne bei einem großen Minibrot (81 %).
 - `?randschweb=0` = wie 7.4.0, `?randnin=` (Versuch: Strafe für viel Inneres rundum, Standard 0 – brachte nichts).
