@@ -135,7 +135,61 @@ function lintShader(src, name) {
         const args = callArgs(code, m.index + m[0].length - 1);
         for (const a of args) if (/^\s*-?\d+\s*$/.test(a)) errs.push(name + ': Ganzzahl-Literal in ' + m[1] + '(' + args.join(',') + ')');
     }
+    for (const d of localDups(code)) errs.push(name + ': lokale Variable im selben Block doppelt deklariert: ' + d);
     return [...new Set(errs)];
+}
+
+// 7.4.3: doppelte Deklaration im selben Block (auch Funktionsparameter vs. oberster Block der Funktion). Fehlerbild 7.4.0:
+// `vec4 …, r = …;` und darunter `uint r;` – die Sonde war unübersetzbar, der Prüfer sah es nicht.
+// Statements werden an ; { } getrennt; Deklaration = beginnt mit (const/highp/…) Typ, Namen per Komma auf Klammertiefe 0.
+function localDups(code) {
+    const dups = [];
+    const QUAL = /^(?:(?:const|highp|mediump|lowp|in|out|inout|flat|smooth)\s+)*/;
+    const declNames = (st) => {
+        st = st.trim().replace(QUAL, '');
+        const m = /^([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*(?:=|,|\[|$)/.exec(st);
+        if (!m || !TYPES.has(m[1])) return [];
+        const rest = st.slice(m[1].length);
+        const out = [];
+        let depth = 0, cur = '';
+        for (const ch of rest + ',') {
+            if ('([{'.includes(ch)) depth++;
+            else if (')]}'.includes(ch)) depth--;
+            if (ch === ',' && depth === 0) { const n = /^\s*([A-Za-z_]\w*)/.exec(cur); if (n) out.push(n[1]); cur = ''; } else cur += ch;
+        }
+        return out;
+    };
+    const stack = [];          // je offenem Block: Set der Namen (null = globaler Bereich wird nicht geprüft)
+    let st = '', pendingParams = null, i = 0;
+    const add = (names) => { const s = stack[stack.length - 1]; if (!s) return; for (const n of names) { if (s.has(n)) dups.push(n); s.add(n); } };
+    while (i < code.length) {
+        const ch = code[i];
+        if (ch === '(' ) {
+            // Funktionskopf „typ name(params) {“: Parameter merken, sie gehören in den obersten Block der Funktion
+            const j = matchParen(code, i);
+            const head = st.trim();
+            if (stack.length === 0 && /^[A-Za-z_]\w*\s+[A-Za-z_]\w*$/.test(head.replace(QUAL, ''))) {
+                pendingParams = code.slice(i + 1, j).split(',').map(p => p.trim().replace(QUAL, '')).map(p => (/^[A-Za-z_]\w*\s+([A-Za-z_]\w*)/.exec(p) || [])[1]).filter(Boolean);
+            }
+            st += code.slice(i, j + 1); i = j + 1; continue;
+        }
+        if (ch === '{') {
+            const s = new Set();
+            if (stack.length === 0 && pendingParams) { for (const n of pendingParams) s.add(n); }
+            pendingParams = null;
+            stack.push(stack.length === 0 && !/\)\s*$/.test(st.trim()) ? null : s);
+            st = ''; i++; continue;
+        }
+        if (ch === '}') { stack.pop(); st = ''; i++; continue; }
+        if (ch === ';') { if (stack.length) add(declNames(st)); st = ''; i++; continue; }
+        st += ch; i++;
+    }
+    return dups;
+}
+function matchParen(code, i) {
+    let d = 0;
+    for (let k = i; k < code.length; k++) { if (code[k] === '(') d++; else if (code[k] === ')' && --d === 0) return k; }
+    return code.length - 1;
 }
 
 function lintProgram(vs, fs, name) {

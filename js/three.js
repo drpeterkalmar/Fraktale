@@ -922,8 +922,11 @@ uniform vec2 u_psize;
 uniform float u_win;
 out uint o;
 uint probe(int i, vec2 P, out bool ok) {
-    vec4 lt = u_lt[i], ls = u_ls[i], r = vec4(u_lr[i], 0.0, 0.0);
-    vec2 tc = vec2(r.x * P.x + r.y * P.y, r.x * P.y - r.y * P.x) * lt.x + lt.yz;
+    // (7.4.3: Drehung heißt q – „r“ ist unten der Iterationswert; der Namenskonflikt machte die Sonde in 7.4.0–7.4.2
+    // unübersetzbar -> Flug ohne Randsuche, tauchte blind in die Menge)
+    vec4 lt = u_lt[i], ls = u_ls[i];
+    vec2 q = u_lr[i];
+    vec2 tc = vec2(q.x * P.x + q.y * P.y, q.x * P.y - q.y * P.x) * lt.x + lt.yz;
     ok = tc.x >= 0.0 && tc.y >= 0.0 && tc.x < ls.x && tc.y < ls.y;
     if (!ok) return 0u;
     ivec2 c = ivec2(tc);
