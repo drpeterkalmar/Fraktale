@@ -94,6 +94,22 @@ root.FKFlight = { create(ctx) {
     const RAND_SCHWEB = ctx.Q.get('randschweb') !== '0';
     const EDGE = { ds: 0.05, r: [0.1, 0.18], turn: 0.5, k: 1.2, nin: qn('randnin', 0) };
     FLY.lavaCfg = LV;             // (Test, Bericht)
+    // 7.5 Mutiger Flug (Peter 29.10.2026: „Fraktalflug ist zu zaghaft im Heranzoomen … es geht nur darum, dass er überhaupt nicht
+    // hineinfliegen will“ – das Grundtempo bleibt). Gemessen (tests/measure_v75.py, Zufallsstarts mit festem Zufall): Der Flug stand
+    // nicht am Tempo, sondern an drei Bremsen, die bei scharfem Bild weiterwirkten:
+    //  * Dauertempo rmax: jedes Bremsen setzte es auf 0,7 × Zoomtempo – auch wenn der Flug gerade erst anfuhr oder schon kroch (Tempo
+    //    ≈ 0) -> Untergrenze 0,03 Zehnerpotenzen/s, und mit +6 %/s dauerte der Wiederanstieg 30–60 s. Jetzt lernt nur ein Bremsen aus
+    //    echtem Tempo (≥ 30 % des Reisetempos). (Schnelleres Nachwachsen, +15 %/s, gemessen und verworfen: kein messbarer Gewinn.)
+    //  * „Verloren“ (× 0,05) mal Lenk-Drossel zf (bis × 0,07): fand die Randsuche keinen guten Rand (z. B. Tricorn an einer Kante aus
+    //    langsam entkommenden Punkten – die Distanzschätzung sieht die Menge überall > 1 Bildhälfte weit), blieb das Zoomtempo bei
+    //    0,1–0,4 % des Reisetempos, minutenlang. Jetzt wächst bei scharfem Bild ein „Mut“ L.mz (8 s), der die Lenk-Dämpfung auf
+    //    höchstens × 0,6 lockert. Das Anfluggleiten bleibt; im Anflug springt das Ziel nicht mehr alle 0,6 s auf die Gegenseite.
+    //  * Kriech-Bremse slowT: zählte die Lenk-Dämpfung mit und löste darum alle ~4 s Bremsen/Schweben aus (Pendeln). Jetzt zählt nur,
+    //    was Schärfe und Dauertempo erlauben.
+    // Gilt für den Zufallsflug in 2D auf der schnellen GPU-Rechnung (Klassiker bis 10³⁰); Exoten, Newton, Prozessor-Rechnung,
+    // 3D-Körper und Ziel-Flug wie bisher. Schärfe-Bremse (Tempo ∝ Schärfe), Schweben, Rückweg und alle Schwellen bleiben. ?mutig=0 = Verhalten 7.4.3.
+    const MUTIG = ctx.Q.get('mutig') !== '0';
+    FLY.mutig = MUTIG;
     // 7.4 Roll im Flug (Peter 26.10.2026: „Kannst du beim Fraktal-Autopiloten ganz langsame Rotationen (Roll) hinzufügen?“):
     // Der Autopilot (2D-Flug und 3D-Landschaft, Zufalls- und Ziel-Flug, mit Lavalampe) dreht das Bild ganz langsam um die
     // Blickachse. Drehtempo FLY.rw (rad/s) folgt seinem Ziel über eine kritisch gedämpfte Feder (ω = 0,8/s, nie ein Ruck);
@@ -414,7 +430,7 @@ root.FKFlight = { create(ctx) {
         const lost = Math.min(1, L.on ? FLY.lostS : FLY.lost || 0);
         const old = bulb ? (FLY.sp || 0) : (FLY.sp || 0) * GOV.g * (FLY.sp > 0 ? (1 - 0.95 * lost) * (FLY.zf || 1) : 1);
         if (!lavaWanted()) { if (L.on) { L.on = false; lavaPhase(L, 'cruise', now); } L.r = old; L.a = 0; L.dw = 0; L.dwv = 0; L.dv = [0, 0]; L.xs = null; L.rev = old < 0; return; }
-        if (!L.on) { L.on = true; L.r = old; L.a = 0; L.xs = null; L.dx = 0; lavaPhase(L, 'cruise', now); L.flip = -1e9; L.rmax = 9; L.fastT = now; }
+        if (!L.on) { L.on = true; L.r = old; L.a = 0; L.xs = null; L.dx = 0; lavaPhase(L, 'cruise', now); L.flip = -1e9; L.rmax = 9; L.fastT = now; L.mz = 0; }
         // Tempo vom Nutzer verstellt (Regler, Tasten, ⇄): 2 s lang folgt das Zoomtempo schnell (τ = 1 s) – eine Bedienung soll
         // sofort wirken, nur die Automatik ist träge. Anfahrt (S-Kurve 7.1.6) und Ausrollen gehen direkt durch
         if (L.sfs !== S.flySpeed) { if (L.sfs !== undefined) L.fastT = now; L.sfs = S.flySpeed; if (L.phase !== 'cruise') lavaPhase(L, 'cruise', now); L.rmax = 9; }
@@ -435,7 +451,19 @@ root.FKFlight = { create(ctx) {
         if (hold) L.dx = Math.max(0, L.dx);
         const xF = L.xs + Math.min(0, L.dx) * 2, age = (now - L.t) / 1000;
         const cruise = Math.max(0, FLY.sp || 0), cref = Math.max(0.1, Math.abs(S.flySpeed));
-        const base = bulb || FLY.mode === 'place' ? cruise : cruise * (1 - 0.95 * lost) * (FLY.zf || 1);
+        // 7.5: Lenk-Dämpfung („verloren“, zf) – hält sie bei scharfem Bild an, lockert der Mut sie weich auf höchstens × 0,6
+        // (nur die Klassiker auf der schnellen GPU-Rechnung – f32/Perturbation; Exoten (df64 ab 2000×) und Newton (CPU ab 10⁵)
+        // rechnen in der Tiefe langsam und kamen auch vorher in jedem Lauf hinein, dort wie 7.4.3: mit dem Fix gemessen +4 Punkte grob)
+        const pl = ctx.plan(), gpuQ = pl.kind === 'gpu' && pl.mode !== 'df64' && S.formula !== 5 && !ctx.isExo(ctx.cformula());
+        const kSteer = (1 - 0.95 * lost) * (FLY.zf || 1);
+        if (MUTIG && !bulb && gpuQ && FLY.mode === 'random') {
+            if (L.phase === 'cruise' && cruise > 0.02 && FLY.ease >= 1 && kSteer < 0.3 && L.xs > T.ok) L.mz = Math.min(1, (L.mz || 0) + dt / 8);
+            else if (kSteer > 0.6) L.mz = Math.max(0, (L.mz || 0) - dt / 3);
+        } else L.mz = 0;
+        const base = bulb || FLY.mode === 'place' ? cruise : cruise * Math.max(kSteer, 0.6 * smooth(L.mz || 0));
+        const qf0 = smooth((xF - T.lo) / (T.ok - T.lo));
+        const mut2 = MUTIG && !bulb && gpuQ && FLY.mode === 'random';    // 7.5: Zufallsflug, Klassiker auf der GPU
+        L.mut2 = mut2;
         // Phasen
         const qT = GOV.lqT === undefined || GOV.lqT === null ? 1 : GOV.lqT;
         const outD = L.turnZ ? Math.log10(L.turnZ / S.cam.zoom) : 0;
@@ -445,13 +473,17 @@ root.FKFlight = { create(ctx) {
             case 'cruise':
                 if (cruise > 0.02 && FLY.ease >= 1 && (xF < T.lo || L.xs < T.lo)) {
                     // Dauertempo lernen: was eben nicht durchhielt, gilt fürs Erste als Obergrenze (× 0,7)
-                    L.rmax = Math.max(0.03, Math.max(0, L.r) * 0.7);
+                    // (7.5: nur aus echtem Tempo – ein Bremsen beim Anfahren oder Kriechen sagt nichts darüber, was die Grafik durchhält;
+                    // Prozessor-Rechnung und 3D-Körper wie bisher)
+                    if (!mut2 || L.r >= 0.3 * cruise) L.rmax = Math.max(0.03, Math.max(0, L.r) * 0.7);
                     lavaPhase(L, 'brake', now); L.turnZ = S.cam.zoom; L.turn = S.cam;
                 }
                 else if (L.xs > T.ok && L.dx > -0.03) L.rmax = Math.min(9, L.rmax * (1 + 0.06 * dt));    // scharf und stabil: langsam mehr
                 // kriecht der Flug nur noch (Ziel < 25 % des Reisetempos, 3 s lang – 3D-Körper an der Genauigkeitsgrenze, sehr
                 // langsame Rechnung), ist die Tiefe für jetzt erreicht: wie oben bremsen, schweben, zurückweichen
-                L.slowT = cruise > 0.02 && FLY.ease >= 1 && L.tgt < 0.25 * cruise ? (L.slowT || 0) + dt : 0;
+                // (7.5: im 2D-Flug auf der GPU zählt nur, was Schärfe und Dauertempo erlauben – die Lenk-Dämpfung beim Suchen des Randes ist
+                // keine Tiefengrenze; mit ihr folgten alle ~4 s Bremsen und Schweben)
+                L.slowT = cruise > 0.02 && FLY.ease >= 1 && (mut2 ? Math.min(cruise * qf0, L.rmax) : L.tgt) < 0.25 * cruise ? (L.slowT || 0) + dt : 0;
                 if (L.slowT > 3 && now - L.flip > 8000) { L.slowT = 0; lavaPhase(L, 'brake', now); L.turnZ = S.cam.zoom; L.turn = S.cam; }
                 break;
             case 'brake':
@@ -474,7 +506,7 @@ root.FKFlight = { create(ctx) {
         }
         // Zieltempo + S-Kurve
         let tgt;
-        if (L.phase === 'cruise') tgt = Math.min(base * smooth((xF - T.lo) / (T.ok - T.lo)), L.rmax);
+        if (L.phase === 'cruise') tgt = Math.min(base * qf0, L.rmax);
         else if (L.phase === 'rev') tgt = -LV.rueck * Math.max(cruise, 0.05) * (bulb ? 1 : smooth(Math.log10(S.cam.zoom / lavaFloor()) / 0.5)   // (vor der Startansicht weich auslaufen)
             // 7.3.x: auch heraus nur so schnell, wie die neuen Ränder scharf werden (im Deep Zoom kosten sie bei 14 000+ Iterationen
             // Zeit: ab 10¹⁷ war das Herauszoomen zu 45–60 % grob) – Schärfe-Prognose wie auf der Reise, bei grobem Bild ruht es
@@ -501,7 +533,7 @@ root.FKFlight = { create(ctx) {
         L.rev = L.rev ? L.r < 0.004 * cref : L.r < -0.004 * cref;
         // (Prozessor-Rechnung – Exoten ab 2000×, Klassiker jenseits 10³⁰: jedes neue Randstück kostet Sekunden – nur ein Viertel)
         // (Wechsel des Rechenwegs, z. B. Exoten bei 2000×: weich über ~1 s, sonst spränge das Drifttempo)
-        L.cpuK = (L.cpuK === undefined ? 1 : L.cpuK) + ((ctx.plan().kind === 'cpu' ? 0.25 : 1) - (L.cpuK === undefined ? 1 : L.cpuK)) * Math.min(1, dt / 1.0);
+        L.cpuK = (L.cpuK === undefined ? 1 : L.cpuK) + ((pl.kind === 'cpu' ? 0.25 : 1) - (L.cpuK === undefined ? 1 : L.cpuK)) * Math.min(1, dt / 1.0);
         // (7.4: abseits des Randes – innen, leer – bis 2,5× so schnell zurück an den Rand, weich über ~1,5 s)
         L.eb = (L.eb || 1) + ((RAND_SCHWEB && L.lostE && now - (L.hTt || -1e9) < 2000 ? 2.5 : 1) - (L.eb || 1)) * Math.min(1, dt / 1.5);
         const amp = LV.seit * Math.max(0, L.dw) * L.cpuK * L.eb;
@@ -788,7 +820,10 @@ root.FKFlight = { create(ctx) {
         if (FLY.gap) { FLY.lost = Math.max(0, (FLY.lost || 0) - 0.15); FLY.glide = null; FLY.gv = 1; return; }
         // (nichts Brauchbares im Fenster: Richtung der höchsten Iteration – sie steigt zur Menge hin)
         const far = bestAll && bestAll.sc > 0.35 ? bestAll : hiIt;
-        if (!okAhead && far && (!FLY.T || held > 600)) { FLY.T = [far.x, far.y]; FLY.Tt = now; }
+        // (7.5: im 2D-Anflug nicht alle 0,6 s auf die Gegenseite springen – liegen zwei gleich gute Stellen gegenüber, z. B. beiderseits
+        // einer Kante, stand der Zoompunkt sonst pendelnd in der Mitte; die Gegenseite erst nach 3 s)
+        const flipSide = !FLY.d3 && FLY.lava && FLY.lava.mut2 && FLY.T && far && held < 3000 && (far.x - A[0]) * (FLY.T[0] - A[0]) + (far.y - A[1]) * (FLY.T[1] - A[1]) < 0;
+        if (!okAhead && far && (!FLY.T || held > 600) && !flipSide) { FLY.T = [far.x, far.y]; FLY.Tt = now; }
         FLY.lost = Math.max(0, Math.min(1.5, (FLY.lost || 0) + (okAhead ? -0.3 : 0.25)));
         if (FLY.lost > 0.3 && FLY.T && far) {
             const r = Math.max(1e-9, Math.hypot(FLY.T[0], FLY.T[1]));

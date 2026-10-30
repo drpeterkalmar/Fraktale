@@ -5,7 +5,7 @@
      1,0 → 0,05 → 1,0) setzte bis 7.3.0 die Beschleunigung des Lavalampen-Reglers auf (Sprung / Bildzeit) ≈ 9 Zehnerpotenzen/s²
      statt höchstens A ≈ 0,1 – die Bremse holte das nie ein, der Flug raste bis 10²⁹⁰ (gemessen ab 10¹⁸ in ~1 von 5 Flügen).
      Soll: |Beschleunigung| ≤ A, Zoomtempo nie > 1 Zehnerpotenz/s, nach 8 s weniger als 3 Zehnerpotenzen weiter
-  B  Deep-Zoom-Flug 10¹⁸ und 10¹⁹ (Seepferdchental, 3 × 15 s, tests/measure_deep_fly.py): nie durchgegangen, grob im Mittel ≤ 25 %
+  B  Deep-Zoom-Flug 10¹⁸ und 10¹⁹ (Seepferdchental, 3 × 15 s, tests/measure_deep_fly.py): nie durchgegangen (≤ Reisetempo × 15 s), grob im Mittel ≤ 25 %
      (7.3.0: 32–53 %; je Lauf streut es 0–40 %, je nachdem ob die Lavalampe herauszoomt), 0 harte Wechsel, keine Fehler
 Aufruf: FK_HEADED=1 python3 tests/test_v731.py [--only=A,B]   (Server: python3 tools/serve.py 8472)
 """
@@ -67,7 +67,9 @@ def case_B(p):
             r.pop('samples', None)
         res['B'] += rs
         m = sum(r['coarse'] for r in rs) / len(rs)
-        check(all(r['lz1'] - r['lz0'] < 3 for r in rs) and m <= 0.25 and all(r['hard'] == 0 and not r['errors'] for r in rs),
+        # (7.5: „durchgegangen“ = schneller als das Reisetempo 0,3/s erlaubt – bis 7.4.3 stand hier < 3 Zehnerpotenzen, das hielt nur,
+        # weil der Flug nach jedem Bremsen lange kroch; 7.3.0 raste mit bis zu 66 Zehnerpotenzen/s)
+        check(all(r['lz1'] - r['lz0'] <= 0.3 * D.SECS + 0.1 for r in rs) and m <= 0.25 and all(r['hard'] == 0 and not r['errors'] for r in rs),
               f"{z:.0e}: grob {[round(r['coarse'] * 100, 1) for r in rs]} % (Mittel {m * 100:.1f} %), Zoom {[(r['lz0'], r['lz1']) for r in rs]}, "
               f"harte Wechsel {[r['hard'] for r in rs]} {[r['errors'] for r in rs if r['errors']][:1]}")
 
