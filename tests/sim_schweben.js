@@ -73,7 +73,7 @@ function run1(place) {
     const GOV = { g: 1, lq: 0.3, lqT: 0.3 };
     const ctx = {
         Q: new URLSearchParams('takt=0' + (VAR === 'alt' ? '&randschweb=0' : '') + (process.env.SIM_Q ? '&' + process.env.SIM_Q : '')), S, V3, GOV, HP, T3: {}, MODE_HOME: { 0: ['-0.5', '0', 1] },
-        RC: { resizeT: -1e9, vsync: 16.7 }, plan: () => ({ kind: 'gpu' }), homeOf: () => ['-0.5', '0', 1], cssW: 412, cssH: 915, viewRot: () => 0,
+        RC: { resizeT: -1e9, vsync: 16.7 }, plan: () => ({ kind: 'gpu', mode: 'perturb' }), cformula: () => 0, isExo: () => false, homeOf: () => ['-0.5', '0', 1], cssW: 412, cssH: 915, viewRot: () => 0,
         VR: { rot: 0 }, setViewRot() {}, clampZoom: (q) => Math.min(1e30, Math.max(0.2, q)), setCam(cx, cy, zoom) { S.cam = { cx, cy, zoom: ctx.clampZoom(zoom) }; },
         smooth01: (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x), emit() {}, toast() {}, t: (k) => k, isRay: () => false, isDens: () => false,
         can3d: () => false, look: () => ({}), ready3d: () => false, set3d() {}, setJulia() {}, setMode() {}, stopAnims() {},
