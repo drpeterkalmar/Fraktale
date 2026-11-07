@@ -140,16 +140,20 @@ root.FKZufall = { create(ctx) {
         const pool = opts.pool || worldPool(r, opts.seeded);
         P.world = opts.world !== undefined ? opts.world : r.pick(pool);
         const w = P.world;
+        // 7.5.1 (Peter 07.11.2026): Start immer an einer Sehenswürdigkeit der gewürfelten Welt (?landmark=0 = wie 7.5.0)
+        const LM = Q.get('landmark') !== '0' && (ctx.SIGHTS[w] || []).length > 0;
+        P.landmark = LM;
         if (opts.only) {      // ?zufall=0: nur Welt + Ort wie 7.1.6 (Startansicht oder halbe Chance ein Tour-Ort)
             const L = ctx.SIGHTS[w] || [];
-            P.place = L.length && r.chance(0.5) ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'home' };
+            P.place = L.length && (LM || r.chance(0.5)) ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'home' };
             P.only = true;
             return P;
         }
         P.colors = rollColors(r, w);
         P.wp = rollWP(r, w);
-        if (w === 1) P.julia = rollJulia(r).map(x => +x.toFixed(9));
-        if (w === 14 && r.chance(0.5)) P.flame = { seed: (r() * 4294967295) >>> 0 };
+        if (w === 1) { const jc = rollJulia(r).map(x => +x.toFixed(9)); if (!LM) P.julia = jc; }
+        if (w === 14 && LM) r();                          // Sehenswürdigkeit = Galerie-Flamme (Zufallsfolge bleibt gleich lang)
+        else if (w === 14 && r.chance(0.5)) P.flame = { seed: (r() * 4294967295) >>> 0 };
         else if (w === 14) P.wp.g = r.int(0, (self.FKDensity ? self.FKDensity.GALLERY.length : 1) - 1);
         // Ort
         const L = ctx.SIGHTS[w] || [];
@@ -160,17 +164,17 @@ root.FKZufall = { create(ctx) {
             if (k === 0) P.ray.power = r.chance(0.5) ? 8 : r.pick([3, 4, 5, 6, 7, 9, 10, 12]);
             if (k === 1) P.ray.boxS = r.pick([2, 2, -1.5, -2, 2.5, -2.5, 3, -3]);
             if (k === 5) P.ray.ap = +r.uni(1.05, 1.35).toFixed(3);
-            if (L.length && u < 0.45) P.place = { kind: 'sight', k: r.int(0, L.length - 1) };
+            if (L.length && (LM || u < 0.45)) P.place = { kind: 'sight', k: r.int(0, L.length - 1) };
             else P.place = { kind: 'orbit', yaw: +r.uni(-Math.PI, Math.PI).toFixed(4), pitch: +r.uni(-0.55, 0.65).toFixed(4), d: +r.uni(0.85, 1.12).toFixed(3) };
             if ((k === 3 || k === 4) && L.length) P.ray.prm = r.int(0, L.length - 1);     // Q-Julia c / KIFS-Form aus den Orten
         } else if (w === 14 || w === 15 || w === 7) {
-            P.place = { kind: 'home' };
+            P.place = LM ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'home' };
             if (w === 15) P.place = { kind: 'sight', k: r.int(0, L.length - 1) };        // Attraktor: eine Vorlage (Parameter)
-            if (w === 7) P.place = { kind: 'home' };
+            if (w === 7 && !LM) P.place = { kind: 'home' };
         } else if (w === 10) {
-            P.place = L.length && u < 0.4 ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'home' };
+            P.place = L.length && (LM || u < 0.4) ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'home' };
         } else {
-            P.place = u < 0.22 ? { kind: 'home' } : u < 0.55 && L.length ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'scout', steps: r.int(1, 3), fac: +r.uni(3, 6).toFixed(2), s: (r() * 2147483646 + 1) | 0 };
+            P.place = LM ? { kind: 'sight', k: r.int(0, L.length - 1) } : u < 0.22 ? { kind: 'home' } : u < 0.55 && L.length ? { kind: 'sight', k: r.int(0, L.length - 1) } : { kind: 'scout', steps: r.int(1, 3), fac: +r.uni(3, 6).toFixed(2), s: (r() * 2147483646 + 1) | 0 };
             // Tour-Orte der Klassiker tragen eigene Welt-Parameter (z. B. Multibrot-Exponent) – die gelten dann
         }
         P.speed = +r.uni(0.16, 0.22).toFixed(3);
@@ -337,7 +341,11 @@ root.FKZufall = { create(ctx) {
         if (P.place.kind === 'sight' && L[P.place.k]) {
             const p = L[P.place.k];
             info.sight = p.k;
-            ctx.applyPlaceWP(p);
+            if (P.landmark && ctx.WP_DEF[w]) {     // 7.5.1: Welt-Parameter der Sehenswürdigkeit (gewürfelte würden sie verfälschen)
+                S.wp[w] = Object.assign({}, ctx.WP_DEF[w], p.wp || {});
+                if (w === 14 && P.wp) S.wp[w].a = P.wp.a;      // Flamme: Animation wie gewürfelt
+                ctx.emit('wp');
+            } else ctx.applyPlaceWP(p);
             if (p.jx && !P.julia) ctx.setJulia(HP.fromString(p.jx), HP.fromString(p.jy));
             if (ctx.isRay(w)) { if (p.b) ctx.BULB.applyState(p.b); }
             else { const h = ctx.isDens(w) ? ctx.homeOf(w) : null; ctx.setCam(HP.fromString(h ? h[0] : p.cx), HP.fromString(h ? h[1] : p.cy), h ? h[2] : +p.zoom); }
@@ -380,6 +388,7 @@ root.FKZufall = { create(ctx) {
         else if (R0.kind === 1) prm = String(R0.boxS);
         else if (R0.kind === 5) prm = String(R0.ap);
         else if (R0.prm !== undefined && L[R0.prm]) prm = prmOf(L[R0.prm].b);
+        if (sp && P.landmark) { BU.applyState(sp); return; }      // 7.5.1: Sehenswürdigkeit exakt (Kamera + Parameter)
         if (sp) {     // Tour-Ort: dessen Kamera, aber die gewürfelten Parameter (Mandelbox-Ort: Skalierung des Orts – die Kamera passt dazu)
             if (R0.kind !== 1) BU.applyState(sp.split(';')[0] + ';' + (prm || prmOf(sp)));
             return;

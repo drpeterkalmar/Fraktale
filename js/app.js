@@ -13,7 +13,7 @@
 (function () {
 'use strict';
 
-const APP_VERSION = '7.5.0';
+const APP_VERSION = '7.5.1';
 const HP = self.FKHP, PAL = self.FKPalettes;
 const Q = new URLSearchParams(location.search);
 const V = '?v=' + APP_VERSION;                 // Cache-Busting für Worker (automatisch mit APP_VERSION)
@@ -1558,7 +1558,7 @@ function randomStart() {
     setMode(w);
     // Startansicht oder (halbe Chance) ein zufälliger Tour-Ort der Welt
     const list = SIGHTS[w] || [];
-    const p = list.length && Math.random() < 0.5 ? list[Math.floor(Math.random() * list.length)] : null;
+    const p = list.length && (Q.get('landmark') !== '0' || Math.random() < 0.5) ? list[Math.floor(Math.random() * list.length)] : null;
     if (p) {
         applyPlaceWP(p);
         if (p.jx) setJulia(HP.fromString(p.jx), HP.fromString(p.jy));

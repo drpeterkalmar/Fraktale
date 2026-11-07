@@ -186,6 +186,11 @@ Ordner herunterladen, `start_fractal.bat` (Windows) doppelklicken oder `python3 
 
 ## 📜 Änderungen
 
+**Version 7.5.1** – Zufallsstart an einer Sehenswürdigkeit (Peter: „Flug random Startpunkt bei Reload soll immer bei einem Landmark der aktuellen Welt starten“)
+- Start und Neuladen würfeln weiter Welt, Farben und Flug-Art, der Startpunkt ist aber immer eine der kuratierten Sehenswürdigkeiten dieser Welt (dieselben wie unter Orte ▶/✈), samt deren Welt-Parametern (Julia-c, Exponent, Variante, 3D-Kamera). Bisher: Startansicht, Sehenswürdigkeit oder Kundschafter-Fund.
+- Die Rand-Zentrierung (7.4.2) bleibt: liegt die Bildmitte der Sehenswürdigkeit in der Menge, rückt der nächste Rand in die Mitte (Zoom bleibt), damit der Flug nicht ins Schwarze taucht.
+- `?landmark=0` = wie 7.5.0.
+
 **Version 7.5.0** – Mutiger Flug: der Autopilot fliegt wieder hinein (Peter: „Fraktalflug ist zu zaghaft im Heranzoomen … es geht nur darum, dass er überhaupt nicht hineinfliegen will“; das Grundtempo bleibt)
 - Gemessen (`tests/measure_v75.py`: echte Zufallsstarts mit festem Zufall, Standard-Einstellungen, je Bild Zoom, Phase und Bremsursache, 120 s): Der Flug hing nicht am Tempo, sondern an Bremsen der Lavalampe, die bei scharfem Bild weiterwirkten – (1) „Dauertempo“: jedes Bremsen setzte es auf 0,7 × Zoomtempo, auch beim Anfahren oder Kriechen (Tempo ≈ 0) → 0,03 Zehnerpotenzen/s, Wiederanstieg mit +6 %/s dauerte 30–60 s; (2) „verloren“ (× 0,05) mal Lenk-Drossel (bis × 0,07): fand die Randsuche keinen guten Rand (Tricorn an einer Kante aus langsam entkommenden Punkten), zoomte er minutenlang mit 0,1–0,4 % des Tempos, das Anflugziel sprang alle 0,6 s auf die Gegenseite; (3) die Kriech-Bremse zählte die Lenk-Drossel mit → alle ~4 s Bremsen/Schweben. Das Problem ist älter als 7.4 (7.3.1 hing genauso, nur an anderen Starts).
 - Fix (`js/flight.js`, Zufallsflug in 2D auf der schnellen GPU-Rechnung): Dauertempo lernt nur aus echtem Tempo (≥ 30 % des Reisetempos); bei scharfem Bild lockert ein „Mut“ (8 s) die Lenk-Dämpfung auf höchstens × 0,6; das Anflugziel wechselt frühestens nach 3 s auf die Gegenseite; die Kriech-Bremse zählt nur Schärfe und Dauertempo. Schärfe-Bremse, Schweben, Rückweg und alle Schwellen bleiben; Exoten, Newton, Prozessor-Rechnung, 3D-Körper und Ziel-Flug wie bisher. `?mutig=0` = Verhalten 7.4.3.
